@@ -1,0 +1,14 @@
+{
+  "train_start": "2018-01-01",
+  "train_end": "2023-10-26",
+  "val_start": "2023-10-27",
+  "val_end": "2025-01-24",
+  "test_start": "2025-01-25",
+  "test_end": "2026-04-25",
+  "n_train": 2125,
+  "n_val": 456,
+  "n_test": 456,
+  "n_labeled": 3037,
+  "n_feature_rows": 3042,
+  "live_feature_end": "2026-04-30"
+}
