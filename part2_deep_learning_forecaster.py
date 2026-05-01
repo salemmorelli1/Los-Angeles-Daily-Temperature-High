@@ -112,9 +112,42 @@ def load_splits() -> Dict:
 
 
 def _get_feature_cols(df: pd.DataFrame) -> List[str]:
-    target_cols = {f"target_h{h}" for h in HORIZONS}
-    return [c for c in df.columns if c not in {"date"} | target_cols]
+    """Return model-eligible numeric feature columns only.
 
+    Part 6/Part 1 can add descriptive string columns such as regime_name
+    (for example, SANTA_ANA / MARINE_LAYER / DRY_CLEAR). Those are useful
+    for diagnostics, but neural-network scalers require numeric inputs.
+    Keep numeric/bool columns and drop true categorical text fields.
+    """
+    target_cols = {f"target_h{h}" for h in HORIZONS}
+    excluded = {"date"} | target_cols
+
+    feature_cols: List[str] = []
+    dropped_non_numeric: List[str] = []
+
+    for col in df.columns:
+        if col in excluded:
+            continue
+
+        series = df[col]
+        if pd.api.types.is_numeric_dtype(series) or pd.api.types.is_bool_dtype(series):
+            feature_cols.append(col)
+            continue
+
+        coerced = pd.to_numeric(series, errors="coerce")
+        non_null = series.notna()
+        if int(non_null.sum()) > 0 and coerced[non_null].notna().all():
+            feature_cols.append(col)
+        else:
+            dropped_non_numeric.append(col)
+
+    if dropped_non_numeric:
+        print(f"[Part 2] Dropping non-numeric feature columns: {dropped_non_numeric}")
+
+    if not feature_cols:
+        raise ValueError("No numeric feature columns available for Part 2 training/inference.")
+
+    return feature_cols
 
 def _target_cols() -> List[str]:
     return [f"target_h{h}" for h in HORIZONS]
@@ -125,9 +158,15 @@ def _model_path(model_type: str) -> Path:
 
 
 def _clean_feature_frame(df: pd.DataFrame, feature_cols: List[str]) -> np.ndarray:
-    X = df[feature_cols].replace([np.inf, -np.inf], np.nan).fillna(0.0)
-    return X.values.astype(np.float32)
-
+    """Coerce selected features to a finite float32 matrix."""
+    X = df[feature_cols].copy()
+    for col in feature_cols:
+        if pd.api.types.is_bool_dtype(X[col]):
+            X[col] = X[col].astype(np.float32)
+        elif not pd.api.types.is_numeric_dtype(X[col]):
+            X[col] = pd.to_numeric(X[col], errors="coerce")
+    X = X.replace([np.inf, -np.inf], np.nan).fillna(0.0)
+    return X.to_numpy(dtype=np.float32)
 
 def _build_labeled_splits(df: pd.DataFrame, splits: Dict) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     target_cols = _target_cols()
