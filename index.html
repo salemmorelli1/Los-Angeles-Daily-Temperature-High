@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LA Temperature Forecast — Production Dashboard</title>
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+  <style>
+    :root {
+      --bg: #020817;
+      --bg2: #06101f;
+      --panel: #081225;
+      --panel2: #0b1730;
+      --panel3: #101d3a;
+      --border: #24324a;
+      --text: #f8fafc;
+      --muted: #cbd5e1;
+      --muted2: #94a3b8;
+      --accent: #38bdf8;
+      --accent2: #a78bfa;
+      --good: #22c55e;
+      --warn: #f59e0b;
+      --bad: #ef4444;
+      --info: #06b6d4;
+      --shadow: 0 14px 38px rgba(0,0,0,.32);
+      --radius: 18px;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; background: radial-gradient(circle at top left, #0b1730 0, var(--bg) 42%, #000 100%); color: var(--text); font-family: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
+    a { color: inherit; text-decoration: none; }
+    .wrap { max-width: 1680px; margin: 0 auto; padding: 14px 16px 34px; }
+    .header { display: flex; justify-content: space-between; align-items: flex-start; gap: 18px; margin-bottom: 16px; }
+    .title h1 { margin: 0 0 8px; font-size: clamp(2rem, 4vw, 3.1rem); letter-spacing: -0.04em; line-height: 1.02; }
+    .title p { margin: 0; color: var(--muted); max-width: 980px; line-height: 1.5; }
+    .controls { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; justify-content: flex-end; }
+    button { border: 1px solid var(--border); background: var(--panel3); color: var(--text); border-radius: 13px; padding: 10px 14px; font-weight: 850; cursor: pointer; }
+    button.primary { background: linear-gradient(135deg, var(--accent), var(--accent2)); border-color: transparent; color: #04111f; }
+    .stamp { color: var(--muted2); font-size: .92rem; }
+    .grid { display: grid; gap: 14px; }
+    .hero-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); margin-bottom: 14px; }
+    .two-col { grid-template-columns: 1.25fr .85fr; }
+    .two-even { grid-template-columns: 1fr 1fr; }
+    .three-col { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .card { background: linear-gradient(180deg, rgba(8,18,37,.96), rgba(11,23,48,.96)); border: 1px solid rgba(36,50,74,.96); border-radius: var(--radius); padding: 16px; box-shadow: var(--shadow); min-width: 0; }
+    .label { display: inline-block; font-size: .78rem; font-weight: 950; letter-spacing: .04em; text-transform: uppercase; color: #00111c; background: linear-gradient(135deg, #e0f2fe, #ddd6fe); border-radius: 9px; padding: 5px 10px; margin-bottom: 11px; }
+    .hero-card { min-height: 132px; }
+    .hero-big { color: #fff; font-size: 1.8rem; line-height: 1.08; font-weight: 950; letter-spacing: -.025em; word-break: break-word; margin-bottom: 6px; }
+    .hero-sub, .small-note { color: var(--muted); font-size: .94rem; line-height: 1.45; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .status-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    .pill { display: inline-flex; align-items: center; gap: 7px; border-radius: 999px; padding: 7px 12px; font-size: .88rem; font-weight: 900; border: 1px solid transparent; white-space: nowrap; }
+    .pill.good { background: rgba(34,197,94,.13); color: #86efac; border-color: rgba(34,197,94,.32); }
+    .pill.warn { background: rgba(245,158,11,.13); color: #fcd34d; border-color: rgba(245,158,11,.32); }
+    .pill.bad { background: rgba(239,68,68,.13); color: #fca5a5; border-color: rgba(239,68,68,.32); }
+    .pill.info { background: rgba(6,182,212,.13); color: #67e8f9; border-color: rgba(6,182,212,.32); }
+    .tabs { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0; }
+    .tab-btn.active { background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #03111e; border-color: transparent; }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+    .chart { width: 100%; min-height: 410px; }
+    .chart.small { min-height: 330px; }
+    .kv-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 14px; }
+    .kv { border-bottom: 1px solid rgba(36,50,74,.72); padding: 8px 0 10px; }
+    .kv .k { color: var(--muted2); font-size: .84rem; margin-bottom: 4px; }
+    .kv .v { color: #fff; font-size: .98rem; font-weight: 850; line-height: 1.35; word-break: break-word; }
+    .table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 14px; background: var(--panel); }
+    table { width: 100%; min-width: 720px; border-collapse: collapse; }
+    th { text-align: left; color: #fff; background: var(--panel3); padding: 10px 12px; border-bottom: 1px solid var(--border); font-size: .86rem; white-space: nowrap; }
+    td { padding: 9px 12px; border-bottom: 1px solid rgba(36,50,74,.68); color: var(--text); font-size: .88rem; white-space: nowrap; }
+    tr:hover td { background: rgba(56,189,248,.045); }
+    .debug { white-space: pre-wrap; color: var(--muted); line-height: 1.5; font-size: .92rem; }
+    .error { color: #fca5a5; }
+    .footer { color: var(--muted2); margin-top: 14px; display: flex; gap: 10px; flex-wrap: wrap; }
+    @media (max-width: 1450px) { .hero-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+    @media (max-width: 980px) { .header { flex-direction: column; } .hero-grid, .two-col, .two-even, .three-col, .kv-grid { grid-template-columns: 1fr; } .chart { min-height: 340px; } }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="header">
+      <div class="title">
+        <h1>LA Temperature Forecast</h1>
+        <p>Production dashboard for the Los Angeles daily high-temperature forecasting stack: data freshness, regime engine, LSTM/Transformer forecasts, XGBoost/BNN sleeves, governance checks, and live attribution.</p>
+      </div>
+      <div class="controls">
+        <button id="refreshBtn" class="primary">Refresh</button>
+        <a id="repoLink" href="#" target="_blank" rel="noopener"><button type="button">Open Repository</button></a>
+        <div class="stamp" id="lastUpdated">Last updated: —</div>
+      </div>
+    </div>
+
+    <div class="grid hero-grid">
+      <div class="card hero-card"><div class="label">H=1 Forecast</div><div class="hero-big" id="h1Forecast">—</div><div class="hero-sub" id="h1Meta">Target: —</div><div class="hero-sub" id="h1Realized">Realized: —</div></div>
+      <div class="card hero-card"><div class="label">H=3 Forecast</div><div class="hero-big" id="h3Forecast">—</div><div class="hero-sub" id="h3Meta">Target: —</div><div class="hero-sub" id="h3Realized">Realized: —</div></div>
+      <div class="card hero-card"><div class="label">H=5 Forecast</div><div class="hero-big" id="h5Forecast">—</div><div class="hero-sub" id="h5Meta">Target: —</div><div class="hero-sub" id="h5Realized">Realized: —</div></div>
+      <div class="card hero-card"><div class="label">Publish Mode</div><div class="hero-big" id="publishMode">—</div><div class="hero-sub" id="checkCount">Checks: —</div><div class="hero-sub" id="decisionDate">Decision: —</div></div>
+      <div class="card hero-card"><div class="label">Model State</div><div class="hero-big" id="modelType">—</div><div class="hero-sub" id="valMae">Val MAE: —</div><div class="hero-sub" id="featureDate">Feature date: —</div></div>
+      <div class="card hero-card"><div class="label">Live Skill</div><div class="hero-big" id="overallSkill">—</div><div class="hero-sub" id="bestHorizon">Best horizon: —</div><div class="hero-sub" id="realizedRows">Realized samples: —</div></div>
+    </div>
+
+    <div class="card" style="margin-bottom:14px;">
+      <div class="label">System Status</div>
+      <div class="status-row" id="statusRow"></div>
+      <div class="small-note" id="statusSummary" style="margin-top:10px;">Loading artifacts…</div>
+    </div>
+
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="forecastTab">Forecasts</button>
+      <button class="tab-btn" data-tab="attributionTab">Attribution</button>
+      <button class="tab-btn" data-tab="governanceTab">Governance</button>
+      <button class="tab-btn" data-tab="modelTab">Model Ops</button>
+      <button class="tab-btn" data-tab="dataTab">Data Preview</button>
+    </div>
+
+    <div class="tab-panel active" id="forecastTab">
+      <div class="grid two-col">
+        <div class="card"><div class="label">Forecast Tape</div><div id="forecastChart" class="chart"></div></div>
+        <div class="card"><div class="label">Latest Forecast Snapshot</div><div class="hero-big" id="snapDate">—</div><div class="hero-sub" id="snapWritten">Written at: —</div><div class="status-row" id="snapBadges" style="margin:14px 0;"></div><div class="kv-grid" id="forecastKv"></div></div>
+      </div>
+      <div style="height:14px"></div>
+      <div class="grid two-even">
+        <div class="card"><div class="label">Forecast Error Timeline</div><div id="errorChart" class="chart small"></div></div>
+        <div class="card"><div class="label">BNN 90% CI Width</div><div id="ciChart" class="chart small"></div></div>
+      </div>
+    </div>
+
+    <div class="tab-panel" id="attributionTab">
+      <div class="grid two-even">
+        <div class="card"><div class="label">Metrics by Horizon</div><div id="metricsChart" class="chart"></div></div>
+        <div class="card"><div class="label">Skill Scores</div><div id="skillChart" class="chart"></div></div>
+      </div>
+      <div style="height:14px"></div>
+      <div class="grid two-even">
+        <div class="card"><div class="label">Live Attribution Snapshot</div><div class="kv-grid" id="attributionKv"></div></div>
+        <div class="card"><div class="label">NWS / Climatology Baselines</div><div class="kv-grid" id="baselineKv"></div></div>
+      </div>
+    </div>
+
+    <div class="tab-panel" id="governanceTab">
+      <div class="grid two-col">
+        <div class="card"><div class="label">Governance Checks</div><div class="table-wrap"><table id="checksTable"><thead></thead><tbody></tbody></table></div></div>
+        <div class="card"><div class="label">Governance Snapshot</div><div class="kv-grid" id="governanceKv"></div></div>
+      </div>
+    </div>
+
+    <div class="tab-panel" id="modelTab">
+      <div class="grid three-col">
+        <div class="card"><div class="label">Part 2 Model</div><div class="kv-grid" id="part2Kv"></div></div>
+        <div class="card"><div class="label">Part 2B XGBoost</div><div class="kv-grid" id="part2bKv"></div></div>
+        <div class="card"><div class="label">Part 2C BNN</div><div class="kv-grid" id="part2cKv"></div></div>
+      </div>
+      <div style="height:14px"></div>
+      <div class="grid two-even">
+        <div class="card"><div class="label">Part 6 Regime Engine</div><div id="regimeChart" class="chart small"></div></div>
+        <div class="card"><div class="label">Regime Snapshot</div><div class="kv-grid" id="regimeKv"></div></div>
+      </div>
+    </div>
+
+    <div class="tab-panel" id="dataTab">
+      <div class="grid two-even">
+        <div class="card"><div class="label">Prediction Log</div><div class="table-wrap"><table id="predTable"><thead></thead><tbody></tbody></table></div></div>
+        <div class="card"><div class="label">Part 9 Report</div><div class="table-wrap"><table id="part9Table"><thead></thead><tbody></tbody></table></div></div>
+      </div>
+      <div style="height:14px"></div>
+      <div class="grid two-even">
+        <div class="card"><div class="label">Part 2 Meta</div><div class="table-wrap"><table id="part2Table"><thead></thead><tbody></tbody></table></div></div>
+        <div class="card"><div class="label">Part 6 Meta</div><div class="table-wrap"><table id="part6Table"><thead></thead><tbody></tbody></table></div></div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:14px;">
+      <div class="label">Debug / Artifact Load Status</div>
+      <div id="debugBox" class="debug">Waiting to load data…</div>
+    </div>
+    <div class="footer">
+      <span class="pill info" id="sourcePill">Source: —</span>
+      <span class="pill info" id="rowPill">Rows: —</span>
+      <span class="pill info" id="clockPill">Clock: feature_date + H</span>
+    </div>
+  </div>
+
+  <script>
+    const DEFAULT_OWNER = "salemmorelli1";
+    const DEFAULT_REPO = "Price-Call";
+    const DEFAULT_BRANCH = "main";
+
+    function detectGitHubConfig() {
+      const host = window.location.hostname || "";
+      const pathParts = (window.location.pathname || "").split("/").filter(Boolean);
+      if (host.endsWith("github.io") && pathParts.length) {
+        return { owner: host.split(".")[0], repo: pathParts[0], branch: DEFAULT_BRANCH };
+      }
+      return { owner: DEFAULT_OWNER, repo: DEFAULT_REPO, branch: DEFAULT_BRANCH };
+    }
+
+    const CFG = {
+      ...detectGitHubConfig(),
+      files: {
+        predictionLog: "artifacts_part2/prediction_log.csv",
+        part2Meta: "artifacts_part2/part2_meta.json",
+        part2bSummary: "artifacts_part2b/part2b_summary.json",
+        part2cMeta: "artifacts_part2c/part2c_meta.json",
+        calibrationReport: "artifacts_part2c/calibration_report.json",
+        governanceReport: "artifacts_part3/governance_report.json",
+        regimeMeta: "artifacts_part6/regime_meta.json",
+        attributionReport: "artifacts_part9/live_attribution_report.json"
+      }
+    };
+
+    const repoBase = `https://github.com/${CFG.owner}/${CFG.repo}`;
+    const rawBase = `https://raw.githubusercontent.com/${CFG.owner}/${CFG.repo}/${CFG.branch}`;
+    document.getElementById("repoLink").href = repoBase;
+
+    const HORIZONS = [1, 3, 5];
+    const PLOTLY_CONFIG = { responsive: true, displayModeBar: false };
+
+    function rawUrl(path) { return `${rawBase}/${path}?t=${Date.now()}`; }
+    function isMissing(v) { return v === null || v === undefined || String(v).trim() === "" || ["NA", "N/A", "NULL", "NONE", "NAN", "—"].includes(String(v).trim().toUpperCase()); }
+    function toNumber(v) { if (isMissing(v)) return NaN; const n = Number(String(v).replace(/,/g, "")); return Number.isFinite(n) ? n : NaN; }
+    function fmtNum(v, d=3) { const n = toNumber(v); return Number.isFinite(n) ? n.toFixed(d) : "—"; }
+    function fmtTemp(v) { const n = toNumber(v); return Number.isFinite(n) ? `${n.toFixed(1)}°F` : "—"; }
+    function fmtPct(v, d=1) { const n = toNumber(v); return Number.isFinite(n) ? `${(100*n).toFixed(d)}%` : "—"; }
+    function fmtDate(v) { if (isMissing(v)) return "—"; if (/^\d{4}-\d{2}-\d{2}$/.test(String(v).trim())) return String(v).trim(); const d = new Date(v); return Number.isNaN(d.getTime()) ? String(v) : d.toISOString().slice(0,10); }
+    function fmtDateTime(v) { if (isMissing(v)) return "—"; const d = new Date(v); return Number.isNaN(d.getTime()) ? String(v) : d.toISOString().replace("T", " ").slice(0,19) + " UTC"; }
+    function setText(id, value) { const el = document.getElementById(id); if (el) el.textContent = value; }
+    function setHtml(id, value) { const el = document.getElementById(id); if (el) el.innerHTML = value; }
+    function statusClass(value) { const s = String(value || "").toUpperCase(); if (["NORMAL", "PASS", "PASSED", "TRUE", "LIVE", "OK"].includes(s)) return "good"; if (["CAUTION", "WARN", "WARNING", "DELAYED", "UNKNOWN"].includes(s)) return "warn"; if (["HOLD", "FAIL", "FAILED", "FALSE", "STALE", "ERROR"].includes(s)) return "bad"; return "info"; }
+    function pill(label, value, cls=null) { return `<span class="pill ${cls || statusClass(value)}">${label}: ${isMissing(value) ? "—" : value}</span>`; }
+    function kv(k, v) { return `<div class="kv"><div class="k">${k}</div><div class="v">${isMissing(v) ? "—" : v}</div></div>`; }
+    function renderKvGrid(id, pairs) { setHtml(id, pairs.map(([k,v]) => kv(k,v)).join("")); }
+
+    function csvToObjects(text) {
+      if (!text || !text.trim()) return [];
+      const rows = text.trim().split(/\r?\n/);
+      const header = splitCsvRow(rows[0]);
+      return rows.slice(1).filter(r => r.trim()).map(row => {
+        const vals = splitCsvRow(row); const obj = {};
+        header.forEach((h, i) => obj[h] = vals[i] ?? ""); return obj;
+      });
+    }
+    function splitCsvRow(row) {
+      const out = []; let cur = ""; let q = false;
+      for (let i = 0; i < row.length; i++) {
+        const ch = row[i];
+        if (ch === '"') { if (q && row[i+1] === '"') { cur += '"'; i++; } else q = !q; }
+        else if (ch === "," && !q) { out.push(cur); cur = ""; }
+        else cur += ch;
+      }
+      out.push(cur); return out;
+    }
+    function sanitizeJsonText(text) {
+      let out = "", i = 0, inString = false, escape = false;
+      while (i < text.length) {
+        const ch = text[i];
+        if (inString) { out += ch; if (escape) escape = false; else if (ch === "\\") escape = true; else if (ch === '"') inString = false; i++; continue; }
+        if (ch === '"') { inString = true; out += ch; i++; continue; }
+        if (text.startsWith("NaN", i)) { out += "null"; i += 3; continue; }
+        if (text.startsWith("Infinity", i)) { out += "null"; i += 8; continue; }
+        if (text.startsWith("-Infinity", i)) { out += "null"; i += 9; continue; }
+        out += ch; i++;
+      }
+      return out;
+    }
+    async function fetchText(path, optional=false) {
+      const url = rawUrl(path);
+      const res = await fetch(url);
+      if (!res.ok) { if (optional) return null; throw new Error(`${path}: HTTP ${res.status}`); }
+      return await res.text();
+    }
+    async function fetchCsv(path, optional=false) { const t = await fetchText(path, optional); return t === null ? [] : csvToObjects(t); }
+    async function fetchJson(path, optional=false) { const t = await fetchText(path, optional); if (t === null) return null; try { return JSON.parse(t); } catch { return JSON.parse(sanitizeJsonText(t)); } }
+    function latestRow(rows, dateCol="decision_date") { if (!rows || !rows.length) return null; return [...rows].sort((a,b) => new Date(a[dateCol]) - new Date(b[dateCol]))[rows.length-1]; }
+    function lastN(rows, n=25) { return (rows || []).slice(Math.max(0, rows.length-n)); }
+
+    function flattenJson(obj, prefix="", out=[]) {
+      if (obj === null || obj === undefined) { out.push({ key: prefix || "value", value: "—" }); return out; }
+      if (Array.isArray(obj)) { obj.forEach((v,i) => flattenJson(v, `${prefix}[${i}]`, out)); if (!obj.length) out.push({ key: prefix, value: "[]" }); return out; }
+      if (typeof obj === "object") { const keys = Object.keys(obj); if (!keys.length && prefix) out.push({ key: prefix, value: "{}" }); keys.forEach(k => flattenJson(obj[k], prefix ? `${prefix}.${k}` : k, out)); return out; }
+      out.push({ key: prefix || "value", value: obj }); return out;
+    }
+    function renderTable(id, rows, cols) {
+      const table = document.getElementById(id); if (!table) return;
+      const thead = table.querySelector("thead"), tbody = table.querySelector("tbody");
+      thead.innerHTML = `<tr>${cols.map(c => `<th>${c}</th>`).join("")}</tr>`;
+      tbody.innerHTML = (rows || []).map(r => `<tr>${cols.map(c => `<td>${formatCell(c, r[c])}</td>`).join("")}</tr>`).join("");
+    }
+    function renderJsonTable(id, obj, limit=70) { renderTable(id, flattenJson(obj || {}).slice(0, limit), ["key", "value"]); }
+    function formatCell(col, val) {
+      if (isMissing(val)) return "—";
+      const c = String(col).toLowerCase(); const n = toNumber(val);
+      if (c.includes("date") || c.endsWith("_at") || c.includes("time")) return fmtDateTime(val);
+      if (Number.isFinite(n)) {
+        if (c.includes("temp") || c.includes("target") || c.includes("realized") || c.includes("mae") || c.includes("rmse") || c.includes("bias") || c.includes("high") || c.includes("low")) return fmtTemp(n);
+        if (c.includes("skill") || c.includes("coverage") || c.includes("rate") || c.includes("pct")) return fmtPct(n);
+        return fmtNum(n, 4);
+      }
+      return String(val);
+    }
+
+    function chartLayout(title, xTitle, yTitle, extra={}) {
+      return {
+        title: { text: title, font: { color: "#fff", size: 17 } },
+        paper_bgcolor: "rgba(0,0,0,0)", plot_bgcolor: "#061226",
+        font: { color: "#f8fafc" },
+        margin: { l: 72, r: 32, t: 54, b: 78 },
+        legend: { orientation: "h", y: -0.18, x: 0, font: { size: 12 } },
+        xaxis: { title: { text: xTitle, standoff: 18 }, gridcolor: "rgba(148,163,184,.13)", tickfont: { color: "#cbd5e1" }, automargin: true },
+        yaxis: { title: { text: yTitle, standoff: 12 }, gridcolor: "rgba(148,163,184,.13)", tickfont: { color: "#cbd5e1" }, automargin: true },
+        ...extra
+      };
+    }
+    function emptyChart(id, title, msg="Run the pipeline first to generate this artifact.") {
+      Plotly.newPlot(id, [], chartLayout(title, "", "", { annotations: [{ text: msg, xref:"paper", yref:"paper", x:.5, y:.5, showarrow:false, font:{ color:"#cbd5e1", size:16 }}]}), PLOTLY_CONFIG);
+    }
+
+    function predictionFor(row, h) {
+      const blend = toNumber(row?.[`blend_h${h}`]); if (Number.isFinite(blend)) return blend;
+      const xgb = toNumber(row?.[`xgb_h${h}`]); if (Number.isFinite(xgb)) return xgb;
+      return toNumber(row?.[`target_h${h}`]);
+    }
+    function modelSource(row, h) {
+      if (Number.isFinite(toNumber(row?.[`blend_h${h}`]))) return "Blend";
+      if (Number.isFinite(toNumber(row?.[`xgb_h${h}`]))) return "XGB";
+      return row?.model || "Model";
+    }
+    function realizedFor(row, h) { return toNumber(row?.[`realized_h${h}`]); }
+    function targetDateFor(row, h) { return fmtDate(row?.[`target_date_h${h}`]); }
+
+    function renderHero(predLog, part2Meta, gov, attr) {
+      const latest = latestRow(predLog, "decision_date");
+      HORIZONS.forEach(h => {
+        const pred = predictionFor(latest, h);
+        const real = realizedFor(latest, h);
+        setText(`h${h}Forecast`, fmtTemp(pred));
+        setText(`h${h}Meta`, `Target: ${targetDateFor(latest, h)} | Source: ${modelSource(latest, h)}`);
+        setText(`h${h}Realized`, `Realized: ${fmtTemp(real)}`);
+      });
+      setText("publishMode", gov?.publish_mode || latest?.publish_mode || "—");
+      setText("checkCount", `Checks: ${gov?.checks_passed ?? "—"}/${gov?.checks_total ?? "—"}`);
+      setText("decisionDate", `Decision: ${fmtDate(gov?.decision_date || latest?.decision_date)}`);
+      setText("modelType", (part2Meta?.model_type || latest?.model || "—").toString().toUpperCase());
+      setText("valMae", `Val MAE: ${fmtTemp(part2Meta?.val_mae_f)}`);
+      setText("featureDate", `Feature date: ${fmtDate(part2Meta?.feature_date || latest?.feature_date)}`);
+      setText("overallSkill", fmtPct(attr?.summary?.overall_skill));
+      setText("bestHorizon", `Best horizon: ${attr?.summary?.best_horizon ? `H=${attr.summary.best_horizon}` : "—"}`);
+      const realized = attr?.realized_samples_by_horizon || {};
+      setText("realizedRows", `Realized samples: H1=${realized.h1 ?? 0}, H3=${realized.h3 ?? 0}, H5=${realized.h5 ?? 0}`);
+    }
+
+    function renderStatus(predLog, gov, part2Meta, part2b, part2c, attr, regime) {
+      const latest = latestRow(predLog, "decision_date");
+      const publish = gov?.publish_mode || latest?.publish_mode || "UNKNOWN";
+      const rows = predLog?.length || 0;
+      const checksPassed = gov?.checks_total ? gov.checks_passed === gov.checks_total : null;
+      const bnnPass = part2c?.calibration_pass ?? null;
+      const xgbGate = part2b?.gate_validation_passed ?? null;
+      setHtml("statusRow", [
+        pill("Publish", publish),
+        pill("Governance", checksPassed === null ? "UNKNOWN" : checksPassed),
+        pill("XGB Gate", xgbGate === null ? "OPTIONAL" : xgbGate),
+        pill("BNN Calibration", bnnPass === null ? "OPTIONAL" : bnnPass),
+        pill("HMM", regime?.hmm_converged ?? "UNKNOWN"),
+        pill("Rows", rows, "info")
+      ].join(""));
+      setText("statusSummary", `Loaded ${rows} forecast rows from ${CFG.owner}/${CFG.repo}@${CFG.branch}. The target clock is ${attr?.target_clock || part2Meta?.target_clock || "target_date_h = feature_date + h calendar days"}.`);
+      setText("sourcePill", `Source: ${CFG.owner}/${CFG.repo}@${CFG.branch}`);
+      setText("rowPill", `Rows: ${rows}`);
+      setText("clockPill", `Clock: ${attr?.target_clock || "feature_date + H"}`);
+    }
+
+    function renderForecastTab(predLog) {
+      const rows = lastN(predLog, 80);
+      if (!rows.length) { emptyChart("forecastChart", "Forecast Tape"); emptyChart("errorChart", "Forecast Error Timeline"); emptyChart("ciChart", "BNN 90% CI Width"); return; }
+      const x = rows.map(r => fmtDate(r.decision_date));
+      const traces = [];
+      HORIZONS.forEach(h => {
+        traces.push({ x, y: rows.map(r => predictionFor(r,h)), mode:"lines+markers", name:`Pred H=${h}`, line:{ width:2 }});
+        traces.push({ x, y: rows.map(r => realizedFor(r,h)), mode:"markers", name:`Realized H=${h}`, marker:{ size:7, symbol:"circle-open" }});
+      });
+      Plotly.newPlot("forecastChart", traces, chartLayout("Forecasts and realized highs", "Decision date", "Temperature (°F)"), PLOTLY_CONFIG);
+
+      const errTraces = HORIZONS.map(h => ({ x, y: rows.map(r => {
+        const pred = predictionFor(r,h), real = realizedFor(r,h); return Number.isFinite(pred) && Number.isFinite(real) ? real - pred : null;
+      }), mode:"lines+markers", name:`Error H=${h}` }));
+      Plotly.newPlot("errorChart", errTraces, chartLayout("Realized − Forecast", "Decision date", "Error (°F)", { shapes:[{ type:"line", xref:"paper", x0:0, x1:1, y0:0, y1:0, line:{ color:"rgba(203,213,225,.45)", dash:"dot" }}]}), PLOTLY_CONFIG);
+
+      const ciTraces = HORIZONS.map(h => ({ x, y: rows.map(r => {
+        const lo = toNumber(r[`bnn_lo90_h${h}`]), hi = toNumber(r[`bnn_hi90_h${h}`]); return Number.isFinite(lo) && Number.isFinite(hi) ? hi-lo : null;
+      }), mode:"lines+markers", name:`CI width H=${h}` }));
+      Plotly.newPlot("ciChart", ciTraces, chartLayout("BNN uncertainty width", "Decision date", "Width (°F)"), PLOTLY_CONFIG);
+
+      const latest = latestRow(predLog, "decision_date");
+      setText("snapDate", fmtDate(latest?.decision_date));
+      setText("snapWritten", `Written at: ${fmtDateTime(latest?.written_at)}`);
+      setHtml("snapBadges", [pill("Model", latest?.model || "—", "info"), pill("Publish", latest?.publish_mode || "UNKNOWN"), pill("Feature", fmtDate(latest?.feature_date), "info")].join(""));
+      renderKvGrid("forecastKv", [
+        ["H=1 forecast / target", `${fmtTemp(predictionFor(latest,1))} / ${targetDateFor(latest,1)}`],
+        ["H=3 forecast / target", `${fmtTemp(predictionFor(latest,3))} / ${targetDateFor(latest,3)}`],
+        ["H=5 forecast / target", `${fmtTemp(predictionFor(latest,5))} / ${targetDateFor(latest,5)}`],
+        ["H=1 blend / XGB / raw", `${fmtTemp(latest?.blend_h1)} / ${fmtTemp(latest?.xgb_h1)} / ${fmtTemp(latest?.target_h1)}`],
+        ["H=3 blend / XGB / raw", `${fmtTemp(latest?.blend_h3)} / ${fmtTemp(latest?.xgb_h3)} / ${fmtTemp(latest?.target_h3)}`],
+        ["H=5 blend / XGB / raw", `${fmtTemp(latest?.blend_h5)} / ${fmtTemp(latest?.xgb_h5)} / ${fmtTemp(latest?.target_h5)}`]
+      ]);
+    }
+
+    function renderAttribution(attr) {
+      const metrics = attr?.metrics_by_horizon || {};
+      const horizons = HORIZONS.map(h => `H=${h}`);
+      const mae = HORIZONS.map(h => metrics[`h${h}`]?.mae_f ?? null);
+      const rmse = HORIZONS.map(h => metrics[`h${h}`]?.rmse_f ?? null);
+      const bias = HORIZONS.map(h => metrics[`h${h}`]?.bias_f ?? null);
+      Plotly.newPlot("metricsChart", [
+        { x:horizons, y:mae, type:"bar", name:"MAE" },
+        { x:horizons, y:rmse, type:"bar", name:"RMSE" },
+        { x:horizons, y:bias, type:"bar", name:"Bias" }
+      ], chartLayout("Forecast accuracy by horizon", "Horizon", "Degrees F"), PLOTLY_CONFIG);
+      Plotly.newPlot("skillChart", [
+        { x:horizons, y:HORIZONS.map(h => metrics[`h${h}`]?.skill_vs_persistence ?? null), type:"bar", name:"Skill vs persistence" },
+        { x:horizons, y:HORIZONS.map(h => metrics[`h${h}`]?.skill_vs_climatology ?? null), type:"bar", name:"Skill vs climatology" },
+        { x:horizons, y:HORIZONS.map(h => metrics[`h${h}`]?.hit_rate ?? null), type:"bar", name:"Hit rate" }
+      ], chartLayout("Skill scores", "Horizon", "Score"), PLOTLY_CONFIG);
+      renderKvGrid("attributionKv", [
+        ["Generated at", fmtDateTime(attr?.generated_at)],
+        ["Prediction rows", attr?.n_prediction_rows ?? "—"],
+        ["Target clock", attr?.target_clock || "—"],
+        ["Overall skill", fmtPct(attr?.summary?.overall_skill)],
+        ["Best horizon", attr?.summary?.best_horizon ? `H=${attr.summary.best_horizon}` : "—"],
+        ["Realized samples", JSON.stringify(attr?.realized_samples_by_horizon || {})]
+      ]);
+      const nws = attr?.nws_baseline_metrics || {};
+      renderKvGrid("baselineKv", [
+        ["NWS H=1 MAE", fmtTemp(nws.nws_h1_mae_f)],
+        ["NWS H=1 RMSE", fmtTemp(nws.nws_h1_rmse_f)],
+        ["NWS H=1 Bias", fmtTemp(nws.nws_h1_bias_f)],
+        ["NWS sample days", nws.nws_n_days ?? "—"],
+        ["Climatology H=1 skill", fmtPct(attr?.climatological_baseline?.h1?.skill_vs_climatology)],
+        ["Climatology H=3 skill", fmtPct(attr?.climatological_baseline?.h3?.skill_vs_climatology)],
+        ["Climatology H=5 skill", fmtPct(attr?.climatological_baseline?.h5?.skill_vs_climatology)]
+      ]);
+    }
+
+    function renderGovernance(gov) {
+      renderTable("checksTable", (gov?.checks || []).map(c => ({ name:c.name, passed:c.passed, level:c.level, message:c.message })), ["name", "passed", "level", "message"]);
+      renderKvGrid("governanceKv", [
+        ["Run at", fmtDateTime(gov?.run_at)],
+        ["Decision date", fmtDate(gov?.decision_date)],
+        ["Publish mode", gov?.publish_mode || "—"],
+        ["Checks passed", `${gov?.checks_passed ?? "—"}/${gov?.checks_total ?? "—"}`],
+        ["Max data staleness", `${gov?.thresholds?.max_data_staleness_days ?? "—"} days`],
+        ["Max model age", `${gov?.thresholds?.max_model_age_days ?? "—"} days`],
+        ["Temp bounds", `${fmtTemp(gov?.thresholds?.la_temp_min_f)} to ${fmtTemp(gov?.thresholds?.la_temp_max_f)}`],
+        ["Max CI width", fmtTemp(gov?.thresholds?.max_ci_width_f)]
+      ]);
+    }
+
+    function renderModelOps(part2, part2b, part2c, cal, regime) {
+      renderKvGrid("part2Kv", [
+        ["Model type", (part2?.model_type || "—").toString().toUpperCase()],
+        ["Feature date", fmtDate(part2?.feature_date)],
+        ["Decision date", fmtDate(part2?.decision_date)],
+        ["Validation MAE", fmtTemp(part2?.val_mae_f)],
+        ["Best val MAE scaled", fmtNum(part2?.best_val_mae_scaled, 5)],
+        ["Sequence length", part2?.sequence_len ?? part2?.hyperparameters?.sequence_len ?? "—"],
+        ["Features", part2?.n_features ?? (part2?.feature_cols || []).length],
+        ["Horizons", JSON.stringify(part2?.horizons || HORIZONS)]
+      ]);
+      renderKvGrid("part2bKv", [
+        ["Built at", fmtDateTime(part2b?.built_at)],
+        ["Gate validation", part2b?.gate_validation_passed ?? "—"],
+        ["BNN recommended", part2b?.bnn_sleeve_recommended ?? "—"],
+        ["Persistence baseline", JSON.stringify(part2b?.persistence_baseline_mae || {})],
+        ["H1 XGB live", fmtTemp(part2b?.live_predictions?.h1)],
+        ["H3 XGB live", fmtTemp(part2b?.live_predictions?.h3)],
+        ["H5 XGB live", fmtTemp(part2b?.live_predictions?.h5)]
+      ]);
+      renderKvGrid("part2cKv", [
+        ["Run at", fmtDateTime(part2c?.run_at)],
+        ["Part 2 model type", part2c?.part2_model_type || "—"],
+        ["Calibration pass", part2c?.calibration_pass ?? cal?.calibration_pass ?? "—"],
+        ["MC samples", part2c?.n_mc_samples ?? cal?.n_mc_samples ?? "—"],
+        ["CI target coverage", fmtPct(cal?.ci_target_coverage)],
+        ["H1 std", fmtTemp(part2c?.live_predictions?.h1?.std_f)],
+        ["H3 std", fmtTemp(part2c?.live_predictions?.h3?.std_f)],
+        ["H5 std", fmtTemp(part2c?.live_predictions?.h5?.std_f)]
+      ]);
+      renderRegime(regime);
+    }
+
+    function renderRegime(regime) {
+      const stats = regime?.state_stats || {};
+      const labels = Object.keys(stats);
+      const pct = labels.map(k => stats[k]?.pct ?? null);
+      if (labels.length) {
+        Plotly.newPlot("regimeChart", [{ labels, values:pct, type:"pie", hole:.45, textinfo:"label+percent" }], chartLayout("Regime distribution", "", "", { margin:{ l:20, r:20, t:54, b:30 }}), PLOTLY_CONFIG);
+      } else emptyChart("regimeChart", "Regime distribution");
+      renderKvGrid("regimeKv", [
+        ["Fit date", fmtDateTime(regime?.fit_date)],
+        ["HMM converged", regime?.hmm_converged ?? "—"],
+        ["Regime count", regime?.n_regimes ?? "—"],
+        ["Rows fit", regime?.n_rows_fit ?? "—"],
+        ["Features", (regime?.feature_cols || []).length || "—"],
+        ["Label map", JSON.stringify(regime?.label_map || {})],
+        ["Log likelihood", fmtNum(regime?.hmm_log_likelihood, 2)]
+      ]);
+    }
+
+    function renderData(predLog, part2, regime, attr) {
+      const rows = lastN(predLog, 20).reverse();
+      renderTable("predTable", rows, ["decision_date", "feature_date", "target_date_h1", "target_h1", "realized_h1", "target_date_h3", "target_h3", "realized_h3", "target_date_h5", "target_h5", "realized_h5", "publish_mode", "model"]);
+      renderJsonTable("part9Table", attr, 70);
+      renderJsonTable("part2Table", part2, 70);
+      renderJsonTable("part6Table", regime, 70);
+    }
+
+    async function loadAll() {
+      setText("debugBox", "Loading artifacts from GitHub raw content…");
+      const loadLog = [];
+      async function guarded(name, fn, fallback) {
+        try { const v = await fn(); loadLog.push(`OK   ${name}`); return v; }
+        catch (e) { loadLog.push(`MISS ${name}: ${e.message}`); return fallback; }
+      }
+      const [predLog, part2, part2b, part2c, cal, gov, regime, attr] = await Promise.all([
+        guarded("prediction_log.csv", () => fetchCsv(CFG.files.predictionLog, false), []),
+        guarded("part2_meta.json", () => fetchJson(CFG.files.part2Meta, true), null),
+        guarded("part2b_summary.json", () => fetchJson(CFG.files.part2bSummary, true), null),
+        guarded("part2c_meta.json", () => fetchJson(CFG.files.part2cMeta, true), null),
+        guarded("calibration_report.json", () => fetchJson(CFG.files.calibrationReport, true), null),
+        guarded("governance_report.json", () => fetchJson(CFG.files.governanceReport, true), null),
+        guarded("regime_meta.json", () => fetchJson(CFG.files.regimeMeta, true), null),
+        guarded("live_attribution_report.json", () => fetchJson(CFG.files.attributionReport, true), null)
+      ]);
+
+      renderHero(predLog, part2, gov, attr);
+      renderStatus(predLog, gov, part2, part2b, part2c, attr, regime);
+      renderForecastTab(predLog);
+      renderAttribution(attr || {});
+      renderGovernance(gov || {});
+      renderModelOps(part2 || {}, part2b || {}, part2c || {}, cal || {}, regime || {});
+      renderData(predLog, part2 || {}, regime || {}, attr || {});
+
+      setText("lastUpdated", `Last updated: ${new Date().toLocaleString()}`);
+      setHtml("debugBox", loadLog.join("\n") + `\n\nRepo: ${repoBase}\nRaw: ${rawBase}`);
+    }
+
+    document.querySelectorAll(".tab-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+        document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
+        btn.classList.add("active"); document.getElementById(btn.dataset.tab).classList.add("active");
+        setTimeout(() => window.dispatchEvent(new Event("resize")), 50);
+      });
+    });
+    document.getElementById("refreshBtn").addEventListener("click", loadAll);
+    window.addEventListener("error", e => setHtml("debugBox", `<span class="error">JavaScript error: ${e.message || e.error}</span>`));
+    loadAll();
+  </script>
+</body>
+</html>
