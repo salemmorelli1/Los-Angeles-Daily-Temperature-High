@@ -1,8 +1,8 @@
 {
   "schema_version": "1.1.0",
-  "generated_at": "2026-05-01T11:52:24.908794",
+  "generated_at": "2026-05-01T12:00:48.997162",
   "target_clock": "target_date_h = feature_date + h calendar days",
-  "n_prediction_rows": 1,
+  "n_prediction_rows": 2,
   "realized_samples_by_horizon": {
     "h1": 0,
     "h3": 0,
