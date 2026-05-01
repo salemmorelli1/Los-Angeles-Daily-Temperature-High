@@ -4,6 +4,20 @@ A production-grade deep learning pipeline for forecasting the **Los Angeles dail
 
 Built on the same modular architecture as the PriceCall stack — with trading strategy and execution components replaced by meteorological physics, regime detection, and forecast verification against NWS official forecasts.
 
+
+
+## Corrected production contracts
+
+This version applies the pipeline-contract fixes from the code audit:
+
+- Forecast target dates are now `target_date_h = feature_date + h calendar days`.
+- Part 1 keeps the live feature tail even when future targets are not yet observable.
+- Part 2 trains only on fully labeled rows, but live prediction uses the newest feature row.
+- Part 2 validation metrics labeled `_f` are computed in real Fahrenheit units, not scaled units.
+- Part 2 supports `--mode train` and `--mode predict`; the daily runner now uses predict-only when retraining is not needed.
+- Part 2C skips Transformer artifacts safely and fixes MC-dropout uncertainty scaling.
+- Part 9 backfills realized values against explicit target-date columns instead of `decision_date + h`.
+
 **No API key required.** All data sources are free and open:
 - [Open-Meteo](https://open-meteo.com/) — historical archive + 7-day forecast
 - [NWS API](https://api.weather.gov/) — official NWS point forecast (benchmark)
@@ -64,6 +78,16 @@ python run_daily_forecast.py --model transformer
 ```bash
 python run_daily_forecast.py --retrain
 ```
+### 5. Run Part 2 directly
+
+```bash
+# Train/retrain and append live prediction
+python part2_deep_learning_forecaster.py --model lstm --mode train
+
+# Load existing model and append live prediction only
+python part2_deep_learning_forecaster.py --model lstm --mode predict
+```
+
 
 ---
 
