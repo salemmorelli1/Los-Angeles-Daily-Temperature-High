@@ -107,8 +107,52 @@ def load_splits() -> Dict:
 
 
 def _feature_cols(df: pd.DataFrame) -> List[str]:
+    """Return XGBoost-eligible numeric feature columns only.
+
+    Descriptive regime labels such as regime_name are retained in upstream
+    artifacts for readability, but model matrices must be numeric.
+    """
     target_cols = {f"target_h{h}" for h in HORIZONS}
-    return [c for c in df.columns if c not in {"date"} | target_cols]
+    excluded = {"date"} | target_cols
+
+    feature_cols: List[str] = []
+    dropped_non_numeric: List[str] = []
+
+    for col in df.columns:
+        if col in excluded:
+            continue
+
+        series = df[col]
+        if pd.api.types.is_numeric_dtype(series) or pd.api.types.is_bool_dtype(series):
+            feature_cols.append(col)
+            continue
+
+        coerced = pd.to_numeric(series, errors="coerce")
+        non_null = series.notna()
+        if int(non_null.sum()) > 0 and coerced[non_null].notna().all():
+            feature_cols.append(col)
+        else:
+            dropped_non_numeric.append(col)
+
+    if dropped_non_numeric:
+        print(f"[Part 2B] Dropping non-numeric feature columns: {dropped_non_numeric}")
+
+    if not feature_cols:
+        raise ValueError("No numeric feature columns available for Part 2B training.")
+
+    return feature_cols
+
+
+def _clean_feature_frame(df: pd.DataFrame, feature_cols: List[str]) -> np.ndarray:
+    """Coerce selected features to a finite float32 matrix for XGBoost."""
+    X = df[feature_cols].copy()
+    for col in feature_cols:
+        if pd.api.types.is_bool_dtype(X[col]):
+            X[col] = X[col].astype(np.float32)
+        elif not pd.api.types.is_numeric_dtype(X[col]):
+            X[col] = pd.to_numeric(X[col], errors="coerce")
+    X = X.replace([np.inf, -np.inf], np.nan).fillna(0.0)
+    return X.to_numpy(dtype=np.float32)
 
 
 # ---------------------------------------------------------------------------
@@ -225,10 +269,10 @@ def main() -> int:
     df_val = df[(df["date"] > train_end) & (df["date"] <= val_end)].copy()
     df_test = df[df["date"] > val_end].copy()
 
-    X_train = df_train[feature_cols].fillna(0.0).values
-    X_val = df_val[feature_cols].fillna(0.0).values
-    X_test = df_test[feature_cols].fillna(0.0).values
-    X_all = df[feature_cols].fillna(0.0).values
+    X_train = _clean_feature_frame(df_train, feature_cols)
+    X_val = _clean_feature_frame(df_val, feature_cols)
+    X_test = _clean_feature_frame(df_test, feature_cols)
+    X_all = _clean_feature_frame(df, feature_cols)
 
     print(f"[Part 2B] Train: {len(df_train)} | Val: {len(df_val)} | Test: {len(df_test)}")
 
