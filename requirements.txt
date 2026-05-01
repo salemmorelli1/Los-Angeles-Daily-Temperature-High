@@ -1,0 +1,35 @@
+# LA Temperature Forecast — Python Dependencies
+# ================================================
+# Install with: pip install -r requirements.txt
+#
+# Core data / numerics
+numpy>=1.24
+pandas>=2.0
+scipy>=1.10
+
+# HTTP / API
+requests>=2.28
+
+# Machine learning
+scikit-learn>=1.3
+xgboost>=1.7
+
+# Hidden Markov Model (regime engine)
+hmmlearn>=0.3
+
+# Deep learning (LSTM / Transformer / BNN)
+# CPU-only install (faster to download):
+# pip install torch --index-url https://download.pytorch.org/whl/cpu
+torch>=2.0
+
+# Data storage
+pyarrow>=12.0
+fastparquet>=2023.0
+
+# Plotting (optional, for notebooks)
+matplotlib>=3.7
+plotly>=5.15
+
+# Notebook support (optional)
+# jupyter
+# ipykernel
