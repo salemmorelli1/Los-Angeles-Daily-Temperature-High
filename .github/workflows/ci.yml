@@ -59,3 +59,5 @@ jobs:
         run: |
           python run_daily_forecast.py --help
           python part2_deep_learning_forecaster.py --help
+
+          
