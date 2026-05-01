@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0.0",
-  "built_at": "2026-05-01T12:00:24.846247",
+  "built_at": "2026-05-01T14:41:08.436386",
   "n_rows": 3042,
   "feature_cols": [
     "temp_high_f",
