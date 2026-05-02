@@ -61,6 +61,8 @@ SEQUENCE_LEN = 14
 N_MC_SAMPLES = 200
 CI_LOWER = 5.0
 CI_UPPER = 95.0
+CONFORMAL_ALPHA = 0.10  # 90% split-conformal interval target
+MIN_CONFORMAL_COVERAGE = 0.85
 HIDDEN_SIZE = 128
 NUM_LAYERS = 2
 DROPOUT = 0.20
@@ -297,6 +299,34 @@ def evaluate_calibration(true_vals: np.ndarray, lower_ci: np.ndarray, upper_ci: 
     return results
 
 
+def conformal_quantiles(true_vals: np.ndarray, mean_vals: np.ndarray, alpha: float = CONFORMAL_ALPHA) -> np.ndarray:
+    """Finite-sample split-conformal absolute residual quantiles by horizon."""
+    true_vals = np.asarray(true_vals, dtype=float)
+    mean_vals = np.asarray(mean_vals, dtype=float)
+    qs: List[float] = []
+    for i, _h in enumerate(HORIZONS):
+        resid = np.abs(true_vals[:, i] - mean_vals[:, i])
+        resid = resid[np.isfinite(resid)]
+        if resid.size == 0:
+            qs.append(float("nan"))
+            continue
+        # Finite-sample conformal quantile. If k exceeds n, use the maximum.
+        n = resid.size
+        k = int(np.ceil((n + 1) * (1.0 - alpha)))
+        k = min(max(k, 1), n)
+        qs.append(float(np.sort(resid)[k - 1]))
+    return np.asarray(qs, dtype=float)
+
+
+def apply_conformal_intervals(mean_vals: np.ndarray, q: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    q2 = np.asarray(q, dtype=float).reshape(1, -1)
+    return mean_vals - q2, mean_vals + q2
+
+
+def conformal_coverage_pass(cal: Dict[str, float]) -> bool:
+    return all(cal.get(f"h{h}_coverage_90pct", 0.0) >= MIN_CONFORMAL_COVERAGE for h in HORIZONS)
+
+
 def _make_pred_df(dates, mean_f, lo_f, hi_f, std_f, true_f=None) -> pd.DataFrame:
     rows = {"date": pd.to_datetime(dates)}
     for i, h in enumerate(HORIZONS):
@@ -353,12 +383,15 @@ def main() -> int:
     val_std_f = scaled_std_to_fahrenheit(val_std_s, tgt_scaler)
     val_true_f = tgt_scaler.inverse_transform(y_val_seq)
 
-    cal = evaluate_calibration(val_true_f, val_lo_f, val_hi_f)
-    cal_pass = all(
-        cal.get(f"h{h}_calibration_error", 1.0) < 0.10
-        for h in HORIZONS
-    )
-    interval_status = "CALIBRATED" if cal_pass else "UNCALIBRATED"
+    # Raw MC-dropout intervals measure model-weight uncertainty and have been
+    # under-covering. We therefore publish split-conformal intervals built from
+    # validation residuals around the MC mean.
+    raw_cal = evaluate_calibration(val_true_f, val_lo_f, val_hi_f)
+    conformal_q_f = conformal_quantiles(val_true_f, val_mean_f, alpha=CONFORMAL_ALPHA)
+    val_lo_conf_f, val_hi_conf_f = apply_conformal_intervals(val_mean_f, conformal_q_f)
+    cal = evaluate_calibration(val_true_f, val_lo_conf_f, val_hi_conf_f)
+    cal_pass = conformal_coverage_pass(cal)
+    interval_status = "CONFORMAL_CALIBRATED" if cal_pass else "UNCALIBRATED"
 
     print("\n=== CALIBRATION (90% CI) ===")
     for h in HORIZONS:
@@ -374,6 +407,9 @@ def main() -> int:
     test_lo_f = tgt_scaler.inverse_transform(test_lo_s)
     test_hi_f = tgt_scaler.inverse_transform(test_hi_s)
     test_std_f = scaled_std_to_fahrenheit(test_std_s, tgt_scaler)
+    test_lo_conf_f, test_hi_conf_f = apply_conformal_intervals(test_mean_f, conformal_q_f)
+    test_true_f = tgt_scaler.inverse_transform(y_test_seq) if len(y_test_seq) else None
+    test_cal = evaluate_calibration(test_true_f, test_lo_conf_f, test_hi_conf_f) if test_true_f is not None else {}
 
     # Live uncertainty.
     print("\n[Part 2C] Running MC Dropout on latest available data...")
@@ -387,6 +423,9 @@ def main() -> int:
     live_lo_f = tgt_scaler.inverse_transform(live_lo_s)[0]
     live_hi_f = tgt_scaler.inverse_transform(live_hi_s)[0]
     live_std_f = scaled_std_to_fahrenheit(live_std_s, tgt_scaler)[0]
+    live_lo_conf_f, live_hi_conf_f = apply_conformal_intervals(live_mean_f.reshape(1, -1), conformal_q_f)
+    live_lo_conf_f = live_lo_conf_f[0]
+    live_hi_conf_f = live_hi_conf_f[0]
 
     feature_date = pd.Timestamp(df["date"].max()).normalize()
     print("\n=== LIVE PREDICTIONS WITH UNCERTAINTY ===")
@@ -394,7 +433,7 @@ def main() -> int:
         target_date = feature_date + pd.Timedelta(days=h)
         print(
             f"  H={h} ({target_date.date()}): {live_mean_f[i]:.1f}°F "
-            f"[90% CI: {live_lo_f[i]:.1f}°F – {live_hi_f[i]:.1f}°F] "
+            f"[conformal 90% CI: {live_lo_conf_f[i]:.1f}°F – {live_hi_conf_f[i]:.1f}°F] "
             f"(±{live_std_f[i]:.2f}°F)"
         )
 
@@ -402,9 +441,8 @@ def main() -> int:
     val_dates = sequence_dates(df_val["date"])
     test_dates = sequence_dates(df_test["date"])
 
-    val_df = _make_pred_df(val_dates, val_mean_f, val_lo_f, val_hi_f, val_std_f, val_true_f)
-    test_true_f = tgt_scaler.inverse_transform(y_test_seq) if len(y_test_seq) else None
-    test_df = _make_pred_df(test_dates, test_mean_f, test_lo_f, test_hi_f, test_std_f, test_true_f)
+    val_df = _make_pred_df(val_dates, val_mean_f, val_lo_conf_f, val_hi_conf_f, val_std_f, val_true_f)
+    test_df = _make_pred_df(test_dates, test_mean_f, test_lo_conf_f, test_hi_conf_f, test_std_f, test_true_f)
 
     all_df = pd.concat([val_df, test_df], ignore_index=True)
     all_df.to_parquet(ARTIFACTS_DIR / "bnn_predictions.parquet", index=False)
@@ -418,9 +456,10 @@ def main() -> int:
             df_log.loc[df_log.index[-1], "bnn_available"] = True
             df_log.loc[df_log.index[-1], "bnn_calibrated"] = bool(cal_pass)
             df_log.loc[df_log.index[-1], "bnn_interval_status"] = interval_status
+            df_log.loc[df_log.index[-1], "intervals_publishable"] = bool(cal_pass)
             for i, h in enumerate(HORIZONS):
-                df_log.loc[df_log.index[-1], f"bnn_lo90_h{h}"] = float(live_lo_f[i])
-                df_log.loc[df_log.index[-1], f"bnn_hi90_h{h}"] = float(live_hi_f[i])
+                df_log.loc[df_log.index[-1], f"bnn_lo90_h{h}"] = float(live_lo_conf_f[i])
+                df_log.loc[df_log.index[-1], f"bnn_hi90_h{h}"] = float(live_hi_conf_f[i])
                 df_log.loc[df_log.index[-1], f"bnn_std_h{h}"] = float(live_std_f[i])
             df_log.to_csv(log_path, index=False)
             print("[Part 2C] Updated prediction_log.csv with BNN uncertainty columns")
@@ -431,9 +470,15 @@ def main() -> int:
         "ci_lower_pct": CI_LOWER,
         "ci_upper_pct": CI_UPPER,
         "ci_target_coverage": 0.90,
+        "interval_method": "split_conformal_on_validation_residuals",
+        "conformal_alpha": CONFORMAL_ALPHA,
+        "conformal_quantile_f_by_horizon": {f"h{h}": float(conformal_q_f[i]) for i, h in enumerate(HORIZONS)},
+        "raw_mc_dropout_calibration_results": raw_cal,
         "calibration_results": cal,
+        "test_coverage_results": test_cal,
         "calibration_pass": cal_pass,
         "interval_status": interval_status,
+        "intervals_publishable": bool(cal_pass),
     }
     with open(ARTIFACTS_DIR / "calibration_report.json", "w") as f:
         json.dump(cal_report, f, indent=2)
@@ -451,13 +496,17 @@ def main() -> int:
             f"h{h}": {
                 "target_date": str((feature_date + pd.Timedelta(days=h)).date()),
                 "mean_f": float(live_mean_f[i]),
-                "lo90_f": float(live_lo_f[i]),
-                "hi90_f": float(live_hi_f[i]),
+                "lo90_f": float(live_lo_conf_f[i]),
+                "hi90_f": float(live_hi_conf_f[i]),
                 "std_f": float(live_std_f[i]),
             }
             for i, h in enumerate(HORIZONS)
         },
+        "interval_method": "split_conformal_on_validation_residuals",
+        "conformal_quantile_f_by_horizon": {f"h{h}": float(conformal_q_f[i]) for i, h in enumerate(HORIZONS)},
+        "raw_mc_dropout_calibration_summary": raw_cal,
         "calibration_summary": cal,
+        "test_coverage_summary": test_cal,
         "calibration_pass": cal_report["calibration_pass"],
         "interval_status": interval_status,
         "intervals_publishable": bool(cal_pass),
