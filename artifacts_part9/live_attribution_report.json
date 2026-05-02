@@ -1,6 +1,6 @@
 {
   "schema_version": "1.2.0",
-  "generated_at": "2026-05-02T17:23:00.353848",
+  "generated_at": "2026-05-02T17:24:09.638153",
   "target_clock": "target_date_h = feature_date + h calendar days",
   "n_prediction_rows": 1,
   "skill_min_samples": 30,
