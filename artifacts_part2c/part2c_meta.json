@@ -1,0 +1,79 @@
+{
+  "schema_version": "1.1.0",
+  "run_at": "2026-05-02T15:44:32.532843",
+  "part2_model_type": "lstm",
+  "feature_date": "2026-05-01T00:00:00",
+  "target_clock": "target_date_h = feature_date + h calendar days",
+  "n_mc_samples": 200,
+  "sequence_len": 14,
+  "dropout_rate": 0.2,
+  "live_predictions": {
+    "h1": {
+      "target_date": "2026-05-02",
+      "mean_f": 65.8626708984375,
+      "lo90_f": 58.86204528808594,
+      "hi90_f": 72.86329650878906,
+      "std_f": 1.029999852180481
+    },
+    "h3": {
+      "target_date": "2026-05-04",
+      "mean_f": 65.14012145996094,
+      "lo90_f": 57.62736892700195,
+      "hi90_f": 72.65287399291992,
+      "std_f": 1.505527377128601
+    },
+    "h5": {
+      "target_date": "2026-05-06",
+      "mean_f": 64.9211196899414,
+      "lo90_f": 57.297706604003906,
+      "hi90_f": 72.5445327758789,
+      "std_f": 1.3505032062530518
+    }
+  },
+  "interval_method": "split_conformal_on_validation_residuals",
+  "conformal_quantile_f_by_horizon": {
+    "h1": 7.0006256103515625,
+    "h3": 7.512752532958984,
+    "h5": 7.6234130859375
+  },
+  "min_validation_coverage": 0.85,
+  "min_test_coverage": 0.8,
+  "raw_mc_dropout_calibration_summary": {
+    "h1_coverage_90pct": 0.4853273137697517,
+    "h1_mean_ci_width_f": 4.546345233917236,
+    "h1_calibration_error": 0.41467268623024833,
+    "h3_coverage_90pct": 0.6478555304740407,
+    "h3_mean_ci_width_f": 7.213031768798828,
+    "h3_calibration_error": 0.25214446952595937,
+    "h5_coverage_90pct": 0.54627539503386,
+    "h5_mean_ci_width_f": 6.2562971115112305,
+    "h5_calibration_error": 0.35372460496614
+  },
+  "calibration_summary": {
+    "h1_coverage_90pct": 0.9029345372460497,
+    "h1_mean_ci_width_f": 14.001251220703125,
+    "h1_calibration_error": 0.00293453724604964,
+    "h3_coverage_90pct": 0.9029345372460497,
+    "h3_mean_ci_width_f": 15.025505065917969,
+    "h3_calibration_error": 0.00293453724604964,
+    "h5_coverage_90pct": 0.9029345372460497,
+    "h5_mean_ci_width_f": 15.246826171875,
+    "h5_calibration_error": 0.00293453724604964
+  },
+  "test_coverage_summary": {
+    "h1_coverage_90pct": 0.8871331828442438,
+    "h1_mean_ci_width_f": 14.001251220703125,
+    "h1_calibration_error": 0.012866817155756216,
+    "h3_coverage_90pct": 0.8261851015801355,
+    "h3_mean_ci_width_f": 15.025505065917969,
+    "h3_calibration_error": 0.07381489841986455,
+    "h5_coverage_90pct": 0.7968397291196389,
+    "h5_mean_ci_width_f": 15.246826171875,
+    "h5_calibration_error": 0.10316027088036117
+  },
+  "validation_calibration_pass": true,
+  "test_calibration_pass": false,
+  "calibration_pass": false,
+  "interval_status": "UNCALIBRATED",
+  "intervals_publishable": false
+}
