@@ -58,10 +58,13 @@ PART1_DIR = PROJECT_DIR / "artifacts_part1"
 ARTIFACTS_DIR = PROJECT_DIR / "artifacts_part2a"
 ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
 
-SCHEMA_VERSION = "1.0.0"
+SCHEMA_VERSION = "1.1.0"
 
-# NOAA ENSO Niño 3.4 monthly anomaly (publicly available)
-ENSO_URL = "https://psl.noaa.gov/data/correlation/nina34.data"
+# NOAA ENSO Niño 3.4 monthly anomaly.
+# The old source, nina34.data, is absolute SST and must not be thresholded as an anomaly.
+# This URL is the anomaly series. The parser below still detects absolute-SST-shaped
+# values and converts them to monthly anomalies as a defensive guard.
+ENSO_URL = "https://psl.noaa.gov/data/correlation/nina34.anom.data"
 
 # Heat wave threshold
 HEAT_WAVE_THRESHOLD_F = 95.0
@@ -78,6 +81,32 @@ def load_historical() -> pd.DataFrame:
     df = pd.read_parquet(path)
     df["date"] = pd.to_datetime(df["date"]).dt.normalize()
     return df.sort_values("date").reset_index(drop=True)
+
+
+# ---------------------------------------------------------------------------
+# Shared alpha helpers
+# ---------------------------------------------------------------------------
+def streak_when_true(flag: pd.Series, *, shift: bool = True) -> pd.Series:
+    """Count consecutive True/1 days and reset to 0 on False/0 days.
+
+    This is intentionally different from a raw run-length ``cumcount``. The
+    old implementation counted both event-runs and non-event-runs, which made
+    rare-event features such as heat-wave streaks grow into very large
+    "days since last event" counters.
+
+    Parameters
+    ----------
+    flag:
+        Boolean or 0/1 event indicator aligned to observation dates.
+    shift:
+        If True, return yesterday's completed streak so the feature is known
+        at decision time for the current feature_date.
+    """
+    clean = pd.Series(flag, index=flag.index).fillna(0).astype(int)
+    groups = (clean != clean.shift()).cumsum()
+    streak = clean.groupby(groups).cumcount() + 1
+    streak = streak.where(clean.eq(1), 0).astype(float)
+    return streak.shift(1) if shift else streak
 
 
 # ---------------------------------------------------------------------------
@@ -104,11 +133,10 @@ def compute_pressure_alphas(df: pd.DataFrame) -> pd.DataFrame:
     p_roll30 = p.shift(1).rolling(30, min_periods=10).mean()
     alpha["alpha_pressure_anom_30d"] = p.shift(1) - p_roll30
 
-    # High-pressure persistence (days above 1015 hPa)
+    # High-pressure persistence: count only consecutive above-threshold days.
+    # ``shift=False`` here because this function shifts all alpha columns below.
     above_high = (p > 1015).astype(int)
-    alpha["alpha_high_pressure_days"] = (
-        above_high.groupby((above_high != above_high.shift()).cumsum()).cumcount()
-    )
+    alpha["alpha_high_pressure_days"] = streak_when_true(above_high, shift=False)
 
     # Shift all alpha columns by 1 day (known at decision time)
     for col in [c for c in alpha.columns if c != "date"]:
@@ -134,11 +162,9 @@ def compute_marine_layer_alphas(df: pd.DataFrame) -> pd.DataFrame:
         alpha["alpha_dew_depression_f"] = dew_depression.shift(1)
         alpha["alpha_marine_layer_flag"] = (dew_depression < MARINE_LAYER_THRESHOLD_F).astype(int).shift(1)
 
-        # Consecutive marine layer days
+        # Consecutive marine-layer days. Count only true-runs, reset on false-runs.
         ml_flag = (dew_depression < MARINE_LAYER_THRESHOLD_F).astype(int)
-        alpha["alpha_marine_streak"] = (
-            ml_flag.groupby((ml_flag != ml_flag.shift()).cumsum()).cumcount().shift(1)
-        )
+        alpha["alpha_marine_streak"] = streak_when_true(ml_flag)
 
     if cloud is not None:
         # Stratus cloud anomaly vs seasonal norm
@@ -215,11 +241,9 @@ def compute_temp_momentum_alphas(df: pd.DataFrame) -> pd.DataFrame:
     t_roll_std = t.shift(1).rolling(30, min_periods=10).std().clip(lower=0.5)
     alpha["alpha_temp_zscore_30d"] = ((t.shift(1) - t_roll_mean) / t_roll_std)
 
-    # Heat wave streak (consecutive days ≥ 95°F)
+    # Heat wave streak: count only consecutive heat-wave days, reset otherwise.
     hot_flag = (t >= HEAT_WAVE_THRESHOLD_F).astype(int)
-    alpha["alpha_heat_wave_streak"] = (
-        hot_flag.groupby((hot_flag != hot_flag.shift()).cumsum()).cumcount().shift(1)
-    )
+    alpha["alpha_heat_wave_streak"] = streak_when_true(hot_flag)
 
     # Distance from seasonal peak (hottest typical day: ~Aug 15, DOY≈227)
     doy = pd.to_datetime(df["date"]).dt.dayofyear
@@ -232,9 +256,16 @@ def compute_temp_momentum_alphas(df: pd.DataFrame) -> pd.DataFrame:
 # Alpha 5: ENSO index (Niño 3.4 anomaly)
 # ---------------------------------------------------------------------------
 def fetch_enso_index() -> Optional[pd.DataFrame]:
-    """Attempt to fetch NOAA Niño 3.4 monthly anomaly index."""
+    """Attempt to fetch NOAA Niño 3.4 monthly anomaly index.
+
+    Defensive behavior:
+      - ``nina34.anom.data`` should already contain anomaly values.
+      - If a source returns absolute SST-shaped values, usually 25--29°C,
+        convert them to anomalies by subtracting each calendar month's
+        climatological mean before thresholding.
+    """
     try:
-        print("[Part 2A] Fetching NOAA ENSO Niño 3.4 index...")
+        print("[Part 2A] Fetching NOAA ENSO Niño 3.4 anomaly index...")
         resp = requests.get(ENSO_URL, timeout=15)
         resp.raise_for_status()
         lines = [l.strip() for l in resp.text.split("\n") if l.strip()]
@@ -251,15 +282,31 @@ def fetch_enso_index() -> Optional[pd.DataFrame]:
                                 records.append({
                                     "year": year,
                                     "month": month,
-                                    "nino34_anom": val,
+                                    "nino34_value": val,
                                 })
                 except (ValueError, IndexError):
                     continue
         if not records:
             return None
+
         df = pd.DataFrame(records)
         df["date"] = pd.to_datetime({"year": df["year"], "month": df["month"], "day": 1})
-        print(f"  → {len(df)} ENSO monthly records loaded")
+
+        max_abs = float(df["nino34_value"].abs().max())
+        if max_abs > 10.0:
+            # Absolute SST source accidentally supplied. Convert to anomaly.
+            clim = df.groupby("month")["nino34_value"].transform("mean")
+            df["nino34_anom"] = df["nino34_value"] - clim
+            source_type = "absolute_sst_converted_to_monthly_anomaly"
+        else:
+            df["nino34_anom"] = df["nino34_value"]
+            source_type = "anomaly"
+
+        df.attrs["enso_source_type"] = source_type
+        print(
+            f"  → {len(df)} ENSO monthly records loaded "
+            f"({source_type}; anomaly range {df['nino34_anom'].min():.2f} to {df['nino34_anom'].max():.2f})"
+        )
         return df[["date", "nino34_anom"]]
     except Exception as exc:
         print(f"  [WARN] ENSO fetch failed: {exc}. Will compute proxy instead.")
@@ -383,6 +430,8 @@ def main() -> int:
         "n_alpha_features": len(alpha_cols),
         "alpha_feature_cols": alpha_cols,
         "enso_available": enso_df is not None,
+        "enso_source_url": ENSO_URL if enso_df is not None else None,
+        "enso_note": "alpha_nino34_anom is an anomaly series; absolute SST inputs are converted defensively",
         "feature_descriptions": {
             "alpha_pressure_tend_Xd": "Pressure tendency over X days (hPa/day)",
             "alpha_pressure_accel": "Pressure rate-of-change acceleration",

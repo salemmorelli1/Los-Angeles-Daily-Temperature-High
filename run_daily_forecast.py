@@ -197,11 +197,8 @@ def main() -> int:
                 print(f"[Runner] ⚠️  {label} failed (non-blocking) — continuing.")
             continue
 
-        # Part 3 returns 1 if HOLD — pipeline halts
-        if label == "PART3" and rc == 1:
-            print("\n[Runner] ⛔ Governance returned HOLD — pipeline halted.")
-            print("[Runner] Check artifacts_part3/governance_report.json for details.")
-            return 1
+        # Part 3 always returns 0 when it completes. HOLD/CAUTION/NORMAL are
+        # forecast governance states stored in artifacts, not runner failures.
 
         # Other required parts: fail fast
         if rc != 0:
@@ -222,11 +219,13 @@ def main() -> int:
                 latest = df.iloc[-1]
                 print(f"\n=== TODAY'S FORECAST ===")
                 print(f"  Decision date: {latest.get('decision_date', '?')}")
+                source = latest.get("forecast_source", latest.get("model", "UNKNOWN"))
                 for h in [1, 3, 5]:
-                    val = latest.get(f"target_h{h}")
+                    val = latest.get(f"forecast_h{h}", latest.get(f"target_h{h}"))
                     if val and str(val) != "nan":
                         print(f"  H={h}: {float(val):.1f}°F")
                 mode = latest.get("publish_mode", "UNKNOWN")
+                print(f"  Forecast source: {source}")
                 print(f"  Governance mode: {mode}")
     except Exception:
         pass

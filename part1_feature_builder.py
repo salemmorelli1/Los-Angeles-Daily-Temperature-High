@@ -133,7 +133,7 @@ def add_calendar_features(df: pd.DataFrame) -> pd.DataFrame:
 
     # Season (meteorological)
     df["season"] = ((month % 12) // 3).astype(int)  # 0=DJF, 1=MAM, 2=JJA, 3=SON
-    season_dummies = pd.get_dummies(df["season"], prefix="season")
+    season_dummies = pd.get_dummies(df["season"], prefix="season").astype(float)
     df = pd.concat([df, season_dummies], axis=1)
 
     return df
@@ -209,22 +209,29 @@ def add_derived_features(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def add_regime_features(df: pd.DataFrame, regime_df: Optional[pd.DataFrame]) -> pd.DataFrame:
-    """Merge regime labels and posterior probabilities from Part 6."""
+    """Merge lagged numeric regime features from Part 6.
+
+    The raw regime label is intentionally not carried into the model matrix as a
+    string/object column. Downstream scalers and tree models should only see
+    numeric one-hot columns and posterior probabilities.
+    """
     if regime_df is None:
         return df
 
     regime_sub = regime_df[["date", "regime"]].copy()
 
-    # One-hot encode regimes
-    regime_dummies = pd.get_dummies(regime_sub["regime"], prefix="regime")
-    regime_sub = pd.concat([regime_sub, regime_dummies], axis=1)
+    # One-hot encode regimes as float so parquet reloads are stable across
+    # pandas/pyarrow versions.
+    regime_dummies = pd.get_dummies(regime_sub["regime"], prefix="regime").astype(float)
+    regime_sub = pd.concat([regime_sub[["date"]], regime_dummies], axis=1)
 
-    # Add posterior probabilities if available
+    # Add posterior probabilities if available, coerced to numeric.
     prob_cols = [c for c in regime_df.columns if c.startswith("prob_")]
     if prob_cols:
-        regime_sub = regime_sub.join(regime_df[prob_cols])
+        probs = regime_df[prob_cols].apply(pd.to_numeric, errors="coerce").astype(float)
+        regime_sub = regime_sub.join(probs)
 
-    # Shift regime by 1 day (we know yesterday's regime at prediction time)
+    # Shift regime by 1 day (we know yesterday's regime at prediction time).
     regime_sub_lag = regime_sub.copy()
     regime_sub_lag["date"] = regime_sub_lag["date"] + pd.Timedelta(days=1)
     rename_map = {c: f"{c}_lag1" for c in regime_sub_lag.columns if c != "date"}

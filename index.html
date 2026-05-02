@@ -181,7 +181,7 @@
 
   <script>
     const DEFAULT_OWNER = "salemmorelli1";
-    const DEFAULT_REPO = "Price-Call";
+    const DEFAULT_REPO = "Los-Angeles-Daily-Temperature-High";
     const DEFAULT_BRANCH = "main";
 
     function detectGitHubConfig() {
@@ -314,15 +314,20 @@
     }
 
     function predictionFor(row, h) {
+      // The canonical forecast is forecast_h*. Everything else is diagnostic fallback.
+      const fc = toNumber(row?.[`forecast_h${h}`]); if (Number.isFinite(fc)) return fc;
       const blend = toNumber(row?.[`blend_h${h}`]); if (Number.isFinite(blend)) return blend;
       const xgb = toNumber(row?.[`xgb_h${h}`]); if (Number.isFinite(xgb)) return xgb;
       return toNumber(row?.[`target_h${h}`]);
     }
     function modelSource(row, h) {
-      if (Number.isFinite(toNumber(row?.[`blend_h${h}`]))) return "Blend";
-      if (Number.isFinite(toNumber(row?.[`xgb_h${h}`]))) return "XGB";
-      return row?.model || "Model";
+      if (!isMissing(row?.forecast_source)) return row.forecast_source;
+      if (Number.isFinite(toNumber(row?.[`blend_h${h}`]))) return "blend";
+      if (Number.isFinite(toNumber(row?.[`xgb_h${h}`]))) return "xgb";
+      return row?.model || "model";
     }
+    function isTrue(v) { return [true, "true", "TRUE", "1", 1, "yes", "YES"].includes(v); }
+    function bnnCalibrated(row) { return isTrue(row?.bnn_calibrated); }
     function realizedFor(row, h) { return toNumber(row?.[`realized_h${h}`]); }
     function targetDateFor(row, h) { return fmtDate(row?.[`target_date_h${h}`]); }
 
@@ -352,13 +357,14 @@
       const publish = gov?.publish_mode || latest?.publish_mode || "UNKNOWN";
       const rows = predLog?.length || 0;
       const checksPassed = gov?.checks_total ? gov.checks_passed === gov.checks_total : null;
-      const bnnPass = part2c?.calibration_pass ?? null;
+      const bnnPass = latest?.bnn_calibrated ?? part2c?.calibration_pass ?? null;
       const xgbGate = part2b?.gate_validation_passed ?? null;
       setHtml("statusRow", [
         pill("Publish", publish),
         pill("Governance", checksPassed === null ? "UNKNOWN" : checksPassed),
         pill("XGB Gate", xgbGate === null ? "OPTIONAL" : xgbGate),
         pill("BNN Calibration", bnnPass === null ? "OPTIONAL" : bnnPass),
+        pill("Forecast Source", latest?.forecast_source || gov?.forecast_source || "—", "info"),
         pill("HMM", regime?.hmm_converged ?? "UNKNOWN"),
         pill("Rows", rows, "info")
       ].join(""));
@@ -385,15 +391,24 @@
       Plotly.newPlot("errorChart", errTraces, chartLayout("Realized − Forecast", "Decision date", "Error (°F)", { shapes:[{ type:"line", xref:"paper", x0:0, x1:1, y0:0, y1:0, line:{ color:"rgba(203,213,225,.45)", dash:"dot" }}]}), PLOTLY_CONFIG);
 
       const ciTraces = HORIZONS.map(h => ({ x, y: rows.map(r => {
-        const lo = toNumber(r[`bnn_lo90_h${h}`]), hi = toNumber(r[`bnn_hi90_h${h}`]); return Number.isFinite(lo) && Number.isFinite(hi) ? hi-lo : null;
+        if (!bnnCalibrated(r)) return null;
+        const lo = toNumber(r[`bnn_lo90_h${h}`]), hi = toNumber(r[`bnn_hi90_h${h}`]);
+        return Number.isFinite(lo) && Number.isFinite(hi) ? hi-lo : null;
       }), mode:"lines+markers", name:`CI width H=${h}` }));
-      Plotly.newPlot("ciChart", ciTraces, chartLayout("BNN uncertainty width", "Decision date", "Width (°F)"), PLOTLY_CONFIG);
+      Plotly.newPlot("ciChart", ciTraces, chartLayout("BNN uncertainty width (hidden unless calibrated)", "Decision date", "Width (°F)"), PLOTLY_CONFIG);
 
       const latest = latestRow(predLog, "decision_date");
       setText("snapDate", fmtDate(latest?.decision_date));
       setText("snapWritten", `Written at: ${fmtDateTime(latest?.written_at)}`);
-      setHtml("snapBadges", [pill("Model", latest?.model || "—", "info"), pill("Publish", latest?.publish_mode || "UNKNOWN"), pill("Feature", fmtDate(latest?.feature_date), "info")].join(""));
+      setHtml("snapBadges", [
+        pill("Model", latest?.model || "—", "info"),
+        pill("Publish", latest?.publish_mode || "UNKNOWN"),
+        pill("Forecast Source", latest?.forecast_source || "—", "info"),
+        pill("Feature", fmtDate(latest?.feature_date), "info")
+      ].join(""));
       renderKvGrid("forecastKv", [
+        ["Forecast source", latest?.forecast_source || "—"],
+        ["Forecast reason", latest?.forecast_reason || "—"],
         ["H=1 forecast / target", `${fmtTemp(predictionFor(latest,1))} / ${targetDateFor(latest,1)}`],
         ["H=3 forecast / target", `${fmtTemp(predictionFor(latest,3))} / ${targetDateFor(latest,3)}`],
         ["H=5 forecast / target", `${fmtTemp(predictionFor(latest,5))} / ${targetDateFor(latest,5)}`],
@@ -449,7 +464,9 @@
         ["Max data staleness", `${gov?.thresholds?.max_data_staleness_days ?? "—"} days`],
         ["Max model age", `${gov?.thresholds?.max_model_age_days ?? "—"} days`],
         ["Temp bounds", `${fmtTemp(gov?.thresholds?.la_temp_min_f)} to ${fmtTemp(gov?.thresholds?.la_temp_max_f)}`],
-        ["Max CI width", fmtTemp(gov?.thresholds?.max_ci_width_f)]
+        ["Max persistence deviation", fmtTemp(gov?.thresholds?.max_persistence_deviation_f)],
+        ["Max NWS deviation", fmtTemp(gov?.thresholds?.max_nws_deviation_f)],
+        ["Min BNN coverage", fmtPct(gov?.thresholds?.min_bnn_coverage)]
       ]);
     }
 
@@ -459,7 +476,7 @@
         ["Feature date", fmtDate(part2?.feature_date)],
         ["Decision date", fmtDate(part2?.decision_date)],
         ["Validation MAE", fmtTemp(part2?.val_mae_f)],
-        ["Best val MAE scaled", fmtNum(part2?.best_val_mae_scaled, 5)],
+        ["Best val MAE scaled", fmtNum(part2?.best_val_mae_scaled_01 ?? part2?.best_val_mae_scaled, 5)],
         ["Sequence length", part2?.sequence_len ?? part2?.hyperparameters?.sequence_len ?? "—"],
         ["Features", part2?.n_features ?? (part2?.feature_cols || []).length],
         ["Horizons", JSON.stringify(part2?.horizons || HORIZONS)]
@@ -469,9 +486,13 @@
         ["Gate validation", part2b?.gate_validation_passed ?? "—"],
         ["BNN recommended", part2b?.bnn_sleeve_recommended ?? "—"],
         ["Persistence baseline", JSON.stringify(part2b?.persistence_baseline_mae || {})],
-        ["H1 XGB live", fmtTemp(part2b?.live_predictions?.h1)],
-        ["H3 XGB live", fmtTemp(part2b?.live_predictions?.h3)],
-        ["H5 XGB live", fmtTemp(part2b?.live_predictions?.h5)]
+        ["Forecast source", part2b?.forecast_source || "—"],
+        ["H1 canonical", fmtTemp(part2b?.canonical_forecast?.h1)],
+        ["H3 canonical", fmtTemp(part2b?.canonical_forecast?.h3)],
+        ["H5 canonical", fmtTemp(part2b?.canonical_forecast?.h5)],
+        ["H1 XGB live", fmtTemp(part2b?.xgb_live_predictions?.h1 ?? part2b?.live_predictions?.h1)],
+        ["H3 XGB live", fmtTemp(part2b?.xgb_live_predictions?.h3 ?? part2b?.live_predictions?.h3)],
+        ["H5 XGB live", fmtTemp(part2b?.xgb_live_predictions?.h5 ?? part2b?.live_predictions?.h5)]
       ]);
       renderKvGrid("part2cKv", [
         ["Run at", fmtDateTime(part2c?.run_at)],
@@ -506,7 +527,13 @@
 
     function renderData(predLog, part2, regime, attr) {
       const rows = lastN(predLog, 20).reverse();
-      renderTable("predTable", rows, ["decision_date", "feature_date", "target_date_h1", "target_h1", "realized_h1", "target_date_h3", "target_h3", "realized_h3", "target_date_h5", "target_h5", "realized_h5", "publish_mode", "model"]);
+      renderTable("predTable", rows, [
+        "decision_date", "feature_date", "forecast_source", "forecast_reason",
+        "target_date_h1", "forecast_h1", "target_h1", "xgb_h1", "blend_h1", "realized_h1",
+        "target_date_h3", "forecast_h3", "target_h3", "xgb_h3", "blend_h3", "realized_h3",
+        "target_date_h5", "forecast_h5", "target_h5", "xgb_h5", "blend_h5", "realized_h5",
+        "publish_mode", "bnn_calibrated", "model"
+      ]);
       renderJsonTable("part9Table", attr, 70);
       renderJsonTable("part2Table", part2, 70);
       renderJsonTable("part6Table", regime, 70);
