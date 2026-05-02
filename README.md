@@ -15,7 +15,7 @@ This version applies the pipeline-contract fixes from the code audit:
 - Part 2 trains only on fully labeled rows, but live prediction uses the newest feature row.
 - Part 2 validation metrics labeled `_f` are computed in real Fahrenheit units, not scaled units.
 - Part 2 supports `--mode train` and `--mode predict`; the daily runner now uses predict-only when retraining is not needed.
-- Part 2C skips Transformer artifacts safely and fixes MC-dropout uncertainty scaling.
+- Part 2C skips Transformer artifacts safely, fixes MC-dropout uncertainty scaling, and publishes intervals only when calibrated/conformalized.
 - Part 9 backfills realized values against explicit target-date columns instead of `decision_date + h`.
 
 **No API key required.** All data sources are free and open:
@@ -29,7 +29,7 @@ This version applies the pipeline-contract fixes from the code audit:
 ```
 Part 0  Data Infrastructure      (Open-Meteo archive + NWS API)
   ↓
-Part 6  Weather Regime Engine     (HMM: Marine Layer / Dry Clear / Santa Ana)
+Part 6  Weather Regime Engine     (HMM statistical regimes: REGIME_0 / REGIME_1 / REGIME_2)
   ↓
 Part 1  Feature Builder           (lags, rolling stats, calendar, regime)
   ↓
@@ -47,6 +47,8 @@ Part 9  Live Attribution          (MAE/RMSE/Skill vs NWS + climatology)
 ```
 
 `*` Optional, non-blocking sleeves. Part 2C activates only when Part 2B reports `bnn_sleeve_recommended: true`.
+
+Part 6 regime names are intentionally neutral in model features. Physical labels such as “marine layer” are stored only as metadata suggestions when the state statistics support them.
 
 ---
 
