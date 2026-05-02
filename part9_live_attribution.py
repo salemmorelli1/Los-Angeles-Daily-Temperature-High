@@ -116,6 +116,37 @@ def load_nws_forecast() -> Dict:
         return json.load(f)
 
 
+def forecast_source_summary(df_log: pd.DataFrame) -> Dict[str, Any]:
+    """Summarize forecast sources and disclose NWS-anchor dependence.
+
+    If any row uses ``nws_anchor``, then comparisons against NWS are not fully
+    independent for those rows. The realized-error metrics remain valid, but
+    model-vs-NWS skill claims must be caveated or computed on non-anchored rows.
+    """
+    if df_log is None or df_log.empty or "forecast_source" not in df_log.columns:
+        return {
+            "forecast_source_counts": {},
+            "nws_anchor_rows": 0,
+            "n_prediction_rows": 0,
+            "nws_independence_warning": None,
+        }
+
+    src = df_log["forecast_source"].fillna("unknown").astype(str)
+    anchor_mask = src.str.contains("nws_anchor", case=False, na=False)
+    warning = None
+    if bool(anchor_mask.any()):
+        warning = (
+            "Some canonical forecasts use NWS anchoring. Realized-error metrics are valid, "
+            "but skill comparisons against NWS are not independent for anchored rows."
+        )
+    return {
+        "forecast_source_counts": {str(k): int(v) for k, v in src.value_counts(dropna=False).items()},
+        "nws_anchor_rows": int(anchor_mask.sum()),
+        "n_prediction_rows": int(len(df_log)),
+        "nws_independence_warning": warning,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Canonical prediction column
 # ---------------------------------------------------------------------------
@@ -543,6 +574,7 @@ def main() -> int:
         },
         "metrics_by_horizon": metrics,
         "nws_baseline_metrics": nws_metrics,
+        "forecast_source_summary": source_summary,
         "summary": {
             "best_horizon": min(
                 [h for h in HORIZONS if metrics.get(f"h{h}", {}).get("n_samples", 0) > 0],
@@ -554,6 +586,7 @@ def main() -> int:
                 metrics.get(f"h{h}", {}).get("n_samples", 0) >= SKILL_MIN_SAMPLES
                 for h in HORIZONS
             ),
+            "nws_independence_warning": source_summary.get("nws_independence_warning"),
         },
     }
     with open(ARTIFACTS_DIR / "live_attribution_report.json", "w") as f:
