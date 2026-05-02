@@ -327,7 +327,7 @@
       return row?.model || "model";
     }
     function isTrue(v) { return [true, "true", "TRUE", "1", 1, "yes", "YES"].includes(v); }
-    function bnnCalibrated(row) { return isTrue(row?.bnn_calibrated); }
+    function bnnCalibrated(row) { return isTrue(row?.bnn_calibrated) || String(row?.bnn_interval_status || "").toUpperCase() === "CALIBRATED"; }
     function realizedFor(row, h) { return toNumber(row?.[`realized_h${h}`]); }
     function targetDateFor(row, h) { return fmtDate(row?.[`target_date_h${h}`]); }
 
@@ -358,12 +358,13 @@
       const rows = predLog?.length || 0;
       const checksPassed = gov?.checks_total ? gov.checks_passed === gov.checks_total : null;
       const bnnPass = latest?.bnn_calibrated ?? part2c?.calibration_pass ?? null;
+      const bnnStatus = latest?.bnn_interval_status || part2c?.interval_status || (bnnPass === false ? "UNCALIBRATED" : null);
       const xgbGate = part2b?.gate_validation_passed ?? null;
       setHtml("statusRow", [
         pill("Publish", publish),
         pill("Governance", checksPassed === null ? "UNKNOWN" : checksPassed),
         pill("XGB Gate", xgbGate === null ? "OPTIONAL" : xgbGate),
-        pill("BNN Calibration", bnnPass === null ? "OPTIONAL" : bnnPass),
+        pill("BNN Calibration", bnnStatus || (bnnPass === null ? "OPTIONAL" : bnnPass)),
         pill("Forecast Source", latest?.forecast_source || gov?.forecast_source || "—", "info"),
         pill("HMM", regime?.hmm_converged ?? "UNKNOWN"),
         pill("Rows", rows, "info")
@@ -395,7 +396,12 @@
         const lo = toNumber(r[`bnn_lo90_h${h}`]), hi = toNumber(r[`bnn_hi90_h${h}`]);
         return Number.isFinite(lo) && Number.isFinite(hi) ? hi-lo : null;
       }), mode:"lines+markers", name:`CI width H=${h}` }));
-      Plotly.newPlot("ciChart", ciTraces, chartLayout("BNN uncertainty width (hidden unless calibrated)", "Decision date", "Width (°F)"), PLOTLY_CONFIG);
+      const hasCalibratedBnn = rows.some(r => bnnCalibrated(r));
+      if (hasCalibratedBnn) {
+        Plotly.newPlot("ciChart", ciTraces, chartLayout("BNN uncertainty width — calibrated intervals only", "Decision date", "Width (°F)"), PLOTLY_CONFIG);
+      } else {
+        emptyChart("ciChart", "BNN intervals hidden", "BNN intervals are UNCALIBRATED or not available, so the dashboard does not display them as 90% intervals.");
+      }
 
       const latest = latestRow(predLog, "decision_date");
       setText("snapDate", fmtDate(latest?.decision_date));
@@ -498,6 +504,8 @@
         ["Run at", fmtDateTime(part2c?.run_at)],
         ["Part 2 model type", part2c?.part2_model_type || "—"],
         ["Calibration pass", part2c?.calibration_pass ?? cal?.calibration_pass ?? "—"],
+        ["Interval status", part2c?.interval_status || cal?.interval_status || "—"],
+        ["Intervals publishable", part2c?.intervals_publishable ?? "—"],
         ["MC samples", part2c?.n_mc_samples ?? cal?.n_mc_samples ?? "—"],
         ["CI target coverage", fmtPct(cal?.ci_target_coverage)],
         ["H1 std", fmtTemp(part2c?.live_predictions?.h1?.std_f)],
