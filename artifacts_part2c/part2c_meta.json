@@ -1,0 +1,45 @@
+{
+  "schema_version": "1.1.0",
+  "run_at": "2026-05-02T11:00:17.208247",
+  "part2_model_type": "lstm",
+  "feature_date": "2026-05-01T00:00:00",
+  "target_clock": "target_date_h = feature_date + h calendar days",
+  "n_mc_samples": 200,
+  "sequence_len": 14,
+  "dropout_rate": 0.2,
+  "live_predictions": {
+    "h1": {
+      "target_date": "2026-05-02",
+      "mean_f": 67.82504272460938,
+      "lo90_f": 65.42484283447266,
+      "hi90_f": 69.81369018554688,
+      "std_f": 1.356359601020813
+    },
+    "h3": {
+      "target_date": "2026-05-04",
+      "mean_f": 65.88917541503906,
+      "lo90_f": 63.72913360595703,
+      "hi90_f": 67.6915512084961,
+      "std_f": 1.2532833814620972
+    },
+    "h5": {
+      "target_date": "2026-05-06",
+      "mean_f": 64.84138488769531,
+      "lo90_f": 62.94683074951172,
+      "hi90_f": 66.74128723144531,
+      "std_f": 1.1302164793014526
+    }
+  },
+  "calibration_summary": {
+    "h1_coverage_90pct": 0.6433408577878104,
+    "h1_mean_ci_width_f": 5.934184551239014,
+    "h1_calibration_error": 0.25665914221218966,
+    "h3_coverage_90pct": 0.54627539503386,
+    "h3_mean_ci_width_f": 5.547637939453125,
+    "h3_calibration_error": 0.35372460496614,
+    "h5_coverage_90pct": 0.4650112866817156,
+    "h5_mean_ci_width_f": 4.889019012451172,
+    "h5_calibration_error": 0.4349887133182844
+  },
+  "calibration_pass": false
+}

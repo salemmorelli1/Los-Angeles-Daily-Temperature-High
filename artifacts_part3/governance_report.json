@@ -1,0 +1,163 @@
+{
+  "schema_version": "1.1.0",
+  "run_at": "2026-05-02T11:00:18.134100",
+  "decision_date": "2026-05-02",
+  "publish_mode": "CAUTION",
+  "forecast_source": "blend",
+  "checks_passed": 8,
+  "checks_total": 9,
+  "checks": [
+    {
+      "name": "DATA_FRESHNESS",
+      "passed": true,
+      "level": "CRITICAL",
+      "message": "OK",
+      "details": {
+        "fetched_at": "2026-05-02 10:59:22.667025",
+        "age_hours": 0.0,
+        "historical_end": "2026-05-01",
+        "staleness_days": 1
+      }
+    },
+    {
+      "name": "MODEL_FRESHNESS",
+      "passed": true,
+      "level": "WARN",
+      "message": "OK",
+      "details": {
+        "trained_at": "2026-05-02 10:59:58.696999",
+        "age_days": 0
+      }
+    },
+    {
+      "name": "SCHEMA_INTEGRITY",
+      "passed": true,
+      "level": "CRITICAL",
+      "message": "OK",
+      "details": {
+        "required_cols": [
+          "decision_date",
+          "feature_date",
+          "model",
+          "target_h1",
+          "target_h3",
+          "target_h5",
+          "forecast_h1",
+          "forecast_h3",
+          "forecast_h5",
+          "forecast_source"
+        ],
+        "missing_cols": []
+      }
+    },
+    {
+      "name": "FORECAST_SOURCE_CHECK",
+      "passed": true,
+      "level": "CRITICAL",
+      "message": "OK",
+      "details": {
+        "forecast_source": "blend",
+        "forecast_values": {
+          "h1": 67.57,
+          "h3": 65.61,
+          "h5": 65.14
+        }
+      }
+    },
+    {
+      "name": "FORECAST_BOUNDS",
+      "passed": true,
+      "level": "CRITICAL",
+      "message": "OK",
+      "details": {
+        "forecast_values": {
+          "h1": 67.57,
+          "h3": 65.61,
+          "h5": 65.14
+        },
+        "bounds": {
+          "min_f": 32.0,
+          "max_f": 125.0
+        }
+      }
+    },
+    {
+      "name": "FORECAST_SPREAD",
+      "passed": true,
+      "level": "WARN",
+      "message": "OK",
+      "details": {
+        "spread_f": 2.4,
+        "max_spread_f": 35.0
+      }
+    },
+    {
+      "name": "PERSISTENCE_SANITY",
+      "passed": true,
+      "level": "CRITICAL",
+      "message": "OK",
+      "details": {
+        "last_observed_f": 69.9,
+        "deviations_f": {
+          "h1": 2.3,
+          "h3": 4.3,
+          "h5": 4.8
+        },
+        "threshold_f": 15.0,
+        "forecast_source": "blend"
+      }
+    },
+    {
+      "name": "NWS_SANITY",
+      "passed": true,
+      "level": "WARN",
+      "message": "OK",
+      "details": {
+        "comparisons": {
+          "h1": {
+            "forecast_f": 67.6,
+            "nws_f": 77.0,
+            "deviation_f": 9.4
+          },
+          "h3": {
+            "forecast_f": 65.6,
+            "nws_f": 68.0,
+            "deviation_f": 2.4
+          },
+          "h5": {
+            "forecast_f": 65.1,
+            "nws_f": 76.0,
+            "deviation_f": 10.9
+          }
+        },
+        "max_deviation_f": 20.0
+      }
+    },
+    {
+      "name": "BNN_CALIBRATION_GATE",
+      "passed": false,
+      "level": "WARN",
+      "message": "BNN calibration FAILED \u2014 intervals are UNCALIBRATED. Failures: H=1: coverage=64.3% < min 75%; H=3: coverage=54.6% < min 75%; H=5: coverage=46.5% < min 75%",
+      "details": {
+        "calibration_pass": false,
+        "coverage_by_horizon": {
+          "h1": 0.6433,
+          "h3": 0.5463,
+          "h5": 0.465
+        },
+        "min_coverage_threshold": 0.75,
+        "bnn_available": true
+      }
+    }
+  ],
+  "thresholds": {
+    "max_data_staleness_days": 2,
+    "max_model_age_days": 30,
+    "la_temp_min_f": 32.0,
+    "la_temp_max_f": 125.0,
+    "max_spread_f": 35.0,
+    "max_persistence_deviation_f": 15.0,
+    "max_nws_deviation_f": 20.0,
+    "min_bnn_coverage": 0.75
+  }
+}
