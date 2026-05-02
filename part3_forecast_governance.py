@@ -375,8 +375,14 @@ def check_bnn_calibration() -> GovernanceCheck:
         cal = json.load(f)
 
     cal_pass = cal.get("calibration_pass", None)
+    interval_status = cal.get("interval_status", "UNKNOWN")
+    intervals_publishable = bool(cal.get("intervals_publishable", False))
+    validation_pass = cal.get("validation_calibration_pass", None)
+    test_pass = cal.get("test_calibration_pass", None)
     results = cal.get("calibration_results", {})
+    test_results = cal.get("test_coverage_results", {})
     coverage_summary: Dict = {}
+    test_coverage_summary: Dict = {}
     failing: List[str] = []
 
     for h in HORIZONS:
@@ -384,19 +390,29 @@ def check_bnn_calibration() -> GovernanceCheck:
         if cov is not None:
             coverage_summary[f"h{h}"] = round(float(cov), 4)
             if float(cov) < MIN_BNN_COVERAGE:
-                failing.append(f"H={h}: coverage={cov:.1%} < min {MIN_BNN_COVERAGE:.0%}")
+                failing.append(f"H={h}: validation coverage={cov:.1%} < min {MIN_BNN_COVERAGE:.0%}")
+        tcov = test_results.get(f"h{h}_coverage_90pct")
+        if tcov is not None:
+            test_coverage_summary[f"h{h}"] = round(float(tcov), 4)
 
     chk.details = {
         "calibration_pass": cal_pass,
+        "validation_calibration_pass": validation_pass,
+        "test_calibration_pass": test_pass,
+        "interval_status": interval_status,
+        "intervals_publishable": intervals_publishable,
         "coverage_by_horizon": coverage_summary,
+        "test_coverage_by_horizon": test_coverage_summary,
         "min_coverage_threshold": MIN_BNN_COVERAGE,
+        "min_validation_coverage": cal.get("min_validation_coverage"),
+        "min_test_coverage": cal.get("min_test_coverage"),
         "bnn_available": True,
     }
 
-    if cal_pass is False or failing:
+    if cal_pass is False or not intervals_publishable or failing:
         return chk.warn(
             f"BNN calibration FAILED — intervals are UNCALIBRATED. "
-            f"Failures: {'; '.join(failing) if failing else 'calibration_pass=false'}",
+            f"Failures: {'; '.join(failing) if failing else 'calibration_pass=false or intervals_publishable=false'}",
             **chk.details
         )
     return chk
@@ -502,10 +518,8 @@ def main() -> int:
     bnn_calibrated = bool(bnn_available and bnn_chk.passed)
     if not bnn_available:
         bnn_interval_status = "NOT_RUN"
-    elif bnn_calibrated:
-        bnn_interval_status = "CALIBRATED"
     else:
-        bnn_interval_status = "UNCALIBRATED"
+        bnn_interval_status = str(bnn_chk.details.get("interval_status", "CALIBRATED" if bnn_calibrated else "UNCALIBRATED"))
 
     print("\n=== GOVERNANCE CHECKS ===")
     for chk in checks:
@@ -573,34 +587,6 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
