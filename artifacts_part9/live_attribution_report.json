@@ -1,0 +1,33 @@
+{
+  "schema_version": "1.2.0",
+  "generated_at": "2026-05-02T09:19:40.608634",
+  "target_clock": "target_date_h = feature_date + h calendar days",
+  "n_prediction_rows": 1,
+  "skill_min_samples": 30,
+  "promote_min_samples": 60,
+  "realized_samples_by_horizon": {
+    "h1": 0,
+    "h3": 0,
+    "h5": 0
+  },
+  "metrics_by_horizon": {
+    "h1": {
+      "n_samples": 0,
+      "pred_col_used": "forecast_h1"
+    },
+    "h3": {
+      "n_samples": 0,
+      "pred_col_used": "forecast_h3"
+    },
+    "h5": {
+      "n_samples": 0,
+      "pred_col_used": "forecast_h5"
+    }
+  },
+  "nws_baseline_metrics": {},
+  "summary": {
+    "best_horizon": null,
+    "overall_skill": null,
+    "skill_trustworthy": false
+  }
+}

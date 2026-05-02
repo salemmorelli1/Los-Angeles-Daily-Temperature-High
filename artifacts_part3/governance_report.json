@@ -1,0 +1,156 @@
+{
+  "schema_version": "1.1.0",
+  "run_at": "2026-05-02T09:19:40.038325",
+  "decision_date": "2026-05-02",
+  "publish_mode": "NORMAL",
+  "forecast_source": "blend",
+  "checks_passed": 9,
+  "checks_total": 9,
+  "checks": [
+    {
+      "name": "DATA_FRESHNESS",
+      "passed": true,
+      "level": "CRITICAL",
+      "message": "OK",
+      "details": {
+        "fetched_at": "2026-05-02 09:19:05.168703",
+        "age_hours": 0.0,
+        "historical_end": "2026-05-01",
+        "staleness_days": 1
+      }
+    },
+    {
+      "name": "MODEL_FRESHNESS",
+      "passed": true,
+      "level": "WARN",
+      "message": "OK",
+      "details": {
+        "trained_at": "2026-05-02 09:19:34.676871",
+        "age_days": 0
+      }
+    },
+    {
+      "name": "SCHEMA_INTEGRITY",
+      "passed": true,
+      "level": "CRITICAL",
+      "message": "OK",
+      "details": {
+        "required_cols": [
+          "decision_date",
+          "feature_date",
+          "model",
+          "target_h1",
+          "target_h3",
+          "target_h5",
+          "forecast_h1",
+          "forecast_h3",
+          "forecast_h5",
+          "forecast_source"
+        ],
+        "missing_cols": []
+      }
+    },
+    {
+      "name": "FORECAST_SOURCE_CHECK",
+      "passed": true,
+      "level": "CRITICAL",
+      "message": "OK",
+      "details": {
+        "forecast_source": "blend",
+        "forecast_values": {
+          "h1": 78.11,
+          "h3": 73.35,
+          "h5": 72.75
+        }
+      }
+    },
+    {
+      "name": "FORECAST_BOUNDS",
+      "passed": true,
+      "level": "CRITICAL",
+      "message": "OK",
+      "details": {
+        "forecast_values": {
+          "h1": 78.11,
+          "h3": 73.35,
+          "h5": 72.75
+        },
+        "bounds": {
+          "min_f": 32.0,
+          "max_f": 125.0
+        }
+      }
+    },
+    {
+      "name": "FORECAST_SPREAD",
+      "passed": true,
+      "level": "WARN",
+      "message": "OK",
+      "details": {
+        "spread_f": 5.4,
+        "max_spread_f": 35.0
+      }
+    },
+    {
+      "name": "PERSISTENCE_SANITY",
+      "passed": true,
+      "level": "CRITICAL",
+      "message": "OK",
+      "details": {
+        "last_observed_f": 69.9,
+        "deviations_f": {
+          "h1": 8.2,
+          "h3": 3.4,
+          "h5": 2.9
+        },
+        "threshold_f": 15.0,
+        "forecast_source": "blend"
+      }
+    },
+    {
+      "name": "NWS_SANITY",
+      "passed": true,
+      "level": "WARN",
+      "message": "OK",
+      "details": {
+        "comparisons": {
+          "h1": {
+            "forecast_f": 78.1,
+            "nws_f": 77.0,
+            "deviation_f": 1.1
+          },
+          "h3": {
+            "forecast_f": 73.3,
+            "nws_f": 68.0,
+            "deviation_f": 5.3
+          },
+          "h5": {
+            "forecast_f": 72.8,
+            "nws_f": 76.0,
+            "deviation_f": 3.2
+          }
+        },
+        "max_deviation_f": 20.0
+      }
+    },
+    {
+      "name": "BNN_CALIBRATION_GATE",
+      "passed": true,
+      "level": "WARN",
+      "message": "BNN sleeve not run \u2014 calibration gate skipped",
+      "details": {
+        "bnn_available": false
+      }
+    }
+  ],
+  "thresholds": {
+    "max_data_staleness_days": 2,
+    "max_model_age_days": 30,
+    "la_temp_min_f": 32.0,
+    "la_temp_max_f": 125.0,
+    "max_spread_f": 35.0,
+    "max_persistence_deviation_f": 15.0,
+    "max_nws_deviation_f": 20.0,
+    "min_bnn_coverage": 0.75
+  }
+}
