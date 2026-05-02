@@ -87,6 +87,19 @@ BNN_RECOMMENDATION_THRESHOLD_F = 0.3  # XGB must beat LSTM by this much
 FORECAST_SANITY_THRESHOLD_F = 15.0
 
 BLEND_WEIGHT_XGB = 0.40           # blend = 0.40 * XGB + 0.60 * LSTM
+
+# NWS anchoring / heat-event safety overlay.
+# These do not replace the model stack in normal conditions. They only keep the
+# published canonical forecast from materially diverging from the official NWS
+# benchmark, especially on warm/heat-event days where the learned models have
+# shown a systematic lower-tail bias.
+NWS_SOFT_DEVIATION_F = 8.0          # begin partial NWS anchoring
+NWS_STRONG_DEVIATION_F = 12.0       # stronger NWS anchoring
+NWS_HARD_DEVIATION_F = 20.0         # use NWS directly if exceeded
+NWS_SOFT_ANCHOR_WEIGHT = 0.50       # adjusted = 0.50*NWS + 0.50*model
+NWS_STRONG_ANCHOR_WEIGHT = 0.70     # adjusted = 0.70*NWS + 0.30*model
+HEAT_EVENT_THRESHOLD_F = 85.0
+HEAT_EVENT_MIN_MODEL_F = 83.0       # if NWS says heat, do not publish a very low model value
 LOG_KEY_COLS = ("decision_date", "feature_date", "model")
 
 
@@ -255,6 +268,52 @@ def _is_plausible(value: float, last_obs: float) -> bool:
     return np.isfinite(value) and abs(value - last_obs) <= FORECAST_SANITY_THRESHOLD_F
 
 
+def _apply_nws_anchor(value: float, nws_value: Optional[float]) -> Tuple[float, str]:
+    """Conservatively anchor model forecasts to NWS when divergence is large.
+
+    The learned stack remains authoritative when it is close to NWS. When it
+    deviates by more than 8°F, the published forecast is partially pulled
+    toward NWS. If the deviation exceeds 20°F, NWS becomes the horizon forecast.
+    This directly guards the observed cold-bias / heat-event blind spot.
+    """
+    if nws_value is None or not np.isfinite(nws_value) or not np.isfinite(value):
+        return value, ""
+
+    nws_value = float(nws_value)
+    dev = abs(float(value) - nws_value)
+    adjusted = float(value)
+    tag = ""
+
+    if dev > NWS_HARD_DEVIATION_F:
+        adjusted = nws_value
+        tag = f"nws_hard_anchor(dev={dev:.1f})"
+    elif dev > NWS_STRONG_DEVIATION_F:
+        adjusted = NWS_STRONG_ANCHOR_WEIGHT * nws_value + (1.0 - NWS_STRONG_ANCHOR_WEIGHT) * float(value)
+        tag = f"nws_strong_anchor(dev={dev:.1f})"
+    elif dev > NWS_SOFT_DEVIATION_F:
+        adjusted = NWS_SOFT_ANCHOR_WEIGHT * nws_value + (1.0 - NWS_SOFT_ANCHOR_WEIGHT) * float(value)
+        tag = f"nws_soft_anchor(dev={dev:.1f})"
+
+    # Heat-event guard: if NWS indicates a heat day but the model is capped well
+    # below the threshold, lift the forecast to at least a near-threshold value.
+    if nws_value >= HEAT_EVENT_THRESHOLD_F and adjusted < HEAT_EVENT_MIN_MODEL_F:
+        before = adjusted
+        adjusted = min(nws_value, max(HEAT_EVENT_MIN_MODEL_F, adjusted))
+        heat_tag = f"heat_guard(nws={nws_value:.1f},before={before:.1f})"
+        tag = f"{tag}+{heat_tag}" if tag else heat_tag
+
+    return float(adjusted), tag
+
+
+def _finish_candidate(value: float, source: str, reason: str, h: int, nws_preds: Dict[int, Optional[float]]) -> Tuple[float, str, str]:
+    """Apply NWS/heat-event anchoring to a selected model candidate."""
+    adjusted, anchor_tag = _apply_nws_anchor(value, nws_preds.get(h))
+    if anchor_tag:
+        source = f"{source}+nws_anchor"
+        reason = f"{reason},{anchor_tag}"
+    return adjusted, source, reason
+
+
 def compute_canonical_forecast(
     xgb_preds: Dict[str, float],
     lstm_preds: Dict[str, float],
@@ -263,8 +322,9 @@ def compute_canonical_forecast(
 ) -> Tuple[Dict[str, float], str, str]:
     """Apply the fallback chain and return (forecast, source, reason).
 
-    Chain: blend → xgb → nws → persistence
-    The blend is discarded if the LSTM component fails the sanity check.
+    Chain: blend → xgb → nws → persistence, followed by an NWS/heat-event
+    anchoring overlay when the selected model candidate diverges materially
+    from the official NWS benchmark.
     """
     forecast: Dict[str, float] = {}
     sources: List[str] = []
@@ -278,52 +338,66 @@ def compute_canonical_forecast(
         xgb_val = xgb_preds.get(key)
         lstm_val = lstm_preds.get(key)
 
+        selected_val: Optional[float] = None
+        selected_source = "unavailable"
+        selected_reason = f"H{h}:no_forecast_available"
+
         # --- blend ---
         if (xgb_val is not None and np.isfinite(xgb_val) and
                 lstm_val is not None and np.isfinite(lstm_val)):
             lstm_ok = _is_plausible(lstm_val, last_obs) if np.isfinite(last_obs) else True
             xgb_ok = _is_plausible(xgb_val, last_obs) if np.isfinite(last_obs) else True
             if lstm_ok and xgb_ok:
-                forecast[key] = BLEND_WEIGHT_XGB * xgb_val + (1 - BLEND_WEIGHT_XGB) * lstm_val
-                sources.append("blend")
-                reasons.append(f"H{h}:blend(xgb={xgb_val:.1f},lstm={lstm_val:.1f})")
-                continue
-            # LSTM failed sanity — use XGB alone if it passes
-            if xgb_ok:
-                forecast[key] = xgb_val
-                sources.append("xgb")
-                reasons.append(f"H{h}:xgb_only(lstm_implausible:{lstm_val:.1f})")
-                continue
+                selected_val = BLEND_WEIGHT_XGB * xgb_val + (1 - BLEND_WEIGHT_XGB) * lstm_val
+                selected_source = "blend"
+                selected_reason = f"H{h}:blend(xgb={xgb_val:.1f},lstm={lstm_val:.1f})"
+            elif xgb_ok:
+                selected_val = xgb_val
+                selected_source = "xgb"
+                selected_reason = f"H{h}:xgb_only(lstm_implausible:{lstm_val:.1f})"
 
         # --- xgb alone ---
-        if xgb_val is not None and np.isfinite(xgb_val):
+        if selected_val is None and xgb_val is not None and np.isfinite(xgb_val):
             if not np.isfinite(last_obs) or _is_plausible(xgb_val, last_obs):
-                forecast[key] = xgb_val
-                sources.append("xgb")
-                reasons.append(f"H{h}:xgb_only")
-                continue
+                selected_val = xgb_val
+                selected_source = "xgb"
+                selected_reason = f"H{h}:xgb_only"
 
         # --- NWS ---
-        nws_val = nws_preds.get(h)
-        if nws_val is not None and np.isfinite(nws_val):
-            forecast[key] = nws_val
-            sources.append("nws")
-            reasons.append(f"H{h}:nws_fallback")
-            continue
+        if selected_val is None:
+            nws_val = nws_preds.get(h)
+            if nws_val is not None and np.isfinite(nws_val):
+                selected_val = float(nws_val)
+                selected_source = "nws"
+                selected_reason = f"H{h}:nws_fallback"
 
         # --- persistence ---
-        if np.isfinite(last_obs):
-            forecast[key] = last_obs
-            sources.append("persistence")
-            reasons.append(f"H{h}:persistence_fallback")
-        else:
-            forecast[key] = float("nan")
-            sources.append("unavailable")
-            reasons.append(f"H{h}:no_forecast_available")
+        if selected_val is None:
+            if np.isfinite(last_obs):
+                selected_val = float(last_obs)
+                selected_source = "persistence"
+                selected_reason = f"H{h}:persistence_fallback"
+            else:
+                selected_val = float("nan")
+                selected_source = "unavailable"
+                selected_reason = f"H{h}:no_forecast_available"
 
-    # Derive summary source label
-    unique_sources = list(dict.fromkeys(sources))  # ordered unique
-    source_label = "+".join(unique_sources) if unique_sources else "unavailable"
+        # NWS/heat-event safety overlay for model-selected candidates.
+        if selected_source in {"blend", "xgb"}:
+            selected_val, selected_source, selected_reason = _finish_candidate(
+                selected_val, selected_source, selected_reason, h, nws_preds
+            )
+
+        forecast[key] = float(selected_val)
+        sources.append(selected_source)
+        reasons.append(selected_reason)
+
+    unique_sources = list(dict.fromkeys(sources))
+    if any("nws_anchor" in src for src in unique_sources):
+        base_sources = list(dict.fromkeys(src.replace("+nws_anchor", "") for src in sources))
+        source_label = "+".join(base_sources + ["nws_anchor"])
+    else:
+        source_label = "+".join(unique_sources) if unique_sources else "unavailable"
     return forecast, source_label, " | ".join(reasons)
 
 
@@ -546,6 +620,15 @@ def main() -> int:
         "forecast_reason": reason,
         "feature_importances": feat_importances,
         "hyperparameters": XGB_PARAMS,
+        "nws_anchor_policy": {
+            "soft_deviation_f": NWS_SOFT_DEVIATION_F,
+            "strong_deviation_f": NWS_STRONG_DEVIATION_F,
+            "hard_deviation_f": NWS_HARD_DEVIATION_F,
+            "soft_anchor_weight": NWS_SOFT_ANCHOR_WEIGHT,
+            "strong_anchor_weight": NWS_STRONG_ANCHOR_WEIGHT,
+            "heat_event_threshold_f": HEAT_EVENT_THRESHOLD_F,
+            "heat_event_min_model_f": HEAT_EVENT_MIN_MODEL_F,
+        },
     }
     with open(ARTIFACTS_DIR / "part2b_summary.json", "w") as f:
         json.dump(summary, f, indent=2)
@@ -555,6 +638,13 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+
+
+
+
+
+
 
 
 
