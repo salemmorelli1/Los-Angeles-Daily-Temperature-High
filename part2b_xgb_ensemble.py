@@ -1,28 +1,37 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Part 2B — XGBoost Ensemble Sleeve (Optional, Non-Blocking)
-============================================================
-Trains one XGBoost regressor per forecast horizon (H=1, H=3, H=5)
-as a strong gradient-boosting baseline alongside the LSTM.
+Part 2B — XGBoost Ensemble Sleeve + Canonical Forecast Column Publisher
+========================================================================
+Trains one XGBoost regressor per horizon (H=1, H=3, H=5) as a strong
+gradient-boosting baseline alongside the LSTM.
 
-Outputs
--------
-  Standalone predictions written to artifacts_part2b/
-  Ensemble blend written back to artifacts_part2/prediction_log.csv
-    (xgb_h1, xgb_h3, xgb_h5 columns appended)
+Canonical forecast columns
+--------------------------
+Part 2B owns the canonical forecast_h1 / forecast_h3 / forecast_h5 columns
+and forecast_source / forecast_reason in the prediction log.
+
+Fallback chain (evaluated in order):
+  1. blend_h*     — 0.40 * XGB + 0.60 * LSTM  (if both present and pass sanity)
+  2. xgb_h*       — XGB alone                  (if LSTM is implausible)
+  3. nws_h*       — NWS official forecast       (if XGB not available)
+  4. persistence  — last observed temp          (last resort)
+
+A candidate is "plausible" if its deviation from the last observed temperature
+is ≤ FORECAST_SANITY_THRESHOLD_F. The LSTM is always checked; if it fails the
+deviation check, the blend is discarded and XGB is used alone.
 
 Gate Validation
 ---------------
-  gate_validation_passed: true  ← val MAE better than naive persistence baseline
-  bnn_sleeve_recommended: true  ← if XGB significantly outperforms LSTM on val
+  gate_validation_passed  = XGB val MAE beats naive persistence by >0.2°F
+  bnn_sleeve_recommended  = XGB outperforms LSTM val MAE by >0.3°F
 
 Artifacts Written
 -----------------
   artifacts_part2b/
-      xgb_h1.pkl / xgb_h3.pkl / xgb_h5.pkl   — serialized models
-      xgb_predictions.parquet                  — val + test predictions
-      part2b_summary.json                      — metrics, gate, BNN recommendation
+      xgb_h1.pkl / xgb_h3.pkl / xgb_h5.pkl  — serialized models
+      xgb_predictions.parquet                 — val predictions
+      part2b_summary.json                     — metrics, gate, BNN flag
 """
 
 from __future__ import annotations
@@ -39,6 +48,7 @@ import pandas as pd
 
 warnings.filterwarnings("ignore")
 
+
 # ---------------------------------------------------------------------------
 # Environment
 # ---------------------------------------------------------------------------
@@ -53,37 +63,31 @@ def _project_dir() -> Path:
 
 
 PROJECT_DIR = _project_dir()
+PART0_DIR = PROJECT_DIR / "artifacts_part0"
 PART1_DIR = PROJECT_DIR / "artifacts_part1"
 PART2_DIR = PROJECT_DIR / "artifacts_part2"
 ARTIFACTS_DIR = PROJECT_DIR / "artifacts_part2b"
 ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
 
-SCHEMA_VERSION = "1.0.0"
+SCHEMA_VERSION = "1.1.0"
 HORIZONS = [1, 3, 5]
 
-# XGBoost hyperparameters
 XGB_PARAMS = {
-    "n_estimators": 400,
-    "max_depth": 5,
-    "learning_rate": 0.05,
-    "subsample": 0.80,
-    "colsample_bytree": 0.75,
-    "min_child_weight": 3,
-    "reg_alpha": 0.1,
-    "reg_lambda": 1.0,
-    "random_state": 42,
-    "n_jobs": -1,
-    "objective": "reg:squarederror",
-    "eval_metric": "mae",
-    "early_stopping_rounds": 30,
-    "verbosity": 0,
+    "n_estimators": 400, "max_depth": 5, "learning_rate": 0.05,
+    "subsample": 0.80, "colsample_bytree": 0.75, "min_child_weight": 3,
+    "reg_alpha": 0.1, "reg_lambda": 1.0, "random_state": 42,
+    "n_jobs": -1, "objective": "reg:squarederror", "eval_metric": "mae",
+    "early_stopping_rounds": 30, "verbosity": 0,
 }
 
-# Gate: XGB val MAE must beat naive persistence by this margin (°F)
-GATE_IMPROVEMENT_F = 0.2
+GATE_IMPROVEMENT_F = 0.2           # XGB must beat persistence by this much
+BNN_RECOMMENDATION_THRESHOLD_F = 0.3  # XGB must beat LSTM by this much
 
-# BNN recommendation: XGB must outperform LSTM val MAE by this margin
-BNN_RECOMMENDATION_THRESHOLD_F = 0.3
+# A forecast is "plausible" if it deviates by less than this from last observed
+FORECAST_SANITY_THRESHOLD_F = 15.0
+
+BLEND_WEIGHT_XGB = 0.40           # blend = 0.40 * XGB + 0.60 * LSTM
+LOG_KEY_COLS = ("decision_date", "feature_date", "model")
 
 
 # ---------------------------------------------------------------------------
@@ -99,85 +103,92 @@ def load_data() -> pd.DataFrame:
 
 
 def load_splits() -> Dict:
-    path = PART1_DIR / "train_val_test_split.json"
-    if not path.exists():
-        raise FileNotFoundError("train_val_test_split.json not found.")
-    with open(path) as f:
+    with open(PART1_DIR / "train_val_test_split.json") as f:
         return json.load(f)
 
 
 def _feature_cols(df: pd.DataFrame) -> List[str]:
-    """Return XGBoost-eligible numeric feature columns only.
-
-    Descriptive regime labels such as regime_name are retained in upstream
-    artifacts for readability, but model matrices must be numeric.
-    """
     target_cols = {f"target_h{h}" for h in HORIZONS}
     excluded = {"date"} | target_cols
-
-    feature_cols: List[str] = []
-    dropped_non_numeric: List[str] = []
-
+    cols: List[str] = []
+    dropped: List[str] = []
     for col in df.columns:
         if col in excluded:
             continue
-
-        series = df[col]
-        if pd.api.types.is_numeric_dtype(series) or pd.api.types.is_bool_dtype(series):
-            feature_cols.append(col)
-            continue
-
-        coerced = pd.to_numeric(series, errors="coerce")
-        non_null = series.notna()
-        if int(non_null.sum()) > 0 and coerced[non_null].notna().all():
-            feature_cols.append(col)
+        s = df[col]
+        if pd.api.types.is_numeric_dtype(s) or pd.api.types.is_bool_dtype(s):
+            cols.append(col)
         else:
-            dropped_non_numeric.append(col)
+            c = pd.to_numeric(s, errors="coerce")
+            if int(s.notna().sum()) > 0 and c[s.notna()].notna().all():
+                cols.append(col)
+            else:
+                dropped.append(col)
+    if dropped:
+        print(f"[Part 2B] Dropping non-numeric columns: {dropped}")
+    if not cols:
+        raise ValueError("No numeric feature columns for Part 2B.")
+    return cols
 
-    if dropped_non_numeric:
-        print(f"[Part 2B] Dropping non-numeric feature columns: {dropped_non_numeric}")
 
-    if not feature_cols:
-        raise ValueError("No numeric feature columns available for Part 2B training.")
-
-    return feature_cols
-
-
-def _clean_feature_frame(df: pd.DataFrame, feature_cols: List[str]) -> np.ndarray:
-    """Coerce selected features to a finite float32 matrix for XGBoost."""
-    X = df[feature_cols].copy()
-    for col in feature_cols:
-        if pd.api.types.is_bool_dtype(X[col]):
-            X[col] = X[col].astype(np.float32)
-        elif not pd.api.types.is_numeric_dtype(X[col]):
-            X[col] = pd.to_numeric(X[col], errors="coerce")
-    X = X.replace([np.inf, -np.inf], np.nan).fillna(0.0)
-    return X.to_numpy(dtype=np.float32)
+def _clean(df: pd.DataFrame, cols: List[str]) -> np.ndarray:
+    X = df[cols].copy()
+    for c in cols:
+        if pd.api.types.is_bool_dtype(X[c]):
+            X[c] = X[c].astype(np.float32)
+        elif not pd.api.types.is_numeric_dtype(X[c]):
+            X[c] = pd.to_numeric(X[c], errors="coerce")
+    return X.replace([np.inf, -np.inf], np.nan).fillna(0.0).to_numpy(dtype=np.float32)
 
 
 # ---------------------------------------------------------------------------
-# Naive persistence baseline
+# Baselines
 # ---------------------------------------------------------------------------
 def naive_persistence_mae(df_val: pd.DataFrame) -> Dict[str, float]:
-    """MAE of naive forecast: predict that tomorrow = today."""
-    maes = {}
+    maes: Dict[str, float] = {}
     if "temp_high_f_lag1" not in df_val.columns:
         return maes
     for h in HORIZONS:
-        y_true = df_val[f"target_h{h}"].dropna()
-        if len(y_true) == 0:
+        y = df_val[f"target_h{h}"].dropna()
+        if len(y) == 0:
             continue
-        persistence = df_val.loc[y_true.index, "temp_high_f_lag1"]
-        maes[f"h{h}"] = float(np.mean(np.abs(y_true.values - persistence.values)))
+        pers = df_val.loc[y.index, "temp_high_f_lag1"]
+        maes[f"h{h}"] = float(np.mean(np.abs(y.values - pers.values)))
     return maes
 
 
+def load_last_observed_temp() -> Optional[float]:
+    """Return the most recent observed temp_high_f from Part 0 historical data."""
+    hist_path = PART0_DIR / "historical_daily.parquet"
+    if not hist_path.exists():
+        return None
+    hist = pd.read_parquet(hist_path)
+    hist["date"] = pd.to_datetime(hist["date"])
+    hist = hist.sort_values("date")
+    vals = hist["temp_high_f"].dropna()
+    return float(vals.iloc[-1]) if len(vals) > 0 else None
+
+
+def load_nws_forecast_for_horizons(feature_date: pd.Timestamp) -> Dict[int, Optional[float]]:
+    """Return NWS forecast high for each horizon's target date."""
+    nws_path = PART0_DIR / "nws_official_forecast.json"
+    if not nws_path.exists():
+        return {}
+    with open(nws_path) as f:
+        nws = json.load(f)
+    daily = nws.get("daily_high_f", {})
+    result: Dict[int, Optional[float]] = {}
+    for h in HORIZONS:
+        target_date = (feature_date + pd.Timedelta(days=h)).strftime("%Y-%m-%d")
+        result[h] = float(daily[target_date]) if target_date in daily else None
+    return result
+
+
 # ---------------------------------------------------------------------------
-# Feature importance analysis
+# Feature importance
 # ---------------------------------------------------------------------------
 def top_features(model, feature_cols: List[str], n: int = 20) -> List[Tuple[str, float]]:
-    importances = model.feature_importances_
-    pairs = sorted(zip(feature_cols, importances), key=lambda x: -x[1])
+    pairs = sorted(zip(feature_cols, model.feature_importances_), key=lambda x: -x[1])
     return pairs[:n]
 
 
@@ -185,62 +196,140 @@ def top_features(model, feature_cols: List[str], n: int = 20) -> List[Tuple[str,
 # Training
 # ---------------------------------------------------------------------------
 def train_xgb_horizon(
-    X_train: np.ndarray,
-    y_train: np.ndarray,
-    X_val: np.ndarray,
-    y_val: np.ndarray,
-    horizon: int,
+    X_train: np.ndarray, y_train: np.ndarray,
+    X_val: np.ndarray, y_val: np.ndarray,
 ) -> object:
-    try:
-        from xgboost import XGBRegressor
-    except ImportError:
-        raise ImportError("xgboost is required for Part 2B. Install with: pip install xgboost")
-
-    # Mask out NaN targets
-    train_mask = np.isfinite(y_train)
-    val_mask = np.isfinite(y_val)
-
-    params = dict(XGB_PARAMS)
-    model = XGBRegressor(**params)
+    from xgboost import XGBRegressor
+    tr_mask = np.isfinite(y_train)
+    va_mask = np.isfinite(y_val)
+    model = XGBRegressor(**XGB_PARAMS)
     model.fit(
-        X_train[train_mask], y_train[train_mask],
-        eval_set=[(X_val[val_mask], y_val[val_mask])],
+        X_train[tr_mask], y_train[tr_mask],
+        eval_set=[(X_val[va_mask], y_val[va_mask])],
         verbose=False,
     )
     return model
 
 
 # ---------------------------------------------------------------------------
-# Ensemble blend with LSTM predictions
+# Canonical forecast fallback chain
 # ---------------------------------------------------------------------------
-def blend_with_lstm(
-    xgb_preds: Dict[str, np.ndarray],
-    lstm_pred_log_path: Path,
-    blend_weight_xgb: float = 0.40,
-) -> Optional[pd.DataFrame]:
-    """Simple weighted average blend of XGB and LSTM live predictions."""
-    if not lstm_pred_log_path.exists():
-        print("[Part 2B] LSTM prediction_log.csv not found — skipping blend.")
-        return None
+def _is_plausible(value: float, last_obs: float) -> bool:
+    return np.isfinite(value) and abs(value - last_obs) <= FORECAST_SANITY_THRESHOLD_F
 
-    df_log = pd.read_csv(lstm_pred_log_path)
-    if df_log.empty:
-        return None
 
-    latest = df_log.iloc[-1].copy()
+def compute_canonical_forecast(
+    xgb_preds: Dict[str, float],
+    lstm_preds: Dict[str, float],
+    nws_preds: Dict[int, Optional[float]],
+    last_obs: Optional[float],
+) -> Tuple[Dict[str, float], str, str]:
+    """Apply the fallback chain and return (forecast, source, reason).
+
+    Chain: blend → xgb → nws → persistence
+    The blend is discarded if the LSTM component fails the sanity check.
+    """
+    forecast: Dict[str, float] = {}
+    sources: List[str] = []
+    reasons: List[str] = []
+
+    if last_obs is None:
+        last_obs = float("nan")
+
     for h in HORIZONS:
-        xgb_val = xgb_preds.get(f"h{h}")
-        lstm_val_col = f"target_h{h}"
-        if xgb_val is not None and lstm_val_col in df_log.columns:
-            lstm_val = float(latest.get(lstm_val_col, np.nan))
-            if np.isfinite(lstm_val) and np.isfinite(xgb_val[-1]):
-                blend = blend_weight_xgb * xgb_val[-1] + (1 - blend_weight_xgb) * lstm_val
-                df_log.loc[df_log.index[-1], f"xgb_h{h}"] = float(xgb_val[-1])
-                df_log.loc[df_log.index[-1], f"blend_h{h}"] = float(blend)
+        key = f"h{h}"
+        xgb_val = xgb_preds.get(key)
+        lstm_val = lstm_preds.get(key)
 
-    df_log.to_csv(lstm_pred_log_path, index=False)
-    print("[Part 2B] Updated prediction_log.csv with xgb and blend columns")
-    return df_log
+        # --- blend ---
+        if (xgb_val is not None and np.isfinite(xgb_val) and
+                lstm_val is not None and np.isfinite(lstm_val)):
+            lstm_ok = _is_plausible(lstm_val, last_obs) if np.isfinite(last_obs) else True
+            xgb_ok = _is_plausible(xgb_val, last_obs) if np.isfinite(last_obs) else True
+            if lstm_ok and xgb_ok:
+                forecast[key] = BLEND_WEIGHT_XGB * xgb_val + (1 - BLEND_WEIGHT_XGB) * lstm_val
+                sources.append("blend")
+                reasons.append(f"H{h}:blend(xgb={xgb_val:.1f},lstm={lstm_val:.1f})")
+                continue
+            # LSTM failed sanity — use XGB alone if it passes
+            if xgb_ok:
+                forecast[key] = xgb_val
+                sources.append("xgb")
+                reasons.append(f"H{h}:xgb_only(lstm_implausible:{lstm_val:.1f})")
+                continue
+
+        # --- xgb alone ---
+        if xgb_val is not None and np.isfinite(xgb_val):
+            if not np.isfinite(last_obs) or _is_plausible(xgb_val, last_obs):
+                forecast[key] = xgb_val
+                sources.append("xgb")
+                reasons.append(f"H{h}:xgb_only")
+                continue
+
+        # --- NWS ---
+        nws_val = nws_preds.get(h)
+        if nws_val is not None and np.isfinite(nws_val):
+            forecast[key] = nws_val
+            sources.append("nws")
+            reasons.append(f"H{h}:nws_fallback")
+            continue
+
+        # --- persistence ---
+        if np.isfinite(last_obs):
+            forecast[key] = last_obs
+            sources.append("persistence")
+            reasons.append(f"H{h}:persistence_fallback")
+        else:
+            forecast[key] = float("nan")
+            sources.append("unavailable")
+            reasons.append(f"H{h}:no_forecast_available")
+
+    # Derive summary source label
+    unique_sources = list(dict.fromkeys(sources))  # ordered unique
+    source_label = "+".join(unique_sources) if unique_sources else "unavailable"
+    return forecast, source_label, " | ".join(reasons)
+
+
+# ---------------------------------------------------------------------------
+# Prediction log — idempotent upsert (mirrors Part 2 helper)
+# ---------------------------------------------------------------------------
+def _log_path() -> Path:
+    return PART2_DIR / "prediction_log.csv"
+
+
+def load_prediction_log() -> pd.DataFrame:
+    p = _log_path()
+    return pd.read_csv(p) if p.exists() else pd.DataFrame()
+
+
+def upsert_log_columns(updates: Dict, decision_date: str, feature_date: str, model: str) -> None:
+    """Update specific columns on the matching row. Does not create new rows."""
+    df = load_prediction_log()
+    if df.empty:
+        print("[Part 2B] prediction_log.csv not found — forecast_h* not written.")
+        return
+
+    key_vals = {
+        "decision_date": str(decision_date).strip(),
+        "feature_date": str(feature_date).strip(),
+        "model": str(model).strip().upper(),
+    }
+    match = pd.Series([True] * len(df))
+    for k, v in key_vals.items():
+        col = df[k].astype(str).str.strip() if k in df.columns else pd.Series([""] * len(df))
+        match = match & (col == v)
+
+    if not match.any():
+        print(f"[Part 2B] No matching row in prediction_log for {key_vals}; skipping update.")
+        return
+
+    idx = df.index[match][-1]
+    for col, val in updates.items():
+        df.loc[idx, col] = val
+
+    df.to_csv(_log_path(), index=False)
+    print(f"[Part 2B] Updated prediction_log row for {decision_date}: "
+          f"forecast_source={updates.get('forecast_source')}")
 
 
 # ---------------------------------------------------------------------------
@@ -250,144 +339,178 @@ def main() -> int:
     print(f"[Part 2B] Project root: {PROJECT_DIR}")
 
     try:
-        from xgboost import XGBRegressor
+        from xgboost import XGBRegressor  # noqa: F401
     except ImportError:
-        print("[Part 2B] xgboost not installed. Skipping (non-blocking).")
+        print("[Part 2B] xgboost not installed — skipping (non-blocking).")
         return 0
 
-    # Load data
     df = load_data()
     splits = load_splits()
     feature_cols = _feature_cols(df)
     print(f"[Part 2B] {len(df)} rows, {len(feature_cols)} features")
 
-    # Splits
     train_end = pd.Timestamp(splits["train_end"])
     val_end = pd.Timestamp(splits["val_end"])
-
     df_train = df[df["date"] <= train_end].copy()
     df_val = df[(df["date"] > train_end) & (df["date"] <= val_end)].copy()
     df_test = df[df["date"] > val_end].copy()
 
-    X_train = _clean_feature_frame(df_train, feature_cols)
-    X_val = _clean_feature_frame(df_val, feature_cols)
-    X_test = _clean_feature_frame(df_test, feature_cols)
-    X_all = _clean_feature_frame(df, feature_cols)
+    X_tr = _clean(df_train, feature_cols)
+    X_va = _clean(df_val, feature_cols)
+    X_te = _clean(df_test, feature_cols)
+    X_all = _clean(df, feature_cols)
+    print(f"[Part 2B] Train:{len(df_train)} Val:{len(df_val)} Test:{len(df_test)}")
 
-    print(f"[Part 2B] Train: {len(df_train)} | Val: {len(df_val)} | Test: {len(df_test)}")
+    pers_maes = naive_persistence_mae(df_val)
+    print(f"[Part 2B] Persistence val MAE: {pers_maes}")
 
-    # Naive persistence baseline
-    persistence_maes = naive_persistence_mae(df_val)
-    print(f"[Part 2B] Naive persistence val MAE: {persistence_maes}")
-
-    models: Dict[str, object] = {}
-    val_metrics: Dict[str, float] = {}
-    test_metrics: Dict[str, float] = {}
-    xgb_live_preds: Dict[str, np.ndarray] = {}
-    feature_importances: Dict[str, List] = {}
-    all_val_preds: Dict[str, np.ndarray] = {}
+    models: Dict = {}
+    val_metrics: Dict = {}
+    test_metrics: Dict = {}
+    xgb_live: Dict[str, float] = {}
+    val_preds: Dict = {}
+    feat_importances: Dict = {}
 
     for h in HORIZONS:
-        target_col = f"target_h{h}"
-        y_train = df_train[target_col].values
-        y_val_h = df_val[target_col].values
-        y_test_h = df_test[target_col].values
+        tc = f"target_h{h}"
+        print(f"\n[Part 2B] Training XGB H={h}...")
+        m = train_xgb_horizon(X_tr, df_train[tc].values, X_va, df_val[tc].values)
+        models[f"h{h}"] = m
 
-        print(f"\n[Part 2B] Training XGB for H={h}...")
-        model = train_xgb_horizon(X_train, y_train, X_val, y_val_h, h)
-        models[f"h{h}"] = model
+        vp = m.predict(X_va)
+        vm = np.isfinite(df_val[tc].values)
+        mae_v = float(np.mean(np.abs(vp[vm] - df_val[tc].values[vm])))
+        rmse_v = float(np.sqrt(np.mean((vp[vm] - df_val[tc].values[vm]) ** 2)))
+        val_metrics[f"h{h}_mae_f"] = mae_v
+        val_metrics[f"h{h}_rmse_f"] = rmse_v
+        val_preds[f"h{h}"] = vp
+        print(f"  Val MAE={mae_v:.2f}°F  RMSE={rmse_v:.2f}°F")
 
-        # Validation metrics
-        val_pred = model.predict(X_val)
-        val_mask = np.isfinite(y_val_h)
-        val_mae = float(np.mean(np.abs(val_pred[val_mask] - y_val_h[val_mask])))
-        val_rmse = float(np.sqrt(np.mean((val_pred[val_mask] - y_val_h[val_mask]) ** 2)))
-        val_metrics[f"h{h}_mae_f"] = val_mae
-        val_metrics[f"h{h}_rmse_f"] = val_rmse
-        all_val_preds[f"h{h}"] = val_pred
-        print(f"  Val MAE={val_mae:.2f}°F | RMSE={val_rmse:.2f}°F")
-
-        # Test metrics
         if len(df_test) > 0:
-            test_pred = model.predict(X_test)
-            test_mask = np.isfinite(y_test_h)
-            test_mae = float(np.mean(np.abs(test_pred[test_mask] - y_test_h[test_mask])))
-            test_rmse = float(np.sqrt(np.mean((test_pred[test_mask] - y_test_h[test_mask]) ** 2)))
-            test_metrics[f"h{h}_mae_f"] = test_mae
-            test_metrics[f"h{h}_rmse_f"] = test_rmse
-            print(f"  Test MAE={test_mae:.2f}°F | RMSE={test_rmse:.2f}°F")
+            tp = m.predict(X_te)
+            tm = np.isfinite(df_test[tc].values)
+            mae_t = float(np.mean(np.abs(tp[tm] - df_test[tc].values[tm])))
+            rmse_t = float(np.sqrt(np.mean((tp[tm] - df_test[tc].values[tm]) ** 2)))
+            test_metrics[f"h{h}_mae_f"] = mae_t
+            test_metrics[f"h{h}_rmse_f"] = rmse_t
+            print(f"  Test MAE={mae_t:.2f}°F  RMSE={rmse_t:.2f}°F")
 
-        # Live prediction (latest available row)
-        live_pred = model.predict(X_all[-1:])
-        xgb_live_preds[f"h{h}"] = live_pred
-
-        # Feature importance
-        feature_importances[f"h{h}"] = [
+        live = float(m.predict(X_all[-1:])[0])
+        xgb_live[f"h{h}"] = live
+        feat_importances[f"h{h}"] = [
             {"feature": fc, "importance": float(imp)}
-            for fc, imp in top_features(model, feature_cols, n=20)
+            for fc, imp in top_features(m, feature_cols, 20)
         ]
-
-        # Save model
         with open(ARTIFACTS_DIR / f"xgb_h{h}.pkl", "wb") as f:
-            pickle.dump(model, f)
+            pickle.dump(m, f)
 
     # Gate validation
-    gate_passed = all(
-        val_metrics.get(f"h{h}_mae_f", 999) <= persistence_maes.get(f"h{h}", 999) - GATE_IMPROVEMENT_F
-        for h in HORIZONS if f"h{h}" in persistence_maes
+    gate = all(
+        val_metrics.get(f"h{h}_mae_f", 999) <= pers_maes.get(f"h{h}", 999) - GATE_IMPROVEMENT_F
+        for h in HORIZONS if f"h{h}" in pers_maes
     )
-    print(f"\n[Part 2B] Gate validation passed: {gate_passed}")
+    print(f"\n[Part 2B] Gate validation passed: {gate}")
 
     # BNN recommendation
-    lstm_meta_path = PART2_DIR / "part2_meta.json"
-    bnn_recommended = False
-    if lstm_meta_path.exists():
-        with open(lstm_meta_path) as f:
-            lstm_meta = json.load(f)
-        lstm_val_mae = lstm_meta.get("val_mae_f", None)
-        xgb_avg_mae = float(np.mean([val_metrics[f"h{h}_mae_f"] for h in HORIZONS if f"h{h}_mae_f" in val_metrics]))
+    bnn_rec = False
+    p2_meta_path = PART2_DIR / "part2_meta.json"
+    if p2_meta_path.exists():
+        with open(p2_meta_path) as f:
+            p2m = json.load(f)
+        lstm_val_mae = p2m.get("val_mae_f")
+        xgb_avg = float(np.mean([val_metrics[f"h{h}_mae_f"] for h in HORIZONS
+                                  if f"h{h}_mae_f" in val_metrics]))
         if lstm_val_mae is not None:
-            improvement = lstm_val_mae - xgb_avg_mae
-            bnn_recommended = improvement > BNN_RECOMMENDATION_THRESHOLD_F
-            print(f"  LSTM val MAE: {lstm_val_mae:.2f}°F | XGB avg: {xgb_avg_mae:.2f}°F")
-            print(f"  BNN sleeve recommended: {bnn_recommended} (XGB advantage: {improvement:.2f}°F)")
+            bnn_rec = (lstm_val_mae - xgb_avg) > BNN_RECOMMENDATION_THRESHOLD_F
+            print(f"  LSTM val MAE={lstm_val_mae:.2f}°F  XGB avg={xgb_avg:.2f}°F  "
+                  f"BNN recommended={bnn_rec}")
 
-    # Save prediction parquet
+    # Save val predictions parquet
     val_df = df_val[["date"]].copy().reset_index(drop=True)
     for h in HORIZONS:
-        val_df[f"xgb_pred_h{h}"] = all_val_preds[f"h{h}"]
+        val_df[f"xgb_pred_h{h}"] = val_preds[f"h{h}"]
         val_df[f"true_h{h}"] = df_val[f"target_h{h}"].values
     val_df.to_parquet(ARTIFACTS_DIR / "xgb_predictions.parquet", index=False)
 
-    # Blend with LSTM
-    lstm_log_path = PART2_DIR / "prediction_log.csv"
-    blend_with_lstm(xgb_live_preds, lstm_log_path)
+    # -------------------------------------------------------------------
+    # Canonical forecast fallback chain
+    # -------------------------------------------------------------------
+    feature_date = pd.Timestamp(df["date"].max()).normalize()
+    decision_date = pd.Timestamp.today().normalize()
+    model_key = "LSTM"  # we're updating the LSTM row written by Part 2
 
-    # Print live predictions
-    print("\n=== XGB LIVE PREDICTIONS ===")
+    # Load LSTM live preds from log
+    log = load_prediction_log()
+    lstm_live: Dict[str, float] = {}
+    if not log.empty:
+        # Find the most recent row for this decision_date + feature_date
+        dd_str = decision_date.strftime("%Y-%m-%d")
+        fd_str = feature_date.strftime("%Y-%m-%d")
+        mask = (
+            log["decision_date"].astype(str).str.strip() == dd_str
+        )
+        if "feature_date" in log.columns:
+            mask = mask & (log["feature_date"].astype(str).str.strip() == fd_str)
+        sub = log[mask]
+        if not sub.empty:
+            row = sub.iloc[-1]
+            for h in HORIZONS:
+                v = pd.to_numeric(pd.Series([row.get(f"target_h{h}", np.nan)]),
+                                  errors="coerce").iloc[0]
+                if np.isfinite(v):
+                    lstm_live[f"h{h}"] = float(v)
+
+    last_obs = load_last_observed_temp()
+    nws_preds = load_nws_forecast_for_horizons(feature_date)
+    forecast, source, reason = compute_canonical_forecast(
+        xgb_live, lstm_live, nws_preds, last_obs
+    )
+
+    print("\n=== CANONICAL FORECAST ===")
+    print(f"  Source: {source}")
     for h in HORIZONS:
-        print(f"  H={h}: {float(xgb_live_preds[f'h{h}'][0]):.1f}°F")
+        print(f"  H={h}: {forecast.get(f'h{h}', float('nan')):.1f}°F")
+    if last_obs:
+        print(f"  Last observed: {last_obs:.1f}°F")
 
-    # Summary JSON
+    # Write canonical columns to prediction log row
+    updates: Dict = {
+        "forecast_source": source,
+        "forecast_reason": reason,
+    }
+    for h in HORIZONS:
+        updates[f"xgb_h{h}"] = xgb_live.get(f"h{h}", np.nan)
+        updates[f"forecast_h{h}"] = forecast.get(f"h{h}", np.nan)
+        if f"h{h}" in lstm_live:
+            blend = BLEND_WEIGHT_XGB * xgb_live.get(f"h{h}", 0) + \
+                    (1 - BLEND_WEIGHT_XGB) * lstm_live[f"h{h}"]
+            updates[f"blend_h{h}"] = blend
+
+    upsert_log_columns(updates, dd_str, fd_str, model_key)
+
+    # Save summary
     summary = {
         "schema_version": SCHEMA_VERSION,
         "built_at": pd.Timestamp.now().isoformat(),
-        "gate_validation_passed": gate_passed,
-        "bnn_sleeve_recommended": bnn_recommended,
+        "gate_validation_passed": gate,
+        "bnn_sleeve_recommended": bnn_rec,
         "val_metrics": val_metrics,
         "test_metrics": test_metrics,
-        "persistence_baseline_mae": persistence_maes,
-        "live_predictions": {f"h{h}": float(xgb_live_preds[f"h{h}"][0]) for h in HORIZONS},
-        "feature_importances": feature_importances,
+        "persistence_baseline_mae": pers_maes,
+        "xgb_live_predictions": xgb_live,
+        "canonical_forecast": forecast,
+        "forecast_source": source,
+        "forecast_reason": reason,
+        "feature_importances": feat_importances,
         "hyperparameters": XGB_PARAMS,
     }
     with open(ARTIFACTS_DIR / "part2b_summary.json", "w") as f:
         json.dump(summary, f, indent=2)
     print("\n[Part 2B] Saved part2b_summary.json")
-
-    print(f"\n[Part 2B] ✅ Complete. Gate passed={gate_passed}.")
+    print(f"\n[Part 2B] ✅  Complete. Gate={gate}  Source={source}")
     return 0
 
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
