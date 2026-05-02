@@ -27,7 +27,7 @@ import os
 import pickle
 import warnings
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -216,7 +216,7 @@ def _clean_features(df: pd.DataFrame, feature_cols: List[str]) -> np.ndarray:
     return df[feature_cols].replace([np.inf, -np.inf], np.nan).fillna(0.0).values.astype(np.float32)
 
 
-def build_sequences(X: np.ndarray, y: np.ndarray | None = None, seq_len: int = SEQUENCE_LEN):
+def build_sequences(X: np.ndarray, y: Optional[np.ndarray] = None, seq_len: int = SEQUENCE_LEN):
     if len(X) < seq_len:
         X_empty = np.empty((0, seq_len, X.shape[1]), dtype=np.float32)
         if y is None:
