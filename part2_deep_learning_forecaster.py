@@ -84,6 +84,13 @@ MODEL_FILES = {"lstm": "lstm_model.pt", "transformer": "transformer_model.pt"}
 CLIP_MIN = 0.0
 CLIP_MAX = 1.0
 
+# Heat-event sample weight. Training rows where any horizon target >= HEAT_EVENT_F
+# (measured in Fahrenheit before scaling) receive an elevated loss weight to improve
+# upper-tail representation. The scaled threshold is computed from the fitted target
+# scaler after fit_transform, not hard-coded, so it stays correct across retrains.
+HEAT_WEIGHT = 3.0
+HEAT_EVENT_F = 85.0  # Fahrenheit threshold — converted to scaled space after scaler fit
+
 # Upsert key for prediction log
 LOG_KEY_COLS = ("decision_date", "feature_date", "model")
 
@@ -152,6 +159,22 @@ def _get_feature_cols(df: pd.DataFrame) -> List[str]:
 
     if dropped:
         print(f"[Part 2] Dropping non-numeric columns: {dropped}")
+
+    # Drop zero-variance (constant) feature columns.  These include any
+    # column that was zero-padded (e.g. an alpha flag that never fires) and
+    # survives the Part 1 guard because Part 2A added it after Part 1 ran.
+    constant: List[str] = []
+    nonconstant: List[str] = []
+    for col in feature_cols:
+        s = pd.to_numeric(df[col], errors="coerce")
+        if s.nunique(dropna=True) > 1:
+            nonconstant.append(col)
+        else:
+            constant.append(col)
+    if constant:
+        print(f"[Part 2] Dropping {len(constant)} constant/zero-variance feature columns: {constant}")
+    feature_cols = nonconstant
+
     if not feature_cols:
         raise ValueError("No numeric feature columns available for Part 2.")
     return feature_cols
@@ -283,6 +306,24 @@ def build_model(model_type: str, input_size: int):
 # ---------------------------------------------------------------------------
 # Training
 # ---------------------------------------------------------------------------
+def _make_sample_weights(y_scaled: np.ndarray, heat_threshold_scaled: np.ndarray) -> np.ndarray:
+    """Return per-sequence sample weights.
+
+    Sequences containing at least one horizon target at or above the
+    per-horizon scaled threshold receive HEAT_WEIGHT; all others get 1.0.
+
+    Parameters
+    ----------
+    y_scaled : shape (n, n_horizons) — already MinMax-scaled targets.
+    heat_threshold_scaled : shape (n_horizons,) — per-horizon threshold
+        derived from the fitted target scaler so it stays correct across
+        retrains regardless of the target temperature range.
+    """
+    heat = (y_scaled >= heat_threshold_scaled.reshape(1, -1)).any(axis=1)
+    weights = np.where(heat, float(HEAT_WEIGHT), 1.0).astype(np.float32)
+    return weights
+
+
 def train_model(model, train_loader, val_loader) -> Tuple[Dict, object, float]:
     torch, nn, _, _ = _try_import_torch()
     optimizer = torch.optim.Adam(model.parameters(), lr=LR, weight_decay=1e-5)
@@ -304,10 +345,18 @@ def train_model(model, train_loader, val_loader) -> Tuple[Dict, object, float]:
     for epoch in range(1, MAX_EPOCHS + 1):
         model.train()
         train_losses = []
-        for Xb, yb in train_loader:
+        for batch in train_loader:
+            if len(batch) == 3:
+                Xb, yb, sw = batch
+                sw = sw.to(device).view(-1, 1, 1)  # sample weight shape for broadcasting
+            else:
+                Xb, yb = batch
+                sw = torch.ones(len(Xb), 1, 1, device=device)
             Xb, yb = Xb.to(device), yb.to(device)
             optimizer.zero_grad()
-            loss = (criterion(model(Xb), yb) * w).mean()
+            per_element_loss = criterion(model(Xb), yb) * w   # (B, H)
+            # Apply sample weights per row, then average
+            loss = (per_element_loss * sw.squeeze(-1)).mean()
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
@@ -618,7 +667,23 @@ def main(model_type: str = "lstm", mode: str = "train") -> int:
         Xte_seq, yte_seq = build_sequences(X_te, y_te, SEQUENCE_LEN)
         print(f"[Part 2] Seqs — Tr:{Xtr_seq.shape} Va:{Xva_seq.shape} Te:{Xte_seq.shape}")
 
-        tr_ds = TensorDataset(torch.tensor(Xtr_seq), torch.tensor(ytr_seq))
+        # Derive the heat-event threshold in scaled space from the fitted target scaler.
+        # Using a fixed scaled value (e.g. 0.70) is fragile — MinMax scaling depends on
+        # the observed target range, which shifts slightly with each retrain as new data
+        # arrives.  Transform the Fahrenheit threshold per-horizon instead.
+        heat_thresh_f = np.full((1, len(HORIZONS)), HEAT_EVENT_F, dtype=np.float32)
+        heat_threshold_scaled = tgt_sc.transform(heat_thresh_f)[0]  # shape (n_horizons,)
+
+        heat_weights = _make_sample_weights(ytr_seq, heat_threshold_scaled)
+        n_heat = int((heat_weights > 1.0).sum())
+        print(f"[Part 2] Heat-weighted training rows: {n_heat}/{len(ytr_seq)} "
+              f"(weight={HEAT_WEIGHT}x at ≥{HEAT_EVENT_F}°F per horizon)")
+
+        tr_ds = TensorDataset(
+            torch.tensor(Xtr_seq),
+            torch.tensor(ytr_seq),
+            torch.tensor(heat_weights),   # 3rd element — sample weights
+        )
         va_ds = TensorDataset(torch.tensor(Xva_seq), torch.tensor(yva_seq))
         tr_ldr = DataLoader(tr_ds, batch_size=BATCH_SIZE, shuffle=True, drop_last=True)
         va_ldr = DataLoader(va_ds, batch_size=BATCH_SIZE, shuffle=False)
@@ -755,6 +820,13 @@ if __name__ == "__main__":
     parser.add_argument("--predict-only", action="store_true")
     args = parser.parse_args()
     raise SystemExit(main(model_type=args.model, mode="predict" if args.predict_only else args.mode))
+
+
+
+
+
+
+
 
 
 
