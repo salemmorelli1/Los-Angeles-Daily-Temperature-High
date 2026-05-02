@@ -164,7 +164,7 @@ def check_data_freshness() -> GovernanceCheck:
         "historical_end": str(hist_end.date()), "staleness_days": staleness,
     }
     if staleness > MAX_DATA_STALENESS_DAYS:
-        return chk.warn(
+        return chk.fail(
             f"Data is {staleness}d stale (max={MAX_DATA_STALENESS_DAYS}d)", **chk.details
         )
     return chk
@@ -548,6 +548,12 @@ def main() -> int:
 
         df_log.to_csv(log_path, index=False)
         print(f"[Part 3] Updated prediction_log.csv: publish_mode={publish_mode}")
+
+        # Issue 6/7 fix: also write a copy under artifacts_part3/ so the
+        # daily-backfill workflow can commit it independently.
+        artifacts_log_path = ARTIFACTS_DIR / "prediction_log.csv"
+        df_log.to_csv(artifacts_log_path, index=False)
+        print(f"[Part 3] Copied prediction_log.csv → {artifacts_log_path}")
 
     report = {
         "schema_version": SCHEMA_VERSION,
