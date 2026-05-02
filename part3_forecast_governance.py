@@ -462,6 +462,16 @@ def main() -> int:
 
     publish_mode = determine_publish_mode(checks)
 
+    bnn_chk = next((c for c in checks if c.name == "BNN_CALIBRATION_GATE"), None)
+    bnn_available = bool(bnn_chk and bnn_chk.details.get("bnn_available", False))
+    bnn_calibrated = bool(bnn_available and bnn_chk.passed)
+    if not bnn_available:
+        bnn_interval_status = "NOT_RUN"
+    elif bnn_calibrated:
+        bnn_interval_status = "CALIBRATED"
+    else:
+        bnn_interval_status = "UNCALIBRATED"
+
     print("\n=== GOVERNANCE CHECKS ===")
     for chk in checks:
         icon = "✅" if chk.passed else ("⚠️ " if chk.level == "WARN" else "❌")
@@ -481,14 +491,11 @@ def main() -> int:
         if not log_path.exists():
             log_path = ARTIFACTS_DIR / "prediction_log.csv"
 
-        # Flag BNN as uncalibrated if calibration gate failed
-        bnn_chk = next((c for c in checks if c.name == "BNN_CALIBRATION_GATE"), None)
-        bnn_calibrated = bnn_chk.passed if bnn_chk else None
-
         df_log.loc[df_log.index[-1], "publish_mode"] = publish_mode
         df_log.loc[df_log.index[-1], "governance_run_at"] = pd.Timestamp.now().isoformat()
-        if bnn_calibrated is not None:
-            df_log.loc[df_log.index[-1], "bnn_calibrated"] = bool(bnn_calibrated)
+        df_log.loc[df_log.index[-1], "bnn_available"] = bool(bnn_available)
+        df_log.loc[df_log.index[-1], "bnn_calibrated"] = bool(bnn_calibrated)
+        df_log.loc[df_log.index[-1], "bnn_interval_status"] = bnn_interval_status
 
         df_log.to_csv(log_path, index=False)
         print(f"[Part 3] Updated prediction_log.csv: publish_mode={publish_mode}")
@@ -499,6 +506,9 @@ def main() -> int:
         "decision_date": decision_date,
         "publish_mode": publish_mode,
         "forecast_source": forecast_source,
+        "bnn_available": bnn_available,
+        "bnn_calibrated": bnn_calibrated,
+        "bnn_interval_status": bnn_interval_status,
         "checks_passed": sum(1 for c in checks if c.passed),
         "checks_total": len(checks),
         "checks": [c.to_dict() for c in checks],
@@ -526,6 +536,13 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+
+
+
+
+
+
 
 
 
