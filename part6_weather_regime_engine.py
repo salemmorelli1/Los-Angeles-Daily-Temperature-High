@@ -304,6 +304,31 @@ def main() -> int:
             if col not in tape.columns:
                 tape[col] = 0.0
 
+        # Correction 2: only write physical probability columns for states with a
+        # validated physical label.  Do NOT zero-pad unvalidated label names —
+        # that creates constant-zero model features that consume capacity for nothing.
+        # Remove the zero-padded placeholders just added for any unvalidated name,
+        # then map the validated ones from their matching prob_regime_* column.
+        validated_phys: set = set()
+        for state_idx, suggestion in physical_label_suggestions.items():
+            if not suggestion.get("validated", False):
+                continue
+            phys = str(suggestion.get("suggested_label", "")).lower()
+            if phys not in {"marine_layer", "dry_clear", "santa_ana"}:
+                continue
+            source_col = f"prob_regime_{state_idx}"
+            target_col = f"prob_{phys}"
+            if source_col in tape.columns:
+                tape[target_col] = tape[source_col]
+                validated_phys.add(target_col)
+                print(f"[Part 6] Mapped {target_col} ← {source_col} (validated)", flush=True)
+
+        # Drop any physical prob column that was zero-padded but never validated.
+        for col in ["prob_marine_layer", "prob_dry_clear", "prob_santa_ana"]:
+            if col not in validated_phys and col in tape.columns:
+                tape = tape.drop(columns=[col])
+                print(f"[Part 6] Dropped constant-zero column {col} (no validated regime)", flush=True)
+
         tape_path = ARTIFACTS_DIR / "regime_tape.parquet"
         tape.to_parquet(tape_path, index=False)
         print(f"[Part 6] Saved regime_tape.parquet ({len(tape)} rows)", flush=True)
