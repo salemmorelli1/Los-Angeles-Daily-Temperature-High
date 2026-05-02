@@ -169,44 +169,46 @@ def _state_means_from_model(model: Any, scaler: StandardScaler, feature_cols: Li
     return pd.DataFrame(means_orig, columns=feature_cols)
 
 
+def _physical_label_suggestions(means_df: pd.DataFrame, n_regimes: int = N_REGIMES) -> Dict[int, Dict[str, Any]]:
+    """Return non-authoritative physical label suggestions for each state.
+
+    The HMM states are statistical clusters. A physical label is marked valid
+    only if the state means satisfy basic meteorological checks. This avoids
+    calling a cool/humid or southerly-wind state a literal Santa Ana regime.
+    """
+    suggestions: Dict[int, Dict[str, Any]] = {}
+    for idx in range(n_regimes):
+        row = means_df.loc[idx]
+        temp = float(row.get("temp_high_f", np.nan))
+        humidity = float(row.get("humidity_mean_pct", np.nan))
+        cloud = float(row.get("cloud_cover_mean_pct", np.nan))
+        diurnal = float(row.get("diurnal_range_f", np.nan))
+        wind = float(row.get("wind_speed_max_mph", np.nan))
+
+        marine_score = 0
+        if np.isfinite(temp) and temp <= 66: marine_score += 1
+        if np.isfinite(humidity) and humidity >= 72: marine_score += 1
+        if np.isfinite(cloud) and cloud >= 50: marine_score += 1
+        if np.isfinite(diurnal) and diurnal <= 12: marine_score += 1
+
+        santa_score = 0
+        if np.isfinite(temp) and temp >= 75: santa_score += 1
+        if np.isfinite(humidity) and humidity <= 45: santa_score += 1
+        if np.isfinite(diurnal) and diurnal >= 16: santa_score += 1
+        if np.isfinite(wind) and wind >= 15: santa_score += 1
+
+        if marine_score >= 3:
+            suggestions[idx] = {"suggested_label": "MARINE_LAYER", "validated": True, "score": marine_score}
+        elif santa_score >= 3:
+            suggestions[idx] = {"suggested_label": "SANTA_ANA", "validated": True, "score": santa_score}
+        else:
+            suggestions[idx] = {"suggested_label": "UNVALIDATED", "validated": False, "score": max(marine_score, santa_score)}
+    return suggestions
+
+
 def _assign_regime_labels(means_df: pd.DataFrame, n_regimes: int = N_REGIMES) -> Dict[int, str]:
-    label_map: Dict[int, str] = {}
-    remaining = list(range(n_regimes))
-
-    temp = means_df.get("temp_high_f", pd.Series(0.0, index=means_df.index))
-    humidity = means_df.get("humidity_mean_pct", pd.Series(0.0, index=means_df.index))
-    cloud = means_df.get("cloud_cover_mean_pct", pd.Series(0.0, index=means_df.index))
-    diurnal = means_df.get("diurnal_range_f", pd.Series(0.0, index=means_df.index))
-    wind = means_df.get("wind_speed_max_mph", pd.Series(0.0, index=means_df.index))
-
-    marine_score = (
-        -0.35 * temp.rank(pct=True)
-        + 0.30 * humidity.rank(pct=True)
-        + 0.25 * cloud.rank(pct=True)
-        - 0.10 * diurnal.rank(pct=True)
-    )
-    marine_idx = int(marine_score.idxmax())
-    label_map[marine_idx] = "MARINE_LAYER"
-    if marine_idx in remaining:
-        remaining.remove(marine_idx)
-
-    if remaining:
-        santa_score = (
-            0.35 * temp.rank(pct=True)
-            - 0.35 * humidity.rank(pct=True)
-            + 0.20 * diurnal.rank(pct=True)
-            + 0.10 * wind.rank(pct=True)
-        )
-        santa_candidates = santa_score.iloc[remaining]
-        santa_idx = int(santa_candidates.idxmax())
-        label_map[santa_idx] = "SANTA_ANA"
-        if santa_idx in remaining:
-            remaining.remove(santa_idx)
-
-    for idx in remaining:
-        label_map[idx] = "DRY_CLEAR"
-
-    return label_map
+    """Assign neutral regime names to avoid over-interpreting HMM clusters."""
+    return {idx: f"REGIME_{idx}" for idx in range(n_regimes)}
 
 
 def _transition_matrix_from_states(states: np.ndarray, n_regimes: int = N_REGIMES) -> List[List[float]]:
@@ -283,6 +285,7 @@ def main() -> int:
 
         states = np.asarray(states, dtype=int)
         means_df = _state_means_from_model(model, scaler, feature_cols, backend)
+        physical_label_suggestions = _physical_label_suggestions(means_df, n_regimes=N_REGIMES)
         label_map = _assign_regime_labels(means_df, n_regimes=N_REGIMES)
         print(f"[Part 6] Regime label mapping: {label_map}", flush=True)
 
@@ -333,6 +336,7 @@ def main() -> int:
             "n_rows_fit": int(len(feat_df)),
             "feature_cols": feature_cols,
             "label_map": {str(k): v for k, v in label_map.items()},
+            "physical_label_suggestions": {str(k): v for k, v in physical_label_suggestions.items()},
             "state_stats": state_stats,
             "transition_matrix": transition_matrix,
             "hmm_converged": bool(converged) if backend == "hmm" else None,
