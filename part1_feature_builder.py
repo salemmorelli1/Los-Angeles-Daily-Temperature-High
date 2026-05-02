@@ -140,7 +140,7 @@ def add_calendar_features(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def add_atmospheric_lags(df: pd.DataFrame) -> pd.DataFrame:
-    """Add 1-day and 2-day lags of key atmospheric variables."""
+    """Add 1, 2, and 3-day lags of key atmospheric variables."""
     atm_cols = [
         "pressure_mean_hpa", "humidity_mean_pct", "dew_point_mean_f",
         "wind_speed_max_mph", "wind_dir_dominant_deg", "cloud_cover_mean_pct",
@@ -291,6 +291,21 @@ def build_feature_matrix(
         if df[c].notna().mean() >= MIN_NONULL_FRAC
     ]
     print(f"[Part 1] Dropped {before - len(valid_feat_cols)} low-coverage feature columns")
+
+    # Drop constant (zero-variance) feature columns.  These include zero-padded
+    # physical probability columns from Part 6 for unvalidated regime labels,
+    # and any other column that carries no information.
+    nonconstant_feat_cols = []
+    constant_dropped = []
+    for c in valid_feat_cols:
+        s = pd.to_numeric(df[c], errors="coerce")
+        if s.nunique(dropna=True) > 1:
+            nonconstant_feat_cols.append(c)
+        else:
+            constant_dropped.append(c)
+    if constant_dropped:
+        print(f"[Part 1] Dropped {len(constant_dropped)} constant feature columns: {constant_dropped}")
+    valid_feat_cols = nonconstant_feat_cols
 
     df = df[["date"] + valid_feat_cols + target_cols]
 
