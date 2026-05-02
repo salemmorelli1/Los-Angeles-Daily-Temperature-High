@@ -327,7 +327,10 @@
       return row?.model || "model";
     }
     function isTrue(v) { return [true, "true", "TRUE", "1", 1, "yes", "YES"].includes(v); }
-    function bnnCalibrated(row) { return isTrue(row?.bnn_calibrated) || String(row?.bnn_interval_status || "").toUpperCase() === "CALIBRATED"; }
+    function bnnCalibrated(row) {
+      const status = String(row?.bnn_interval_status || "").toUpperCase();
+      return isTrue(row?.bnn_calibrated) || (status.includes("CALIBRATED") && !status.includes("UNCALIBRATED"));
+    }
     function realizedFor(row, h) { return toNumber(row?.[`realized_h${h}`]); }
     function targetDateFor(row, h) { return fmtDate(row?.[`target_date_h${h}`]); }
 
@@ -454,6 +457,8 @@
         ["NWS H=1 RMSE", fmtTemp(nws.nws_h1_rmse_f)],
         ["NWS H=1 Bias", fmtTemp(nws.nws_h1_bias_f)],
         ["NWS sample days", nws.nws_n_days ?? "—"],
+        ["NWS-anchor rows", attr?.forecast_source_summary?.nws_anchor_rows ?? "—"],
+        ["NWS independence", attr?.forecast_source_summary?.nws_independence_warning ? "Caveated" : "OK"],
         ["Climatology H=1 skill", fmtPct(attr?.climatological_baseline?.h1?.skill_vs_climatology)],
         ["Climatology H=3 skill", fmtPct(attr?.climatological_baseline?.h3?.skill_vs_climatology)],
         ["Climatology H=5 skill", fmtPct(attr?.climatological_baseline?.h5?.skill_vs_climatology)]
