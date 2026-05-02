@@ -157,6 +157,43 @@ def naive_persistence_mae(df_val: pd.DataFrame) -> Dict[str, float]:
     return maes
 
 
+
+
+def heat_event_diagnostics_1d(
+    pred: np.ndarray,
+    true: np.ndarray,
+    threshold_f: float = 85.0,
+) -> Dict[str, float]:
+    """Upper-tail diagnostics for one horizon."""
+    pred = np.asarray(pred, dtype=float)
+    true = np.asarray(true, dtype=float)
+    mask = np.isfinite(pred) & np.isfinite(true)
+    heat = mask & (true > threshold_f)
+    n_heat = int(heat.sum())
+    if n_heat == 0:
+        return {
+            "threshold_f": float(threshold_f),
+            "n_true_heat_days": 0,
+            "predicted_heat_hits": 0,
+            "hit_rate": None,
+            "heat_mae_f": None,
+            "heat_bias_f": None,
+            "max_true_f": float(np.nanmax(true[mask])) if mask.any() else None,
+            "max_pred_f": float(np.nanmax(pred[mask])) if mask.any() else None,
+        }
+    err = pred[heat] - true[heat]
+    return {
+        "threshold_f": float(threshold_f),
+        "n_true_heat_days": n_heat,
+        "predicted_heat_hits": int((pred[heat] > threshold_f).sum()),
+        "hit_rate": float((pred[heat] > threshold_f).mean()),
+        "heat_mae_f": float(np.mean(np.abs(err))),
+        "heat_bias_f": float(np.mean(err)),
+        "max_true_f": float(np.max(true[heat])),
+        "max_pred_f": float(np.max(pred[mask])) if mask.any() else None,
+    }
+
+
 def load_last_observed_temp() -> Optional[float]:
     """Return the most recent observed temp_high_f from Part 0 historical data."""
     hist_path = PART0_DIR / "historical_daily.parquet"
@@ -367,6 +404,8 @@ def main() -> int:
     models: Dict = {}
     val_metrics: Dict = {}
     test_metrics: Dict = {}
+    val_heat_event_diagnostics: Dict = {}
+    test_heat_event_diagnostics: Dict = {}
     xgb_live: Dict[str, float] = {}
     val_preds: Dict = {}
     feat_importances: Dict = {}
@@ -383,6 +422,7 @@ def main() -> int:
         rmse_v = float(np.sqrt(np.mean((vp[vm] - df_val[tc].values[vm]) ** 2)))
         val_metrics[f"h{h}_mae_f"] = mae_v
         val_metrics[f"h{h}_rmse_f"] = rmse_v
+        val_heat_event_diagnostics[f"h{h}"] = heat_event_diagnostics_1d(vp, df_val[tc].values)
         val_preds[f"h{h}"] = vp
         print(f"  Val MAE={mae_v:.2f}°F  RMSE={rmse_v:.2f}°F")
 
@@ -393,6 +433,7 @@ def main() -> int:
             rmse_t = float(np.sqrt(np.mean((tp[tm] - df_test[tc].values[tm]) ** 2)))
             test_metrics[f"h{h}_mae_f"] = mae_t
             test_metrics[f"h{h}_rmse_f"] = rmse_t
+            test_heat_event_diagnostics[f"h{h}"] = heat_event_diagnostics_1d(tp, df_test[tc].values)
             print(f"  Test MAE={mae_t:.2f}°F  RMSE={rmse_t:.2f}°F")
 
         live = float(m.predict(X_all[-1:])[0])
@@ -496,6 +537,8 @@ def main() -> int:
         "bnn_sleeve_recommended": bnn_rec,
         "val_metrics": val_metrics,
         "test_metrics": test_metrics,
+        "val_heat_event_diagnostics": val_heat_event_diagnostics,
+        "test_heat_event_diagnostics": test_heat_event_diagnostics,
         "persistence_baseline_mae": pers_maes,
         "xgb_live_predictions": xgb_live,
         "canonical_forecast": forecast,
@@ -512,6 +555,10 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+
+
+
 
 
 
