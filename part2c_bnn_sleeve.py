@@ -354,6 +354,11 @@ def main() -> int:
     val_true_f = tgt_scaler.inverse_transform(y_val_seq)
 
     cal = evaluate_calibration(val_true_f, val_lo_f, val_hi_f)
+    cal_pass = all(
+        cal.get(f"h{h}_calibration_error", 1.0) < 0.10
+        for h in HORIZONS
+    )
+    interval_status = "CALIBRATED" if cal_pass else "UNCALIBRATED"
 
     print("\n=== CALIBRATION (90% CI) ===")
     for h in HORIZONS:
@@ -410,6 +415,9 @@ def main() -> int:
     if log_path.exists():
         df_log = pd.read_csv(log_path)
         if not df_log.empty:
+            df_log.loc[df_log.index[-1], "bnn_available"] = True
+            df_log.loc[df_log.index[-1], "bnn_calibrated"] = bool(cal_pass)
+            df_log.loc[df_log.index[-1], "bnn_interval_status"] = interval_status
             for i, h in enumerate(HORIZONS):
                 df_log.loc[df_log.index[-1], f"bnn_lo90_h{h}"] = float(live_lo_f[i])
                 df_log.loc[df_log.index[-1], f"bnn_hi90_h{h}"] = float(live_hi_f[i])
@@ -424,10 +432,8 @@ def main() -> int:
         "ci_upper_pct": CI_UPPER,
         "ci_target_coverage": 0.90,
         "calibration_results": cal,
-        "calibration_pass": all(
-            cal.get(f"h{h}_calibration_error", 1.0) < 0.10
-            for h in HORIZONS
-        ),
+        "calibration_pass": cal_pass,
+        "interval_status": interval_status,
     }
     with open(ARTIFACTS_DIR / "calibration_report.json", "w") as f:
         json.dump(cal_report, f, indent=2)
@@ -453,6 +459,8 @@ def main() -> int:
         },
         "calibration_summary": cal,
         "calibration_pass": cal_report["calibration_pass"],
+        "interval_status": interval_status,
+        "intervals_publishable": bool(cal_pass),
     }
     with open(ARTIFACTS_DIR / "part2c_meta.json", "w") as f:
         json.dump(meta, f, indent=2)
