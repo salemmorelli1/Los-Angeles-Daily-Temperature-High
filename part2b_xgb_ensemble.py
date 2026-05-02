@@ -401,6 +401,67 @@ def compute_canonical_forecast(
     return forecast, source_label, " | ".join(reasons)
 
 
+def build_anchor_audit_fields(
+    forecast: Dict[str, float],
+    xgb_preds: Dict[str, float],
+    lstm_preds: Dict[str, float],
+    nws_preds: Dict[int, Optional[float]],
+    reason: str,
+) -> Tuple[Dict[str, object], Dict[str, Dict[str, object]]]:
+    """Create transparent NWS-anchor audit columns.
+
+    The canonical forecast may be partially pulled toward NWS. These fields
+    preserve the model-only pre-anchor value, the NWS comparator, and the
+    adjustment applied by horizon so attribution can distinguish independent
+    model skill from NWS-anchored forecasts.
+    """
+    flat: Dict[str, object] = {}
+    details: Dict[str, Dict[str, object]] = {}
+    any_anchor = False
+
+    for h in HORIZONS:
+        key = f"h{h}"
+        xgb_val = xgb_preds.get(key, np.nan)
+        lstm_val = lstm_preds.get(key, np.nan)
+        nws_val = nws_preds.get(h, np.nan)
+
+        if np.isfinite(xgb_val) and np.isfinite(lstm_val):
+            pre_anchor = BLEND_WEIGHT_XGB * float(xgb_val) + (1.0 - BLEND_WEIGHT_XGB) * float(lstm_val)
+            pre_source = "blend"
+        elif np.isfinite(xgb_val):
+            pre_anchor = float(xgb_val)
+            pre_source = "xgb"
+        else:
+            pre_anchor = float("nan")
+            pre_source = "unavailable"
+
+        final_val = float(forecast.get(key, np.nan))
+        h_reason = next((part for part in str(reason).split(" | ") if part.startswith(f"H{h}:")), "")
+        anchor_applied = bool("nws_anchor" in h_reason or "heat_guard" in h_reason or "nws_" in h_reason and "anchor" in h_reason)
+        if np.isfinite(pre_anchor) and np.isfinite(final_val) and abs(final_val - pre_anchor) > 1e-6:
+            anchor_applied = anchor_applied or bool(np.isfinite(nws_val))
+        any_anchor = any_anchor or anchor_applied
+
+        delta = final_val - pre_anchor if np.isfinite(final_val) and np.isfinite(pre_anchor) else float("nan")
+        details[key] = {
+            "pre_anchor_source": pre_source,
+            "pre_anchor_f": float(pre_anchor) if np.isfinite(pre_anchor) else None,
+            "nws_f": float(nws_val) if np.isfinite(nws_val) else None,
+            "final_f": float(final_val) if np.isfinite(final_val) else None,
+            "anchor_applied": bool(anchor_applied),
+            "anchor_delta_f": float(delta) if np.isfinite(delta) else None,
+            "reason": h_reason,
+        }
+
+        flat[f"forecast_pre_anchor_h{h}"] = details[key]["pre_anchor_f"]
+        flat[f"nws_h{h}"] = details[key]["nws_f"]
+        flat[f"nws_anchor_applied_h{h}"] = bool(anchor_applied)
+        flat[f"nws_anchor_delta_h{h}"] = details[key]["anchor_delta_f"]
+
+    flat["nws_anchor_used"] = bool(any_anchor)
+    return flat, details
+
+
 # ---------------------------------------------------------------------------
 # Prediction log — idempotent upsert (mirrors Part 2 helper)
 # ---------------------------------------------------------------------------
@@ -580,6 +641,9 @@ def main() -> int:
     forecast, source, reason = compute_canonical_forecast(
         xgb_live, lstm_live, nws_preds, last_obs
     )
+    anchor_log_fields, anchor_details = build_anchor_audit_fields(
+        forecast, xgb_live, lstm_live, nws_preds, reason
+    )
 
     print("\n=== CANONICAL FORECAST ===")
     print(f"  Source: {source}")
@@ -593,6 +657,7 @@ def main() -> int:
         "forecast_source": source,
         "forecast_reason": reason,
     }
+    updates.update(anchor_log_fields)
     for h in HORIZONS:
         updates[f"xgb_h{h}"] = xgb_live.get(f"h{h}", np.nan)
         updates[f"forecast_h{h}"] = forecast.get(f"h{h}", np.nan)
@@ -618,6 +683,8 @@ def main() -> int:
         "canonical_forecast": forecast,
         "forecast_source": source,
         "forecast_reason": reason,
+        "nws_anchor_used": bool(anchor_log_fields.get("nws_anchor_used", False)),
+        "nws_anchor_details": anchor_details,
         "feature_importances": feat_importances,
         "hyperparameters": XGB_PARAMS,
         "nws_anchor_policy": {
@@ -638,15 +705,6 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
-
-
-
-
-
-
-
-
 
 
 
