@@ -519,6 +519,7 @@ def main() -> int:
     print("[Part 9] Computing attribution metrics...")
     metrics = compute_metrics(df_log, clim_df)
     nws_metrics = compute_nws_accuracy(df_log, nws_forecast)
+    source_summary = forecast_source_summary(df_log)
 
     # Print summary
     print("\n=== ATTRIBUTION SUMMARY ===")
@@ -605,3 +606,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
