@@ -499,26 +499,6 @@ def load_om_forecast() -> pd.DataFrame:
     return pd.read_parquet(path)
 
 
-# ---------------------------------------------------------------------------
-# Incremental update: only fetch new dates
-# ---------------------------------------------------------------------------
-def incremental_update() -> pd.DataFrame:
-    """Fetch only missing dates since the last cached record."""
-    df_existing = load_historical()
-    if df_existing.empty:
-        print("[Part 0] No cache found — running full fetch.")
-        return pd.DataFrame()
-
-    last_date = pd.Timestamp(df_existing["date"].max()).date()
-    today = date.today()
-    if last_date >= today - timedelta(days=1):
-        print(f"[Part 0] Cache is up-to-date (last: {last_date}). Skipping historical refetch.")
-        return df_existing
-
-    start = (last_date + timedelta(days=1)).strftime("%Y-%m-%d")
-    print(f"[Part 0] Incremental fetch from {start}...")
-    return pd.DataFrame()  # Signal to caller to fetch from `start`
-
 
 # ---------------------------------------------------------------------------
 # Main
