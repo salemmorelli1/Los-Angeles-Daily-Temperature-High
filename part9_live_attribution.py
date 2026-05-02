@@ -319,30 +319,37 @@ def climatology_for_dates(dates: pd.Series, clim_map: Dict[int, float]) -> pd.Se
 # NWS benchmark
 # ---------------------------------------------------------------------------
 def compute_nws_accuracy(df_log: pd.DataFrame, nws_forecast: Dict) -> Dict[str, float]:
+    """Compute NWS forecast accuracy for all horizons (H=1, H=3, H=5).
+
+    Issue 4 fix: original only computed H=1. NWS provides up to 7 days,
+    so H=3 and H=5 comparisons are available and should be reported.
+    """
     daily = nws_forecast.get("daily_high_f", {})
     if not daily:
         return {}
     nws_map = {pd.Timestamp(k).normalize(): float(v) for k, v in daily.items() if pd.notna(v)}
 
-    errors: List[float] = []
-    for _, row in df_log.iterrows():
-        tdate = target_date_for_row(row, 1)
-        nws_val = nws_map.get(tdate)
-        realized = pd.to_numeric(
-            pd.Series([row.get("realized_h1", np.nan)]), errors="coerce"
-        ).iloc[0]
-        if nws_val is not None and np.isfinite(nws_val) and np.isfinite(realized):
-            errors.append(realized - nws_val)
+    result: Dict[str, float] = {}
+    for h in HORIZONS:
+        errors: List[float] = []
+        for _, row in df_log.iterrows():
+            tdate = target_date_for_row(row, h)
+            nws_val = nws_map.get(tdate)
+            realized = pd.to_numeric(
+                pd.Series([row.get(f"realized_h{h}", np.nan)]), errors="coerce"
+            ).iloc[0]
+            if nws_val is not None and np.isfinite(nws_val) and np.isfinite(realized):
+                errors.append(realized - nws_val)
 
-    if not errors:
-        return {}
-    err = np.array(errors, dtype=float)
-    return {
-        "nws_h1_mae_f": float(np.mean(np.abs(err))),
-        "nws_h1_rmse_f": float(np.sqrt(np.mean(err ** 2))),
-        "nws_h1_bias_f": float(np.mean(err)),
-        "nws_n_days": int(len(err)),
-    }
+        if not errors:
+            continue
+        err = np.array(errors, dtype=float)
+        result[f"nws_h{h}_mae_f"] = float(np.mean(np.abs(err)))
+        result[f"nws_h{h}_rmse_f"] = float(np.sqrt(np.mean(err ** 2)))
+        result[f"nws_h{h}_bias_f"] = float(np.mean(err))
+        result[f"nws_h{h}_n_days"] = int(len(err))
+
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -539,9 +546,12 @@ def main() -> int:
         print(f"  H={h} ({m.get('pred_col_used', '?')}): {' | '.join(parts)}")
 
     if nws_metrics:
-        n_nws = nws_metrics.get("nws_n_days", 0)
-        nws_note = "" if n_nws >= SKILL_MIN_SAMPLES else f" ⚠️  n={n_nws} < {SKILL_MIN_SAMPLES}"
-        print(f"\n  NWS H=1: MAE={nws_metrics['nws_h1_mae_f']:.2f}°F (n={n_nws}){nws_note}")
+        for h in HORIZONS:
+            n_nws = nws_metrics.get(f"nws_h{h}_n_days", 0)
+            mae = nws_metrics.get(f"nws_h{h}_mae_f")
+            if mae is not None:
+                nws_note = "" if n_nws >= SKILL_MIN_SAMPLES else f" ⚠️  n={n_nws} < {SKILL_MIN_SAMPLES}"
+                print(f"  NWS H={h}: MAE={mae:.2f}°F (n={n_nws}){nws_note}")
 
     # Save attribution tape
     df_log.to_parquet(ARTIFACTS_DIR / "attribution_tape.parquet", index=False)
@@ -594,11 +604,23 @@ def main() -> int:
         json.dump(report, f, indent=2, default=str)
     print("[Part 9] Saved live_attribution_report.json")
 
-    # Update prediction log with realized values
-    log_path = PART2_DIR / "prediction_log.csv"
-    if log_path.exists():
-        df_log.to_csv(log_path, index=False)
-        print("[Part 9] Updated prediction_log.csv with realized temperatures")
+    # Update prediction-log copies with realized values.
+    updated_any_log = False
+
+    part2_log_path = PART2_DIR / "prediction_log.csv"
+    if part2_log_path.exists():
+        df_log.to_csv(part2_log_path, index=False)
+        updated_any_log = True
+        print("[Part 9] Updated artifacts_part2/prediction_log.csv with realized temperatures")
+
+    part3_log_path = PART3_DIR / "prediction_log.csv"
+    if part3_log_path.exists():
+        df_log.to_csv(part3_log_path, index=False)
+        updated_any_log = True
+        print("[Part 9] Updated artifacts_part3/prediction_log.csv with realized temperatures")
+
+    if not updated_any_log:
+        print("[Part 9] WARNING: No prediction_log.csv copy found to update")
 
     print("\n[Part 9] ✅  Complete.")
     return 0
