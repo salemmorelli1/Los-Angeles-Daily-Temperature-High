@@ -63,6 +63,7 @@ CI_LOWER = 5.0
 CI_UPPER = 95.0
 CONFORMAL_ALPHA = 0.10  # 90% split-conformal interval target
 MIN_CONFORMAL_COVERAGE = 0.85
+MIN_TEST_CONFORMAL_COVERAGE = 0.80
 HIDDEN_SIZE = 128
 NUM_LAYERS = 2
 DROPOUT = 0.20
@@ -323,8 +324,10 @@ def apply_conformal_intervals(mean_vals: np.ndarray, q: np.ndarray) -> Tuple[np.
     return mean_vals - q2, mean_vals + q2
 
 
-def conformal_coverage_pass(cal: Dict[str, float]) -> bool:
-    return all(cal.get(f"h{h}_coverage_90pct", 0.0) >= MIN_CONFORMAL_COVERAGE for h in HORIZONS)
+def conformal_coverage_pass(cal: Dict[str, float], threshold: float) -> bool:
+    if not cal:
+        return False
+    return all(cal.get(f"h{h}_coverage_90pct", 0.0) >= threshold for h in HORIZONS)
 
 
 def _make_pred_df(dates, mean_f, lo_f, hi_f, std_f, true_f=None) -> pd.DataFrame:
@@ -390,8 +393,9 @@ def main() -> int:
     conformal_q_f = conformal_quantiles(val_true_f, val_mean_f, alpha=CONFORMAL_ALPHA)
     val_lo_conf_f, val_hi_conf_f = apply_conformal_intervals(val_mean_f, conformal_q_f)
     cal = evaluate_calibration(val_true_f, val_lo_conf_f, val_hi_conf_f)
-    cal_pass = conformal_coverage_pass(cal)
-    interval_status = "CONFORMAL_CALIBRATED" if cal_pass else "UNCALIBRATED"
+    validation_calibration_pass = conformal_coverage_pass(cal, MIN_CONFORMAL_COVERAGE)
+    cal_pass = False  # finalized after the independent test-coverage check below
+    interval_status = "UNCALIBRATED"
 
     print("\n=== CALIBRATION (90% CI) ===")
     for h in HORIZONS:
@@ -410,6 +414,9 @@ def main() -> int:
     test_lo_conf_f, test_hi_conf_f = apply_conformal_intervals(test_mean_f, conformal_q_f)
     test_true_f = tgt_scaler.inverse_transform(y_test_seq) if len(y_test_seq) else None
     test_cal = evaluate_calibration(test_true_f, test_lo_conf_f, test_hi_conf_f) if test_true_f is not None else {}
+    test_calibration_pass = conformal_coverage_pass(test_cal, MIN_TEST_CONFORMAL_COVERAGE)
+    cal_pass = bool(validation_calibration_pass and test_calibration_pass)
+    interval_status = "CONFORMAL_CALIBRATED" if cal_pass else "UNCALIBRATED"
 
     # Live uncertainty.
     print("\n[Part 2C] Running MC Dropout on latest available data...")
@@ -472,11 +479,15 @@ def main() -> int:
         "ci_target_coverage": 0.90,
         "interval_method": "split_conformal_on_validation_residuals",
         "conformal_alpha": CONFORMAL_ALPHA,
+        "min_validation_coverage": MIN_CONFORMAL_COVERAGE,
+        "min_test_coverage": MIN_TEST_CONFORMAL_COVERAGE,
         "conformal_quantile_f_by_horizon": {f"h{h}": float(conformal_q_f[i]) for i, h in enumerate(HORIZONS)},
         "raw_mc_dropout_calibration_results": raw_cal,
         "calibration_results": cal,
         "test_coverage_results": test_cal,
-        "calibration_pass": cal_pass,
+        "validation_calibration_pass": bool(validation_calibration_pass),
+        "test_calibration_pass": bool(test_calibration_pass),
+        "calibration_pass": bool(cal_pass),
         "interval_status": interval_status,
         "intervals_publishable": bool(cal_pass),
     }
@@ -504,9 +515,13 @@ def main() -> int:
         },
         "interval_method": "split_conformal_on_validation_residuals",
         "conformal_quantile_f_by_horizon": {f"h{h}": float(conformal_q_f[i]) for i, h in enumerate(HORIZONS)},
+        "min_validation_coverage": MIN_CONFORMAL_COVERAGE,
+        "min_test_coverage": MIN_TEST_CONFORMAL_COVERAGE,
         "raw_mc_dropout_calibration_summary": raw_cal,
         "calibration_summary": cal,
         "test_coverage_summary": test_cal,
+        "validation_calibration_pass": bool(validation_calibration_pass),
+        "test_calibration_pass": bool(test_calibration_pass),
         "calibration_pass": cal_report["calibration_pass"],
         "interval_status": interval_status,
         "intervals_publishable": bool(cal_pass),
