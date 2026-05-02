@@ -170,12 +170,7 @@ def _state_means_from_model(model: Any, scaler: StandardScaler, feature_cols: Li
 
 
 def _physical_label_suggestions(means_df: pd.DataFrame, n_regimes: int = N_REGIMES) -> Dict[int, Dict[str, Any]]:
-    """Return non-authoritative physical label suggestions for each state.
-
-    The HMM states are statistical clusters. A physical label is marked valid
-    only if the state means satisfy basic meteorological checks. This avoids
-    calling a cool/humid or southerly-wind state a literal Santa Ana regime.
-    """
+    """Return non-authoritative physical label suggestions for each state."""
     suggestions: Dict[int, Dict[str, Any]] = {}
     for idx in range(n_regimes):
         row = means_df.loc[idx]
@@ -184,25 +179,46 @@ def _physical_label_suggestions(means_df: pd.DataFrame, n_regimes: int = N_REGIM
         cloud = float(row.get("cloud_cover_mean_pct", np.nan))
         diurnal = float(row.get("diurnal_range_f", np.nan))
         wind = float(row.get("wind_speed_max_mph", np.nan))
+        pressure = float(row.get("pressure_mean_hpa", np.nan))
+        log_precip = float(row.get("log_precip", np.nan))
 
+        # MARINE_LAYER: cool, humid, cloudy, low diurnal range
         marine_score = 0
         if np.isfinite(temp) and temp <= 66: marine_score += 1
         if np.isfinite(humidity) and humidity >= 72: marine_score += 1
         if np.isfinite(cloud) and cloud >= 50: marine_score += 1
         if np.isfinite(diurnal) and diurnal <= 12: marine_score += 1
 
+        # SANTA_ANA: hot, very dry, high diurnal range, strong wind
         santa_score = 0
         if np.isfinite(temp) and temp >= 75: santa_score += 1
         if np.isfinite(humidity) and humidity <= 45: santa_score += 1
         if np.isfinite(diurnal) and diurnal >= 16: santa_score += 1
         if np.isfinite(wind) and wind >= 15: santa_score += 1
 
-        if marine_score >= 3:
+        # DRY_CLEAR: moderate/low humidity, low cloud, wide diurnal range,
+        # elevated pressure, near-zero precip. Distinct from marine layer
+        # (higher temp, lower humidity, less cloud) and from Santa Ana
+        # (less extreme wind, not as hot or dry).
+        dry_score = 0
+        if np.isfinite(humidity) and humidity < 70: dry_score += 1
+        if np.isfinite(cloud) and cloud < 45: dry_score += 1
+        if np.isfinite(diurnal) and diurnal >= 14: dry_score += 1
+        if np.isfinite(pressure) and pressure >= 1010: dry_score += 1
+        if np.isfinite(log_precip) and log_precip < 0.1: dry_score += 1
+
+        # Assign label: pick the highest-scoring validated label.
+        # Require minimum score of 3 for MARINE/SANTA_ANA and 4 for DRY_CLEAR
+        # (extra criterion because dry-clear is the residual "normal" regime).
+        if marine_score >= 3 and marine_score >= santa_score and marine_score >= dry_score:
             suggestions[idx] = {"suggested_label": "MARINE_LAYER", "validated": True, "score": marine_score}
-        elif santa_score >= 3:
+        elif santa_score >= 3 and santa_score > marine_score:
             suggestions[idx] = {"suggested_label": "SANTA_ANA", "validated": True, "score": santa_score}
+        elif dry_score >= 4 and dry_score > marine_score:
+            suggestions[idx] = {"suggested_label": "DRY_CLEAR", "validated": True, "score": dry_score}
         else:
-            suggestions[idx] = {"suggested_label": "UNVALIDATED", "validated": False, "score": max(marine_score, santa_score)}
+            suggestions[idx] = {"suggested_label": "UNVALIDATED", "validated": False,
+                                  "score": max(marine_score, santa_score, dry_score)}
     return suggestions
 
 
