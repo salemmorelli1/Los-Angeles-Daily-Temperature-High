@@ -54,6 +54,8 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
+          # Keep production CPU-only. requirements.txt pins xgboost<2.0 to avoid
+          # nvidia-nccl-cu12/GPU dependency pulls on GitHub Actions.
           grep -vE '^torch([<>=! ].*)?$' requirements.txt > /tmp/requirements-no-torch.txt
           pip install -r /tmp/requirements-no-torch.txt
           pip install torch --index-url https://download.pytorch.org/whl/cpu
