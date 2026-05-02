@@ -203,8 +203,11 @@ def compute_santa_ana_alphas(df: pd.DataFrame) -> pd.DataFrame:
         dryness = (100.0 - hum) / 100.0
 
         alpha["alpha_santa_ana_index"] = (offshore_score * speed * dryness).shift(1)
+        # Broadened threshold: classic Santa Ana requires offshore direction (NE/E),
+        # elevated wind, and low humidity. The previous thresholds (speed>20, hum<25)
+        # were too strict for LAX coastal observations and produced a constant-zero feature.
         alpha["alpha_santa_ana_flag"] = (
-            ((wind_dir >= 30) & (wind_dir <= 120) & (speed > 20) & (hum < 25)).astype(int).shift(1)
+            ((wind_dir >= 10) & (wind_dir <= 130) & (speed > 15) & (hum < 35)).astype(int).shift(1)
         )
 
         if gust is not None:
@@ -372,6 +375,23 @@ def build_alpha_features(df: pd.DataFrame, enso_df: Optional[pd.DataFrame] = Non
     # Drop near-duplicate or all-NaN columns
     alpha_cols = [c for c in alpha_all.columns if c != "date"]
     alpha_cols = [c for c in alpha_cols if alpha_all[c].notna().mean() > 0.3]
+
+    # Drop constant (zero-variance) alpha columns before merge.
+    # A constant alpha feature reaching feature_matrix.parquet will trigger
+    # the Part 1 / Part 2 constant-feature guards and will fail validate_artifacts.py.
+    # Better to catch it here at the source.
+    constant_alpha: List[str] = []
+    nonconstant_alpha: List[str] = []
+    for col in alpha_cols:
+        s = pd.to_numeric(alpha_all[col], errors="coerce")
+        if s.nunique(dropna=True) > 1:
+            nonconstant_alpha.append(col)
+        else:
+            constant_alpha.append(col)
+    if constant_alpha:
+        print(f"[Part 2A] Dropping {len(constant_alpha)} constant alpha feature(s) before merge: "
+              f"{constant_alpha}")
+    alpha_cols = nonconstant_alpha
     alpha_all = alpha_all[["date"] + alpha_cols]
 
     print(f"[Part 2A] Built {len(alpha_cols)} alpha features over {len(alpha_all)} rows")
@@ -397,6 +417,31 @@ def merge_into_feature_matrix(alpha_df: pd.DataFrame) -> None:
     df_merged = df_feat.merge(alpha_df, on="date", how="left")
     df_merged.to_parquet(feat_path, index=False)
     print(f"[Part 2A] Merged alpha features into feature_matrix.parquet ({len(df_merged)} rows)")
+
+    # Update artifacts_part1/feature_meta.json to reflect the post-alpha feature list.
+    # A stale feature_meta causes Part 2 metadata to report the wrong feature count and
+    # makes artifact contract validation fail.
+    meta_path = PART1_DIR / "feature_meta.json"
+    target_cols = [c for c in df_merged.columns if c.startswith("target_h")]
+    post_alpha_feature_cols = [
+        c for c in df_merged.columns if c not in (["date"] + target_cols)
+    ]
+
+    if meta_path.exists():
+        with open(meta_path) as f:
+            meta = json.load(f)
+    else:
+        meta = {"schema_version": "1.0.0"}
+
+    meta["feature_cols"] = post_alpha_feature_cols
+    meta["n_rows"] = len(df_merged)
+    meta["alpha_features_merged"] = True
+    meta["alpha_merge_date"] = pd.Timestamp.now().isoformat()
+    meta["post_alpha_n_features"] = len(post_alpha_feature_cols)
+
+    with open(meta_path, "w") as f:
+        json.dump(meta, f, indent=2)
+    print(f"[Part 2A] Updated feature_meta.json: {len(post_alpha_feature_cols)} post-alpha features")
 
 
 # ---------------------------------------------------------------------------
