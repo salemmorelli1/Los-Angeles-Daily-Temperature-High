@@ -521,6 +521,19 @@ def main() -> int:
     else:
         bnn_interval_status = str(bnn_chk.details.get("interval_status", "CALIBRATED" if bnn_calibrated else "UNCALIBRATED"))
 
+    # BNN intervals are safe to display only when all three conditions are met.
+    bnn_intervals_displayable = bool(
+        bnn_available
+        and bnn_calibrated
+        and bnn_chk.details.get("intervals_publishable", False)
+    )
+    if bnn_available and not bnn_intervals_displayable:
+        print(
+            "[Part 3] ⚠️  BNN intervals NOT displayable "
+            f"(status={bnn_interval_status}). "
+            "Dashboard must suppress BNN CI bands."
+        )
+
     print("\n=== GOVERNANCE CHECKS ===")
     for chk in checks:
         icon = "✅" if chk.passed else ("⚠️ " if chk.level == "WARN" else "❌")
@@ -545,6 +558,7 @@ def main() -> int:
         df_log.loc[df_log.index[-1], "bnn_available"] = bool(bnn_available)
         df_log.loc[df_log.index[-1], "bnn_calibrated"] = bool(bnn_calibrated)
         df_log.loc[df_log.index[-1], "bnn_interval_status"] = bnn_interval_status
+        df_log.loc[df_log.index[-1], "bnn_intervals_displayable"] = bool(bnn_intervals_displayable)
 
         df_log.to_csv(log_path, index=False)
         print(f"[Part 3] Updated prediction_log.csv: publish_mode={publish_mode}")
@@ -564,6 +578,7 @@ def main() -> int:
         "bnn_available": bnn_available,
         "bnn_calibrated": bnn_calibrated,
         "bnn_interval_status": bnn_interval_status,
+        "bnn_intervals_displayable": bool(bnn_intervals_displayable),
         "checks_passed": sum(1 for c in checks if c.passed),
         "checks_total": len(checks),
         "checks": [c.to_dict() for c in checks],
