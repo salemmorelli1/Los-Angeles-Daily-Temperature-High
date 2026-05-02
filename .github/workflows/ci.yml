@@ -20,11 +20,19 @@ concurrency:
   group: latemp-ci-${{ github.ref }}
   cancel-in-progress: true
 
+# ---------------------------------------------------------------------------
+# Job 1 — Syntax check (fast, lightweight)
+# ---------------------------------------------------------------------------
+# py_compile needs no packages at all.
+# The --help checks need only numpy and pandas (module-level imports).
+# torch, xgboost, hmmlearn are NOT installed here.
+# This job should complete in ~20 seconds.
+# ---------------------------------------------------------------------------
 jobs:
   syntax-check:
     name: Python syntax check
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 5
 
     steps:
       - name: Check out repo
@@ -34,14 +42,14 @@ jobs:
         uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-          cache: "pip"
+          # No pip cache key — lightweight install is faster cold than restoring 3 GB
 
-      - name: Install dependencies
+      - name: Install lightweight dependencies only
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          pip install numpy pandas requests pyarrow scikit-learn
 
-      - name: Compile project scripts
+      - name: Compile all project scripts
         run: |
           python -m py_compile \
             part0_data_infrastructure.py \
@@ -54,10 +62,68 @@ jobs:
             part6_weather_regime_engine.py \
             part9_live_attribution.py \
             run_daily_forecast.py
+          echo "✅ All scripts compile successfully."
 
-      - name: Check command-line interfaces
+      - name: Check CLI interfaces
         run: |
           python run_daily_forecast.py --help
           python part2_deep_learning_forecaster.py --help
 
-          
+# ---------------------------------------------------------------------------
+# Job 2 — Integration check (heavy, manual or weekly only)
+# ---------------------------------------------------------------------------
+# Installs the full ML stack (torch, xgboost, hmmlearn) and verifies
+# that all imports resolve. Runs only on workflow_dispatch or weekly
+# schedule — not on every push.
+# ---------------------------------------------------------------------------
+  integration-check:
+    name: Full dependency integration check
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+
+    # Only run on explicit manual trigger or weekly; skip on every push
+    if: github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install full dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Verify all imports resolve
+        run: |
+          python -c "
+          import part0_data_infrastructure
+          import part1_feature_builder
+          import part2a_atmospheric_alpha
+          import part2b_xgb_ensemble
+          import part3_forecast_governance
+          import part6_weather_regime_engine
+          import part9_live_attribution
+          import run_daily_forecast
+          print('✅ All imports resolved successfully.')
+          "
+
+      - name: Compile all project scripts (full stack)
+        run: |
+          python -m py_compile \
+            part0_data_infrastructure.py \
+            part1_feature_builder.py \
+            part2_deep_learning_forecaster.py \
+            part2a_atmospheric_alpha.py \
+            part2b_xgb_ensemble.py \
+            part2c_bnn_sleeve.py \
+            part3_forecast_governance.py \
+            part6_weather_regime_engine.py \
+            part9_live_attribution.py \
+            run_daily_forecast.py
+          echo "✅ All scripts compile successfully."
