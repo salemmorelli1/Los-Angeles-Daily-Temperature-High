@@ -110,7 +110,7 @@ LA_Temp_Forecast/
 └── .gitignore
 ```
 
-**Generated at runtime** (not committed to git):
+**Generated artifacts** (committed by the production workflow for dashboard publishing):
 ```
 artifacts_part0/   historical_daily.parquet, nws_official_forecast.json, ...
 artifacts_part1/   feature_matrix.parquet, train_val_test_split.json
@@ -122,6 +122,9 @@ artifacts_part3/   governance_report.json, governance_history.parquet
 artifacts_part6/   regime_tape.parquet, regime_model.pkl
 artifacts_part9/   live_attribution_report.json, attribution_tape.parquet
 ```
+
+> The daily production workflow commits `artifacts_part*/` outputs so GitHub Pages can render the dashboard from fresh forecast artifacts. Large binaries can later be moved to Releases if repository size becomes a constraint.
+
 
 ---
 
@@ -139,7 +142,7 @@ artifacts_part9/   live_attribution_report.json, attribution_tape.parquet
 | **Open-Meteo Forecast** | 7-day gridded forecast | `api.open-meteo.com/v1/forecast` |
 | **NWS API** | Official NWS 7-day text forecast (benchmark) | `api.weather.gov/gridpoints/LOX/155,49/forecast` |
 | **NWS KLAX Obs** | Recent KLAX hourly observations | `api.weather.gov/stations/KLAX/observations` |
-| **NOAA ENSO** | Monthly Niño 3.4 anomaly index | `psl.noaa.gov/data/correlation/nina34.data` |
+| **NOAA ENSO** | Monthly Niño 3.4 anomaly index | `psl.noaa.gov/data/correlation/nina34.anom.data` |
 
 All sources are **free, open, and require no API key.**
 
@@ -219,4 +222,6 @@ python run_daily_forecast.py
 ## License
 
 MIT
+
+
 
