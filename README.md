@@ -50,6 +50,11 @@ Part 9  Live Attribution          (MAE/RMSE/Skill vs NWS + climatology)
 
 Part 6 regime names are intentionally neutral in model features. Physical labels such as “marine layer” are stored only as metadata suggestions when the state statistics support them.
 
+### NWS anchoring disclosure
+
+Part 2B may apply a conservative NWS anchoring overlay when the learned model stack diverges materially from the official NWS forecast, especially during potential heat events. When `forecast_source` contains `nws_anchor`, the canonical forecast is still valid as a governed public forecast, but future skill comparisons against NWS are **not independent** for those anchored rows. Part 9 therefore reports an NWS-anchor disclosure alongside attribution metrics.
+
+
 ---
 
 ## Quick Start
