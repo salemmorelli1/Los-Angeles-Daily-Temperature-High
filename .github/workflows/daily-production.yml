@@ -54,7 +54,9 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          grep -vE '^torch([<>=! ].*)?$' requirements.txt > /tmp/requirements-no-torch.txt
+          pip install -r /tmp/requirements-no-torch.txt
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
 
       - name: Restore accumulated artifacts from remote
         run: |
