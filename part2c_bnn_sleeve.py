@@ -427,21 +427,60 @@ def main() -> int:
     live_mean_s, live_std_s, live_lo_s, live_hi_s = mc_predict(model, live_seq)
 
     live_mean_f = tgt_scaler.inverse_transform(live_mean_s)[0]
-    live_lo_f = tgt_scaler.inverse_transform(live_lo_s)[0]
-    live_hi_f = tgt_scaler.inverse_transform(live_hi_s)[0]
     live_std_f = scaled_std_to_fahrenheit(live_std_s, tgt_scaler)[0]
-    live_lo_conf_f, live_hi_conf_f = apply_conformal_intervals(live_mean_f.reshape(1, -1), conformal_q_f)
+
+    # Center publishable intervals on the canonical forecast (blend+NWS-anchor)
+    # from Part 2B, not on the raw LSTM mean.  The raw LSTM mean is a diagnostic;
+    # the canonical forecast is what governance publishes.  Centering intervals
+    # on a different value than the published point forecast is misleading.
+    canonical_center_f = live_mean_f.copy()  # fallback: LSTM mean
+    canonical_source = "lstm_bnn_mean"
+
+    part2b_summary_path = PART2B_DIR / "part2b_summary.json"
+    if part2b_summary_path.exists():
+        with open(part2b_summary_path) as _f:
+            _summary = json.load(_f)
+        _canon = _summary.get("canonical_forecast", {})
+        if _canon:
+            for i, h in enumerate(HORIZONS):
+                _v = _canon.get(f"h{h}")
+                if _v is not None and np.isfinite(float(_v)):
+                    canonical_center_f[i] = float(_v)
+            canonical_source = _summary.get("forecast_source", "part2b_canonical")
+            print(f"[Part 2C] Centering live intervals on Part 2B canonical forecast "
+                  f"(source={canonical_source})")
+    else:
+        print("[Part 2C] part2b_summary.json not found — using LSTM mean as interval center.")
+
+    # Publishable intervals: canonical center ± conformal quantile.
+    #
+    # Statistical note: the conformal quantile is calibrated against LSTM
+    # validation residuals (LSTM mean vs realized).  When the canonical center
+    # is the LSTM mean, the interval is a valid split-conformal predictive
+    # interval.  When the canonical center includes XGB blending or NWS
+    # anchoring, the interval is a display approximation — it captures the
+    # empirical LSTM error spread but is not a formally calibrated interval for
+    # the blended/anchored forecast.  It is labeled "canonical_display_interval"
+    # in the meta to make this distinction explicit.
+    live_lo_conf_f, live_hi_conf_f = apply_conformal_intervals(
+        canonical_center_f.reshape(1, -1), conformal_q_f
+    )
     live_lo_conf_f = live_lo_conf_f[0]
     live_hi_conf_f = live_hi_conf_f[0]
+    interval_label = (
+        "conformal_calibrated"
+        if canonical_source == "lstm_bnn_mean"
+        else "canonical_display_interval"
+    )
 
     feature_date = pd.Timestamp(df["date"].max()).normalize()
     print("\n=== LIVE PREDICTIONS WITH UNCERTAINTY ===")
     for i, h in enumerate(HORIZONS):
         target_date = feature_date + pd.Timedelta(days=h)
         print(
-            f"  H={h} ({target_date.date()}): {live_mean_f[i]:.1f}°F "
+            f"  H={h} ({target_date.date()}): canonical={canonical_center_f[i]:.1f}°F "
             f"[conformal 90% CI: {live_lo_conf_f[i]:.1f}°F – {live_hi_conf_f[i]:.1f}°F] "
-            f"(±{live_std_f[i]:.2f}°F)"
+            f"(LSTM diagnostic mean={live_mean_f[i]:.1f}°F ±{live_std_f[i]:.2f}°F)"
         )
 
     # Save prediction parquet.
@@ -456,6 +495,8 @@ def main() -> int:
     print(f"\n[Part 2C] Saved bnn_predictions.parquet ({len(all_df)} rows)")
 
     # Update latest prediction row with BNN uncertainty.
+    # bnn_lo90_h* / bnn_hi90_h* are canonical-centered (publishable).
+    # bnn_diagnostic_mean_h* is the raw LSTM mean (diagnostic only).
     log_path = PART2_DIR / "prediction_log.csv"
     if log_path.exists():
         df_log = pd.read_csv(log_path)
@@ -464,12 +505,16 @@ def main() -> int:
             df_log.loc[df_log.index[-1], "bnn_calibrated"] = bool(cal_pass)
             df_log.loc[df_log.index[-1], "bnn_interval_status"] = interval_status
             df_log.loc[df_log.index[-1], "intervals_publishable"] = bool(cal_pass)
+            df_log.loc[df_log.index[-1], "bnn_interval_center"] = canonical_source
+            df_log.loc[df_log.index[-1], "bnn_interval_label"] = interval_label
             for i, h in enumerate(HORIZONS):
                 df_log.loc[df_log.index[-1], f"bnn_lo90_h{h}"] = float(live_lo_conf_f[i])
                 df_log.loc[df_log.index[-1], f"bnn_hi90_h{h}"] = float(live_hi_conf_f[i])
                 df_log.loc[df_log.index[-1], f"bnn_std_h{h}"] = float(live_std_f[i])
+                df_log.loc[df_log.index[-1], f"bnn_diagnostic_mean_h{h}"] = float(live_mean_f[i])
             df_log.to_csv(log_path, index=False)
-            print("[Part 2C] Updated prediction_log.csv with BNN uncertainty columns")
+            print("[Part 2C] Updated prediction_log.csv with BNN uncertainty columns "
+                  f"(interval center={canonical_source})")
 
     cal_report = {
         "schema_version": SCHEMA_VERSION,
@@ -506,9 +551,12 @@ def main() -> int:
         "live_predictions": {
             f"h{h}": {
                 "target_date": str((feature_date + pd.Timedelta(days=h)).date()),
-                "mean_f": float(live_mean_f[i]),
+                "canonical_center_f": float(canonical_center_f[i]),
+                "canonical_source": canonical_source,
+                "interval_label": interval_label,
                 "lo90_f": float(live_lo_conf_f[i]),
                 "hi90_f": float(live_hi_conf_f[i]),
+                "bnn_diagnostic_mean_f": float(live_mean_f[i]),
                 "std_f": float(live_std_f[i]),
             }
             for i, h in enumerate(HORIZONS)
