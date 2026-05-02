@@ -510,7 +510,8 @@ def main() -> int:
     print(f"\n[Part 2B] ✅  Complete. Gate={gate}  Source={source}")
     return 0
 
-
 if __name__ == "__main__":
     raise SystemExit(main())
+
+
 
