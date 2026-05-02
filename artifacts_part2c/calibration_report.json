@@ -5,15 +5,15 @@
   "ci_upper_pct": 95.0,
   "ci_target_coverage": 0.9,
   "calibration_results": {
-    "h1_coverage_90pct": 0.5327313769751693,
-    "h1_mean_ci_width_f": 4.854024887084961,
-    "h1_calibration_error": 0.36726862302483076,
-    "h3_coverage_90pct": 0.4898419864559819,
-    "h3_mean_ci_width_f": 5.68646764755249,
-    "h3_calibration_error": 0.4101580135440181,
-    "h5_coverage_90pct": 0.42663656884875845,
-    "h5_mean_ci_width_f": 4.541787624359131,
-    "h5_calibration_error": 0.4733634311512416
+    "h1_coverage_90pct": 0.5282167042889391,
+    "h1_mean_ci_width_f": 4.832784175872803,
+    "h1_calibration_error": 0.37178329571106095,
+    "h3_coverage_90pct": 0.510158013544018,
+    "h3_mean_ci_width_f": 5.726620197296143,
+    "h3_calibration_error": 0.389841986455982,
+    "h5_coverage_90pct": 0.4288939051918736,
+    "h5_mean_ci_width_f": 4.525245666503906,
+    "h5_calibration_error": 0.47110609480812643
   },
   "calibration_pass": false
 }

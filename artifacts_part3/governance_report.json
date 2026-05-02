@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0.0",
-  "run_at": "2026-05-02T02:59:25.742886",
+  "run_at": "2026-05-02T03:06:49.868542",
   "decision_date": "2026-05-02",
   "publish_mode": "CAUTION",
   "checks_passed": 6,
@@ -12,7 +12,7 @@
       "level": "CRITICAL",
       "message": "OK",
       "details": {
-        "fetched_at": "2026-05-02 02:59:06.857286",
+        "fetched_at": "2026-05-02 03:06:24.893668",
         "age_hours": 0.0,
         "historical_end": "2026-05-01",
         "staleness_days": 1
@@ -94,9 +94,9 @@
       "message": "OK",
       "details": {
         "ci_widths_f": {
-          "h1": 15.9,
-          "h3": 20.3,
-          "h5": 15.2
+          "h1": 11.1,
+          "h3": 22.0,
+          "h5": 14.7
         },
         "max_ci_width_f": 40.0
       }
