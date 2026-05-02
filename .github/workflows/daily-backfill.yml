@@ -77,6 +77,8 @@ jobs:
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
+          # artifacts_part3/prediction_log.csv is written by Part 3 (Issue 6 fix:
+          # Part 3 now writes its own copy so this add is valid).
           git add -f \
             artifacts_part2/prediction_log.csv \
             artifacts_part3/prediction_log.csv \
