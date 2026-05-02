@@ -1,9 +1,9 @@
 {
   "schema_version": "1.0.0",
-  "fetched_at": "2026-05-01T14:41:05.440075",
-  "historical_rows": 3042,
+  "fetched_at": "2026-05-02T02:40:00.131715",
+  "historical_rows": 3043,
   "historical_start": "2018-01-01",
-  "historical_end": "2026-04-30",
+  "historical_end": "2026-05-01",
   "historical_columns": [
     "temp_high_f",
     "temp_low_f",
@@ -29,7 +29,7 @@
     "wind_speed_mean_mph"
   ],
   "obs_rows": 500,
-  "nws_forecast_days": 7,
+  "nws_forecast_days": 8,
   "om_forecast_days": 7,
   "lat": 33.9425,
   "lon": -118.4081,

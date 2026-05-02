@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0.0",
-  "run_at": "2026-05-01T14:41:31.312456",
-  "decision_date": "2026-05-01",
+  "run_at": "2026-05-02T02:40:24.809522",
+  "decision_date": "2026-05-02",
   "publish_mode": "CAUTION",
   "checks_passed": 6,
   "checks_total": 7,
@@ -12,9 +12,9 @@
       "level": "CRITICAL",
       "message": "OK",
       "details": {
-        "fetched_at": "2026-05-01 14:41:05.440075",
+        "fetched_at": "2026-05-02 02:40:00.131715",
         "age_hours": 0.0,
-        "historical_end": "2026-04-30",
+        "historical_end": "2026-05-01",
         "staleness_days": 1
       }
     },
@@ -52,9 +52,9 @@
       "message": "OK",
       "details": {
         "predictions": {
-          "h1": 77.05177307128906,
-          "h3": 102.44956970214844,
-          "h5": 94.2261962890625
+          "h1": 76.9809799194336,
+          "h3": 102.48506927490234,
+          "h5": 94.45387268066406
         },
         "bounds": {
           "min_f": 32.0,
@@ -68,7 +68,7 @@
       "level": "WARN",
       "message": "OK",
       "details": {
-        "spread_f": 25.4,
+        "spread_f": 25.5,
         "max_spread_f": 35.0
       }
     },
@@ -76,13 +76,13 @@
       "name": "PERSISTENCE_SANITY",
       "passed": false,
       "level": "WARN",
-      "message": "Persistence sanity flags: H=3: deviation 32.9\u00b0F from last obs 69.5\u00b0F",
+      "message": "Persistence sanity flags: H=3: deviation 32.6\u00b0F from last obs 69.9\u00b0F",
       "details": {
-        "last_observed_f": 69.5,
+        "last_observed_f": 69.9,
         "deviations_f": {
-          "h1": 7.6,
-          "h3": 32.9,
-          "h5": 24.7
+          "h1": 7.1,
+          "h3": 32.6,
+          "h5": 24.6
         },
         "max_deviation_f": 25.0
       }
@@ -94,9 +94,9 @@
       "message": "OK",
       "details": {
         "ci_widths_f": {
-          "h1": 13.2,
-          "h3": 21.0,
-          "h5": 14.3
+          "h1": 12.0,
+          "h3": 22.5,
+          "h5": 13.2
         },
         "max_ci_width_f": 40.0
       }

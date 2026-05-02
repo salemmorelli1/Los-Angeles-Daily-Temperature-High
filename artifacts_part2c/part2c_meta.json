@@ -1,45 +1,45 @@
 {
   "schema_version": "1.1.0",
-  "run_at": "2026-05-01T14:41:30.466435",
+  "run_at": "2026-05-02T02:40:24.076919",
   "part2_model_type": "lstm",
-  "feature_date": "2026-04-30T00:00:00",
+  "feature_date": "2026-05-01T00:00:00",
   "target_clock": "target_date_h = feature_date + h calendar days",
   "n_mc_samples": 200,
   "sequence_len": 14,
   "dropout_rate": 0.2,
   "live_predictions": {
     "h1": {
-      "target_date": "2026-05-01",
-      "mean_f": 79.47627258300781,
-      "lo90_f": 73.01329040527344,
-      "hi90_f": 86.17472839355469,
-      "std_f": 3.9635977745056152
+      "target_date": "2026-05-02",
+      "mean_f": 79.21463775634766,
+      "lo90_f": 73.17814636230469,
+      "hi90_f": 85.20372009277344,
+      "std_f": 3.771286725997925
     },
     "h3": {
-      "target_date": "2026-05-03",
-      "mean_f": 101.83152770996094,
-      "lo90_f": 91.00305938720703,
-      "hi90_f": 112.04334259033203,
-      "std_f": 6.1075310707092285
+      "target_date": "2026-05-04",
+      "mean_f": 101.53433227539062,
+      "lo90_f": 90.16943359375,
+      "hi90_f": 112.63227844238281,
+      "std_f": 6.819141864776611
     },
     "h5": {
-      "target_date": "2026-05-05",
-      "mean_f": 95.7799072265625,
-      "lo90_f": 88.64889526367188,
-      "hi90_f": 102.90360260009766,
-      "std_f": 4.205390453338623
+      "target_date": "2026-05-06",
+      "mean_f": 96.29948425292969,
+      "lo90_f": 89.1047592163086,
+      "hi90_f": 102.26171875,
+      "std_f": 4.342527866363525
     }
   },
   "calibration_summary": {
-    "h1_coverage_90pct": 0.5282167042889391,
-    "h1_mean_ci_width_f": 4.840785026550293,
-    "h1_calibration_error": 0.37178329571106095,
-    "h3_coverage_90pct": 0.5033860045146726,
-    "h3_mean_ci_width_f": 5.713926792144775,
-    "h3_calibration_error": 0.3966139954853274,
-    "h5_coverage_90pct": 0.4198645598194131,
-    "h5_mean_ci_width_f": 4.527190685272217,
-    "h5_calibration_error": 0.4801354401805869
+    "h1_coverage_90pct": 0.5395033860045146,
+    "h1_mean_ci_width_f": 4.8293280601501465,
+    "h1_calibration_error": 0.3604966139954854,
+    "h3_coverage_90pct": 0.49209932279909707,
+    "h3_mean_ci_width_f": 5.703067779541016,
+    "h3_calibration_error": 0.40790067720090295,
+    "h5_coverage_90pct": 0.4108352144469526,
+    "h5_mean_ci_width_f": 4.520411491394043,
+    "h5_calibration_error": 0.48916478555304743
   },
   "calibration_pass": false
 }
