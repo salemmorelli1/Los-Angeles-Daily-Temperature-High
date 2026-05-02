@@ -30,7 +30,7 @@ Artifacts Written
 -----------------
   artifacts_part2b/
       xgb_h1.pkl / xgb_h3.pkl / xgb_h5.pkl  — serialized models
-      xgb_predictions.parquet                 — val predictions
+      xgb_predictions.parquet                 — validation + test predictions with split column
       part2b_summary.json                     — metrics, gate, BNN flag
 """
 
@@ -523,13 +523,22 @@ def main() -> int:
 
     train_end = pd.Timestamp(splits["train_end"])
     val_end = pd.Timestamp(splits["val_end"])
-    df_train = df[df["date"] <= train_end].copy()
-    df_val = df[(df["date"] > train_end) & (df["date"] <= val_end)].copy()
-    df_test = df[df["date"] > val_end].copy()
+
+    # Correction 1: filter to fully labeled rows before splitting so the
+    # unlabeled live tail (feature rows without realized targets) never enters
+    # the train/val/test splits. X_all retains the full matrix for live inference.
+    target_cols = [f"target_h{h}" for h in HORIZONS]
+    labeled = df.dropna(subset=target_cols).copy()
+
+    df_train = labeled[labeled["date"] <= train_end].copy()
+    df_val = labeled[(labeled["date"] > train_end) & (labeled["date"] <= val_end)].copy()
+    df_test = labeled[labeled["date"] > val_end].copy()
 
     X_tr = _clean(df_train, feature_cols)
     X_va = _clean(df_val, feature_cols)
     X_te = _clean(df_test, feature_cols)
+
+    # Keep full feature matrix (including live tail) only for live prediction.
     X_all = _clean(df, feature_cols)
     print(f"[Part 2B] Train:{len(df_train)} Val:{len(df_val)} Test:{len(df_test)}")
 
@@ -543,6 +552,7 @@ def main() -> int:
     test_heat_event_diagnostics: Dict = {}
     xgb_live: Dict[str, float] = {}
     val_preds: Dict = {}
+    test_preds: Dict = {}   # Issue 5 fix: declare test_preds
     feat_importances: Dict = {}
 
     for h in HORIZONS:
@@ -569,6 +579,7 @@ def main() -> int:
             test_metrics[f"h{h}_mae_f"] = mae_t
             test_metrics[f"h{h}_rmse_f"] = rmse_t
             test_heat_event_diagnostics[f"h{h}"] = heat_event_diagnostics_1d(tp, df_test[tc].values)
+            test_preds[f"h{h}"] = tp   # Issue 5 fix: store test predictions
             print(f"  Test MAE={mae_t:.2f}°F  RMSE={rmse_t:.2f}°F")
 
         live = float(m.predict(X_all[-1:])[0])
@@ -601,12 +612,24 @@ def main() -> int:
             print(f"  LSTM val MAE={lstm_val_mae:.2f}°F  XGB avg={xgb_avg:.2f}°F  "
                   f"BNN recommended={bnn_rec}")
 
-    # Save val predictions parquet
+    # Save val + test predictions parquet (Issue 5 fix: include test split)
     val_df = df_val[["date"]].copy().reset_index(drop=True)
     for h in HORIZONS:
         val_df[f"xgb_pred_h{h}"] = val_preds[f"h{h}"]
         val_df[f"true_h{h}"] = df_val[f"target_h{h}"].values
-    val_df.to_parquet(ARTIFACTS_DIR / "xgb_predictions.parquet", index=False)
+    val_df["split"] = "val"
+
+    if len(df_test) > 0 and test_preds:
+        test_df = df_test[["date"]].copy().reset_index(drop=True)
+        for h in HORIZONS:
+            test_df[f"xgb_pred_h{h}"] = test_preds.get(f"h{h}", np.full(len(df_test), np.nan))
+            test_df[f"true_h{h}"] = df_test[f"target_h{h}"].values
+        test_df["split"] = "test"
+        all_xgb_df = pd.concat([val_df, test_df], ignore_index=True)
+    else:
+        all_xgb_df = val_df
+
+    all_xgb_df.to_parquet(ARTIFACTS_DIR / "xgb_predictions.parquet", index=False)
 
     # -------------------------------------------------------------------
     # Canonical forecast fallback chain
@@ -615,13 +638,15 @@ def main() -> int:
     decision_date = pd.Timestamp.today().normalize()
     model_key = "LSTM"  # we're updating the LSTM row written by Part 2
 
+    # Always define key strings before any conditional block (Issue 1 fix)
+    dd_str = decision_date.strftime("%Y-%m-%d")
+    fd_str = feature_date.strftime("%Y-%m-%d")
+
     # Load LSTM live preds from log
     log = load_prediction_log()
     lstm_live: Dict[str, float] = {}
     if not log.empty:
         # Find the most recent row for this decision_date + feature_date
-        dd_str = decision_date.strftime("%Y-%m-%d")
-        fd_str = feature_date.strftime("%Y-%m-%d")
         mask = (
             log["decision_date"].astype(str).str.strip() == dd_str
         )
