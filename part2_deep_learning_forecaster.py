@@ -576,7 +576,7 @@ def main(model_type: str = "lstm", mode: str = "train") -> int:
 
         tr_ds = TensorDataset(torch.tensor(Xtr_seq), torch.tensor(ytr_seq))
         va_ds = TensorDataset(torch.tensor(Xva_seq), torch.tensor(yva_seq))
-        tr_ldr = DataLoader(tr_ds, batch_size=BATCH_SIZE, shuffle=True, drop_last=False)
+        tr_ldr = DataLoader(tr_ds, batch_size=BATCH_SIZE, shuffle=True, drop_last=True)
         va_ldr = DataLoader(va_ds, batch_size=BATCH_SIZE, shuffle=False)
 
         model = build_model(model_type, input_size)
@@ -706,7 +706,6 @@ if __name__ == "__main__":
     parser.add_argument("--predict-only", action="store_true")
     args = parser.parse_args()
     raise SystemExit(main(model_type=args.model, mode="predict" if args.predict_only else args.mode))
-
 
 
 
