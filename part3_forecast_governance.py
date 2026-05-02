@@ -80,8 +80,10 @@ LA_TEMP_MIN_F = 32.0
 LA_TEMP_MAX_F = 125.0
 MAX_SPREAD_F = 35.0
 MAX_PERSISTENCE_DEVIATION_F = 15.0   # Lowered from 25°F — CRITICAL level
-MAX_NWS_DEVIATION_F = 20.0           # New: flag if forecast diverges from NWS
-MIN_BNN_COVERAGE = 0.75              # New: BNN must achieve this coverage to pass
+NWS_SOFT_WARN_DEVIATION_F = 8.0      # Informational tier for material divergence
+NWS_STRONG_WARN_DEVIATION_F = 12.0    # WARN-level CAUTION tier
+MAX_NWS_DEVIATION_F = 20.0           # Hard WARN failure if forecast diverges from NWS
+MIN_BNN_COVERAGE = 0.75              # BNN must achieve this coverage to pass
 
 REQUIRED_LOG_COLS = [
     "decision_date", "feature_date", "model",
@@ -282,7 +284,12 @@ def check_persistence_sanity(row: pd.Series, df_hist: pd.DataFrame) -> Governanc
 
 
 def check_nws_sanity(row: pd.Series) -> GovernanceCheck:
-    """Compare canonical forecast_h* against NWS official forecast. WARN level."""
+    """Compare canonical forecast_h* against NWS official forecast. WARN level.
+
+    A hard failure is still 20°F, but smaller divergences are now surfaced in
+    the report. Deviations over 12°F produce CAUTION; deviations over 8°F are
+    marked as material but do not by themselves change publish mode.
+    """
     chk = GovernanceCheck("NWS_SANITY", level="WARN")
     nws_path = PART0_DIR / "nws_official_forecast.json"
     if not nws_path.exists():
@@ -306,7 +313,9 @@ def check_nws_sanity(row: pd.Series) -> GovernanceCheck:
         return chk
 
     fcast = _forecast_vals(row)
-    violations = []
+    hard_violations: List[str] = []
+    strong_warnings: List[str] = []
+    soft_notes: List[str] = []
     comparisons: Dict = {}
 
     for h in HORIZONS:
@@ -315,15 +324,41 @@ def check_nws_sanity(row: pd.Series) -> GovernanceCheck:
         fc_val = fcast.get(f"h{h}", float("nan"))
         if nws_val is None or not np.isfinite(fc_val):
             continue
-        dev = abs(fc_val - float(nws_val))
-        comparisons[f"h{h}"] = {"forecast_f": round(fc_val, 1),
-                                 "nws_f": float(nws_val), "deviation_f": round(dev, 1)}
+        nws_f = float(nws_val)
+        dev = abs(fc_val - nws_f)
+        direction = "warm" if fc_val > nws_f else "cold"
+        tier = "OK"
         if dev > MAX_NWS_DEVIATION_F:
-            violations.append(f"H={h}: forecast={fc_val:.1f}°F NWS={nws_val:.1f}°F Δ={dev:.1f}°F")
+            tier = "HARD_WARN"
+            hard_violations.append(f"H={h}: forecast={fc_val:.1f}°F NWS={nws_f:.1f}°F Δ={dev:.1f}°F")
+        elif dev > NWS_STRONG_WARN_DEVIATION_F:
+            tier = "STRONG_WARN"
+            strong_warnings.append(f"H={h}: forecast={fc_val:.1f}°F NWS={nws_f:.1f}°F Δ={dev:.1f}°F")
+        elif dev > NWS_SOFT_WARN_DEVIATION_F:
+            tier = "SOFT_NOTE"
+            soft_notes.append(f"H={h}: forecast={fc_val:.1f}°F NWS={nws_f:.1f}°F Δ={dev:.1f}°F")
 
-    chk.details = {"comparisons": comparisons, "max_deviation_f": MAX_NWS_DEVIATION_F}
-    if violations:
-        return chk.warn(f"NWS deviation exceeded: {'; '.join(violations)}", **chk.details)
+        comparisons[f"h{h}"] = {
+            "forecast_f": round(fc_val, 1),
+            "nws_f": nws_f,
+            "deviation_f": round(dev, 1),
+            "direction": direction,
+            "tier": tier,
+        }
+
+    chk.details = {
+        "comparisons": comparisons,
+        "soft_warn_deviation_f": NWS_SOFT_WARN_DEVIATION_F,
+        "strong_warn_deviation_f": NWS_STRONG_WARN_DEVIATION_F,
+        "max_deviation_f": MAX_NWS_DEVIATION_F,
+        "soft_notes": soft_notes,
+    }
+    if hard_violations:
+        return chk.warn(f"NWS deviation exceeded hard threshold: {'; '.join(hard_violations)}", **chk.details)
+    if strong_warnings:
+        return chk.warn(f"NWS deviation exceeded strong warning tier: {'; '.join(strong_warnings)}", **chk.details)
+    if soft_notes:
+        chk.message = f"OK with material NWS notes: {'; '.join(soft_notes)}"
     return chk
 
 
@@ -519,6 +554,8 @@ def main() -> int:
             "la_temp_max_f": LA_TEMP_MAX_F,
             "max_spread_f": MAX_SPREAD_F,
             "max_persistence_deviation_f": MAX_PERSISTENCE_DEVIATION_F,
+            "nws_soft_warn_deviation_f": NWS_SOFT_WARN_DEVIATION_F,
+            "nws_strong_warn_deviation_f": NWS_STRONG_WARN_DEVIATION_F,
             "max_nws_deviation_f": MAX_NWS_DEVIATION_F,
             "min_bnn_coverage": MIN_BNN_COVERAGE,
         },
@@ -536,6 +573,23 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
