@@ -10,7 +10,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: la-temp-production
+  group: latemp-production
   cancel-in-progress: false
 
 env:
