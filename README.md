@@ -1,4 +1,4 @@
-# 🌡️ LA Temperature Forecast
+# LA Temperature Forecast
 
 A production-grade deep learning pipeline for forecasting the **Los Angeles daily temperature high** at H=1, H=3, and H=5 days ahead.
 
@@ -24,7 +24,7 @@ This version applies the pipeline-contract fixes from the code audit:
 
 ---
 
-## 📐 Architecture
+## Architecture
 
 ```
 Part 0  Data Infrastructure      (Open-Meteo archive + NWS API)
@@ -50,7 +50,7 @@ Part 9  Live Attribution          (MAE/RMSE/Skill vs NWS + climatology)
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
 ### 1. Install dependencies
 
@@ -91,7 +91,7 @@ python part2_deep_learning_forecaster.py --model lstm --mode predict
 
 ---
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 LA_Temp_Forecast/
@@ -125,13 +125,13 @@ artifacts_part9/   live_attribution_report.json, attribution_tape.parquet
 
 ---
 
-## 🌡️ Target Variable
+## Target Variable
 
 **`temp_high_f`** — daily maximum temperature in °F at grid point for Los Angeles (LAX, 33.94°N, 118.41°W), sourced from Open-Meteo using the ERA5-Land reanalysis + ECMWF forecast blend.
 
 ---
 
-## 📡 Data Sources
+## Data Sources
 
 | Source | What it provides | Key endpoint |
 |--------|-----------------|--------------|
@@ -145,7 +145,7 @@ All sources are **free, open, and require no API key.**
 
 ---
 
-## 🔬 Model Details
+## Model Details
 
 ### Part 2 — LSTM Forecaster
 - **Architecture**: 2-layer stacked LSTM → BatchNorm → 3 independent forecast heads (H=1, H=3, H=5)
@@ -177,7 +177,7 @@ Monte Carlo Dropout with N=200 samples produces calibrated 90% confidence interv
 
 ---
 
-## 🔄 Part Activation Sequence
+## Part Activation Sequence
 
 For first-time setup, all parts run in sequence. For daily operation:
 - **Part 0** always runs (incremental data update)
@@ -190,7 +190,7 @@ For first-time setup, all parts run in sequence. For daily operation:
 
 ---
 
-## 🤝 Compared to PriceCall
+## Compared to PriceCall
 
 | PriceCall | LA Temp Forecast | Notes |
 |-----------|-----------------|-------|
@@ -205,7 +205,7 @@ For first-time setup, all parts run in sequence. For daily operation:
 
 ---
 
-## 📝 Environment Variable
+## Environment Variable
 
 Set `LATEMP_ROOT` to override the project directory:
 
@@ -216,6 +216,7 @@ python run_daily_forecast.py
 
 ---
 
-## 📄 License
+## License
 
 MIT
+
