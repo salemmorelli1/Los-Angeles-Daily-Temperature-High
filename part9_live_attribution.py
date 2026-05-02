@@ -116,32 +116,57 @@ def load_nws_forecast() -> Dict:
         return json.load(f)
 
 
-def forecast_source_summary(df_log: pd.DataFrame) -> Dict[str, Any]:
-    """Summarize forecast sources and disclose NWS-anchor dependence.
+def compute_anchor_counts_by_horizon(df_log: pd.DataFrame) -> Dict[str, int]:
+    """Count NWS-anchored rows per horizon from nws_anchor_applied_h* columns.
 
-    If any row uses ``nws_anchor``, then comparisons against NWS are not fully
-    independent for those rows. The realized-error metrics remain valid, but
-    model-vs-NWS skill claims must be caveated or computed on non-anchored rows.
+    Row-level ``nws_anchor_used`` is too coarse: a row anchored only at H=1
+    should not pollute H=3 and H=5 independence reporting.
     """
+    counts: Dict[str, int] = {}
+    for h in HORIZONS:
+        col = f"nws_anchor_applied_h{h}"
+        if col in df_log.columns:
+            counts[f"h{h}"] = int(
+                pd.to_numeric(df_log[col], errors="coerce").fillna(0).astype(bool).sum()
+            )
+        else:
+            row_col = "nws_anchor_used"
+            if row_col in df_log.columns:
+                counts[f"h{h}"] = int(
+                    pd.to_numeric(df_log[row_col], errors="coerce").fillna(0).astype(bool).sum()
+                )
+            else:
+                counts[f"h{h}"] = 0
+    return counts
+
+
+def forecast_source_summary(df_log: pd.DataFrame) -> Dict[str, Any]:
+    """Summarize forecast sources and disclose NWS-anchor dependence by horizon."""
     if df_log is None or df_log.empty or "forecast_source" not in df_log.columns:
         return {
             "forecast_source_counts": {},
             "nws_anchor_rows": 0,
+            "nws_anchor_rows_by_horizon": {f"h{h}": 0 for h in HORIZONS},
             "n_prediction_rows": 0,
             "nws_independence_warning": None,
         }
 
     src = df_log["forecast_source"].fillna("unknown").astype(str)
     anchor_mask = src.str.contains("nws_anchor", case=False, na=False)
+    anchor_by_horizon = compute_anchor_counts_by_horizon(df_log)
     warning = None
     if bool(anchor_mask.any()):
+        anchored_horizons = [f"H={h}" for h in HORIZONS if anchor_by_horizon.get(f"h{h}", 0) > 0]
         warning = (
-            "Some canonical forecasts use NWS anchoring. Realized-error metrics are valid, "
-            "but skill comparisons against NWS are not independent for anchored rows."
+            f"NWS anchoring active on {anchored_horizons}. "
+            "Realized-error metrics are valid but skill comparisons against NWS "
+            "are not independent for anchored rows. Use model_only_metrics for "
+            "unbiased model-vs-NWS comparisons."
         )
     return {
         "forecast_source_counts": {str(k): int(v) for k, v in src.value_counts(dropna=False).items()},
         "nws_anchor_rows": int(anchor_mask.sum()),
+        "nws_anchor_rows_by_horizon": anchor_by_horizon,
         "n_prediction_rows": int(len(df_log)),
         "nws_independence_warning": warning,
     }
@@ -316,29 +341,42 @@ def climatology_for_dates(dates: pd.Series, clim_map: Dict[int, float]) -> pd.Se
 
 
 # ---------------------------------------------------------------------------
-# NWS benchmark
+# NWS benchmark — row-level preferred
 # ---------------------------------------------------------------------------
 def compute_nws_accuracy(df_log: pd.DataFrame, nws_forecast: Dict) -> Dict[str, float]:
-    """Compute NWS forecast accuracy for all horizons (H=1, H=3, H=5).
+    """Compute NWS baseline accuracy for H=1, H=3, H=5.
 
-    Issue 4 fix: original only computed H=1. NWS provides up to 7 days,
-    so H=3 and H=5 comparisons are available and should be reported.
+    Row-level values (nws_h* columns stored by Part 2B on each daily run) are
+    preferred.  This preserves historical NWS accuracy even after
+    nws_official_forecast.json is overwritten on the next daily run.
+    The current nws_official_forecast.json is used only as a fallback for
+    rows that pre-date row-level NWS storage.
     """
     daily = nws_forecast.get("daily_high_f", {})
-    if not daily:
-        return {}
     nws_map = {pd.Timestamp(k).normalize(): float(v) for k, v in daily.items() if pd.notna(v)}
 
     result: Dict[str, float] = {}
     for h in HORIZONS:
         errors: List[float] = []
         for _, row in df_log.iterrows():
-            tdate = target_date_for_row(row, h)
-            nws_val = nws_map.get(tdate)
             realized = pd.to_numeric(
                 pd.Series([row.get(f"realized_h{h}", np.nan)]), errors="coerce"
             ).iloc[0]
-            if nws_val is not None and np.isfinite(nws_val) and np.isfinite(realized):
+            if not np.isfinite(realized):
+                continue
+
+            # Prefer row-level NWS value (written by Part 2B at forecast time)
+            row_nws = pd.to_numeric(
+                pd.Series([row.get(f"nws_h{h}", np.nan)]), errors="coerce"
+            ).iloc[0]
+
+            if np.isfinite(row_nws):
+                nws_val = row_nws
+            else:
+                tdate = target_date_for_row(row, h)
+                nws_val = nws_map.get(tdate, np.nan)
+
+            if np.isfinite(nws_val):
                 errors.append(realized - nws_val)
 
         if not errors:
@@ -350,6 +388,46 @@ def compute_nws_accuracy(df_log: pd.DataFrame, nws_forecast: Dict) -> Dict[str, 
         result[f"nws_h{h}_n_days"] = int(len(err))
 
     return result
+
+
+def compute_model_only_metrics(df_log: pd.DataFrame) -> Dict[str, Any]:
+    """Compute accuracy for the pre-anchor model forecast (blend or LSTM).
+
+    Uses forecast_pre_anchor_h* if present (written by Part 2B), then
+    blend_h*, then target_h*.  This track is fully independent of NWS and
+    provides a valid model-vs-NWS skill comparison.
+    """
+    metrics: Dict[str, Any] = {}
+    for h in HORIZONS:
+        for candidate in [f"forecast_pre_anchor_h{h}", f"blend_h{h}", f"target_h{h}"]:
+            if candidate in df_log.columns and df_log[candidate].notna().any():
+                pred_col = candidate
+                break
+        else:
+            metrics[f"h{h}"] = {"n_samples": 0, "pred_col_used": "none"}
+            continue
+
+        real_col = f"realized_h{h}"
+        if real_col not in df_log.columns:
+            metrics[f"h{h}"] = {"n_samples": 0, "pred_col_used": pred_col}
+            continue
+
+        pred = pd.to_numeric(df_log[pred_col], errors="coerce")
+        real = pd.to_numeric(df_log[real_col], errors="coerce")
+        mask = pred.notna() & real.notna()
+        n = int(mask.sum())
+        if n == 0:
+            metrics[f"h{h}"] = {"n_samples": 0, "pred_col_used": pred_col}
+            continue
+        errors = real[mask] - pred[mask]
+        metrics[f"h{h}"] = {
+            "n_samples": n,
+            "pred_col_used": pred_col,
+            "mae_f": round(float(errors.abs().mean()), 3),
+            "rmse_f": round(float(np.sqrt((errors ** 2).mean())), 3),
+            "bias_f": round(float(errors.mean()), 3),
+        }
+    return metrics
 
 
 # ---------------------------------------------------------------------------
@@ -526,6 +604,7 @@ def main() -> int:
     print("[Part 9] Computing attribution metrics...")
     metrics = compute_metrics(df_log, clim_df)
     nws_metrics = compute_nws_accuracy(df_log, nws_forecast)
+    model_only = compute_model_only_metrics(df_log)
     source_summary = forecast_source_summary(df_log)
 
     # Print summary
@@ -584,6 +663,7 @@ def main() -> int:
             for h in HORIZONS
         },
         "metrics_by_horizon": metrics,
+        "model_only_metrics": model_only,
         "nws_baseline_metrics": nws_metrics,
         "forecast_source_summary": source_summary,
         "summary": {
