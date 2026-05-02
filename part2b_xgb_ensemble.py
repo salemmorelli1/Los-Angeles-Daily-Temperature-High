@@ -139,6 +139,22 @@ def _feature_cols(df: pd.DataFrame) -> List[str]:
                 dropped.append(col)
     if dropped:
         print(f"[Part 2B] Dropping non-numeric columns: {dropped}")
+
+    # Drop zero-variance (constant) feature columns — mirrors the Part 2 guard.
+    # Part 2A runs after Part 1, so a constant alpha feature (e.g. alpha_santa_ana_flag
+    # before the threshold fix) can reach Part 2B even if Part 1's guard already ran.
+    constant: List[str] = []
+    nonconstant: List[str] = []
+    for col in cols:
+        s = pd.to_numeric(df[col], errors="coerce")
+        if s.nunique(dropna=True) > 1:
+            nonconstant.append(col)
+        else:
+            constant.append(col)
+    if constant:
+        print(f"[Part 2B] Dropping {len(constant)} constant/zero-variance feature(s): {constant}")
+    cols = nonconstant
+
     if not cols:
         raise ValueError("No numeric feature columns for Part 2B.")
     return cols
@@ -686,6 +702,11 @@ def main() -> int:
     for h in HORIZONS:
         updates[f"xgb_h{h}"] = xgb_live.get(f"h{h}", np.nan)
         updates[f"forecast_h{h}"] = forecast.get(f"h{h}", np.nan)
+        # Store row-level NWS forecast value for this target date.
+        # Part 9 uses these to compute NWS baseline accuracy without
+        # relying on the current nws_official_forecast.json (which is
+        # overwritten on every daily run and loses historical NWS data).
+        updates[f"nws_h{h}"] = nws_preds.get(h, np.nan)
         if f"h{h}" in lstm_live:
             blend = BLEND_WEIGHT_XGB * xgb_live.get(f"h{h}", 0) + \
                     (1 - BLEND_WEIGHT_XGB) * lstm_live[f"h{h}"]
@@ -730,6 +751,11 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+
+
+
+
 
 
 
