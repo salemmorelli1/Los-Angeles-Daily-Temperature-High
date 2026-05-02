@@ -398,6 +398,50 @@ def average_horizon_mae(metrics: Dict[str, float]) -> float:
     return float(np.mean(vals)) if vals else float("nan")
 
 
+def heat_event_diagnostics(
+    pred_f: np.ndarray,
+    true_f: np.ndarray,
+    threshold_f: float = 85.0,
+) -> Dict[str, Dict[str, float]]:
+    """Upper-tail diagnostics for hot-day forecasts.
+
+    This is not a training gate. It documents whether the model can represent
+    the LA upper tail, especially at H=3 and H=5 where ordinary MSE training
+    often regresses too strongly toward climatology.
+    """
+    out: Dict[str, Dict[str, float]] = {}
+    for i, h in enumerate(HORIZONS):
+        true = true_f[:, i]
+        pred = pred_f[:, i]
+        mask = np.isfinite(true) & np.isfinite(pred)
+        heat = mask & (true > threshold_f)
+        n_heat = int(heat.sum())
+        if n_heat == 0:
+            out[f"h{h}"] = {
+                "threshold_f": float(threshold_f),
+                "n_true_heat_days": 0,
+                "predicted_heat_hits": 0,
+                "hit_rate": None,
+                "heat_mae_f": None,
+                "heat_bias_f": None,
+                "max_true_f": float(np.nanmax(true[mask])) if mask.any() else None,
+                "max_pred_f": float(np.nanmax(pred[mask])) if mask.any() else None,
+            }
+            continue
+        err = pred[heat] - true[heat]
+        out[f"h{h}"] = {
+            "threshold_f": float(threshold_f),
+            "n_true_heat_days": n_heat,
+            "predicted_heat_hits": int((pred[heat] > threshold_f).sum()),
+            "hit_rate": float((pred[heat] > threshold_f).mean()),
+            "heat_mae_f": float(np.mean(np.abs(err))),
+            "heat_bias_f": float(np.mean(err)),
+            "max_true_f": float(np.max(true[heat])),
+            "max_pred_f": float(np.max(pred[mask])) if mask.any() else None,
+        }
+    return out
+
+
 # ---------------------------------------------------------------------------
 # Prediction log — idempotent upsert
 # ---------------------------------------------------------------------------
@@ -591,6 +635,7 @@ def main(model_type: str = "lstm", mode: str = "train") -> int:
         vt_f = tgt_sc.inverse_transform(np.clip(yva_seq, CLIP_MIN, CLIP_MAX))
         val_metrics = metrics_fahrenheit(vp_f, vt_f)
         val_mae_f = average_horizon_mae(val_metrics)
+        val_heat_event_diagnostics = heat_event_diagnostics(vp_f, vt_f)
 
         print("\n=== VALIDATION METRICS ===")
         for h in HORIZONS:
@@ -599,10 +644,12 @@ def main(model_type: str = "lstm", mode: str = "train") -> int:
                   f"Bias={val_metrics.get(f'h{h}_bias_f', float('nan')):+.2f}°F")
 
         test_metrics: Dict = {}
+        test_heat_event_diagnostics: Dict = {}
         if len(Xte_seq) > 0:
             tp_f, _ = predict_fahrenheit(model, Xte_seq, tgt_sc)
             tt_f = tgt_sc.inverse_transform(np.clip(yte_seq, CLIP_MIN, CLIP_MAX))
             test_metrics = metrics_fahrenheit(tp_f, tt_f)
+            test_heat_event_diagnostics = heat_event_diagnostics(tp_f, tt_f)
             print("\n=== TEST METRICS ===")
             for h in HORIZONS:
                 print(f"  H={h}: MAE={test_metrics.get(f'h{h}_mae_f', float('nan')):.2f}°F  "
@@ -638,6 +685,8 @@ def main(model_type: str = "lstm", mode: str = "train") -> int:
             "val_mae_f": val_mae_f,
             "val_metrics": val_metrics,
             "test_metrics": test_metrics,
+            "val_heat_event_diagnostics": val_heat_event_diagnostics,
+            "test_heat_event_diagnostics": test_heat_event_diagnostics,
             "split_summary": {
                 "n_train": len(df_train), "n_val": len(df_val), "n_test": len(df_test),
                 "train_end": splits.get("train_end"),
@@ -706,6 +755,7 @@ if __name__ == "__main__":
     parser.add_argument("--predict-only", action="store_true")
     args = parser.parse_args()
     raise SystemExit(main(model_type=args.model, mode="predict" if args.predict_only else args.mode))
+
 
 
 
