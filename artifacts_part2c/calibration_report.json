@@ -1,0 +1,60 @@
+{
+  "schema_version": "1.1.0",
+  "n_mc_samples": 200,
+  "ci_lower_pct": 5.0,
+  "ci_upper_pct": 95.0,
+  "ci_target_coverage": 0.9,
+  "interval_method": "split_conformal_on_validation_residuals",
+  "conformal_alpha": 0.1,
+  "min_validation_coverage": 0.85,
+  "min_test_coverage": 0.8,
+  "conformal_quantile_f_by_horizon": {
+    "h1": 6.713249206542969,
+    "h3": 7.423912048339844,
+    "h5": 6.814155578613281
+  },
+  "conformal_quantile_live_f_by_horizon": {
+    "h1": 7.451423645019531,
+    "h3": 7.567859649658203,
+    "h5": 7.681018829345703
+  },
+  "calibration_note": "conformal_quantile_f_by_horizon fitted on val_cal (first half), calibration_results evaluated on val_eval (second half, independent). conformal_quantile_live_f_by_horizon fitted on full validation set for live production use.",
+  "raw_mc_dropout_calibration_results": {
+    "h1_coverage_90pct": 0.7255813953488373,
+    "h1_mean_ci_width_f": 8.93013858795166,
+    "h1_calibration_error": 0.17441860465116277,
+    "h3_coverage_90pct": 0.6604651162790698,
+    "h3_mean_ci_width_f": 8.17602252960205,
+    "h3_calibration_error": 0.23953488372093024,
+    "h5_coverage_90pct": 0.8,
+    "h5_mean_ci_width_f": 9.828166007995605,
+    "h5_calibration_error": 0.09999999999999998
+  },
+  "calibration_results": {
+    "h1_coverage_90pct": 0.8511627906976744,
+    "h1_mean_ci_width_f": 13.426498413085938,
+    "h1_calibration_error": 0.0488372093023256,
+    "h3_coverage_90pct": 0.8604651162790697,
+    "h3_mean_ci_width_f": 14.847824096679688,
+    "h3_calibration_error": 0.03953488372093028,
+    "h5_coverage_90pct": 0.8093023255813954,
+    "h5_mean_ci_width_f": 13.628311157226562,
+    "h5_calibration_error": 0.09069767441860466
+  },
+  "test_coverage_results": {
+    "h1_coverage_90pct": 0.8555304740406321,
+    "h1_mean_ci_width_f": 13.426498413085938,
+    "h1_calibration_error": 0.04446952595936793,
+    "h3_coverage_90pct": 0.8465011286681715,
+    "h3_mean_ci_width_f": 14.847824096679688,
+    "h3_calibration_error": 0.05349887133182851,
+    "h5_coverage_90pct": 0.7968397291196389,
+    "h5_mean_ci_width_f": 13.628311157226562,
+    "h5_calibration_error": 0.10316027088036117
+  },
+  "validation_calibration_pass": false,
+  "test_calibration_pass": false,
+  "calibration_pass": false,
+  "interval_status": "UNCALIBRATED",
+  "intervals_publishable": false
+}
