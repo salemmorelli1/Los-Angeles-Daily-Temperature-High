@@ -411,12 +411,75 @@ def check_nws_sanity(row: pd.Series) -> GovernanceCheck:
     return chk
 
 
+
+def _bnn_expected_from_current_stack() -> Dict[str, Any]:
+    """Return whether Part 2C artifacts are expected for the current run.
+
+    Part 2C should run whenever Part 2 used the LSTM backbone and Part 2B's
+    forecast stack passed its validation gate.  The bnn_sleeve_recommended flag
+    is useful telemetry, but it must not suppress uncertainty/display intervals.
+    """
+    result: Dict[str, Any] = {
+        "expected": False,
+        "part2_model_type": None,
+        "part2b_gate_validation_passed": None,
+        "part2b_bnn_sleeve_recommended": None,
+        "reason": "insufficient_metadata",
+    }
+
+    p2_path = PART2_DIR / "part2_meta.json"
+    p2b_path = PART2B_DIR / "part2b_summary.json"
+
+    if not p2_path.exists():
+        result["reason"] = "part2_meta_missing"
+        return result
+    if not p2b_path.exists():
+        result["reason"] = "part2b_summary_missing"
+        return result
+
+    try:
+        with open(p2_path) as f:
+            p2 = json.load(f)
+        with open(p2b_path) as f:
+            p2b = json.load(f)
+    except Exception as exc:
+        result["reason"] = f"metadata_read_error:{type(exc).__name__}"
+        return result
+
+    model_type = str(p2.get("model_type", "")).lower()
+    gate_pass = bool(p2b.get("gate_validation_passed", False))
+    bnn_rec = bool(p2b.get("bnn_sleeve_recommended", False))
+
+    result.update({
+        "part2_model_type": model_type,
+        "part2b_gate_validation_passed": gate_pass,
+        "part2b_bnn_sleeve_recommended": bnn_rec,
+    })
+
+    if model_type != "lstm":
+        result["reason"] = "part2_not_lstm"
+        return result
+    if not gate_pass:
+        result["reason"] = "part2b_gate_failed"
+        return result
+
+    result["expected"] = True
+    result["reason"] = "lstm_and_part2b_gate_passed"
+    return result
+
 def check_bnn_calibration() -> GovernanceCheck:
     """Check BNN calibration coverage if Part 2C has run. WARN level."""
     chk = GovernanceCheck("BNN_CALIBRATION_GATE", level="WARN")
     cal_path = PART2C_DIR / "calibration_report.json"
     if not cal_path.exists():
-        chk.details = {"bnn_available": False}
+        expected = _bnn_expected_from_current_stack()
+        chk.details = {"bnn_available": False, "bnn_expected": expected}
+        if expected.get("expected", False):
+            return chk.warn(
+                "BNN calibration artifacts missing even though Part 2C is expected "
+                "for the current LSTM + Part 2B gate-passed run",
+                **chk.details,
+            )
         chk.message = "BNN sleeve not run — calibration gate skipped"
         return chk
 
