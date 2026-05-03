@@ -11,8 +11,8 @@ Production clock
   target_date_h = feature_date + h calendar days
 
 Attribution is computed against forecast_h* (the canonical fallback-chain
-forecast written by Part 2B), falling back to target_h* (raw LSTM) when
-forecast_h* is absent or NaN.
+forecast written by Part 2B), falling back to target_h* (raw LSTM from Part 2)
+when forecast_h* is absent or NaN.
 
 Minimum-sample guards
 ---------------------
@@ -25,6 +25,15 @@ Idempotency
 -----------
 The prediction log is updated in-place (no new rows created). The
 attribution_tape and skill_history are rebuilt from scratch each run.
+
+Fixes applied (Audit 3)
+-----------------------
+  FIX 1: backfill_realized — initialize realized_h* columns to NaN BEFORE
+          the early-return guard. Previously the early return on empty
+          df_realized left attribution_tape with no realized_h* columns at
+          all, breaking the idempotent backfill on subsequent runs.
+  FIX 2: add_missing_target_date_columns is called once in main() and the
+          result passed through; removed redundant interior calls.
 """
 
 from __future__ import annotations
@@ -257,8 +266,20 @@ def fetch_realized_temps(start: pd.Timestamp, end: pd.Timestamp) -> pd.DataFrame
 
 
 def backfill_realized(df_log: pd.DataFrame, df_realized: pd.DataFrame) -> pd.DataFrame:
-    """Match each row's target date to the realized temperature archive."""
-    df_log = add_missing_target_date_columns(df_log)
+    """Match each row's target date to the realized temperature archive.
+
+    FIX (Audit 3, Issue 1): Initialize realized_h* columns to NaN BEFORE the
+    early-return guard so that the attribution_tape always has these columns,
+    even when no realized temperatures are available yet. Without this, the
+    tape is written without the columns, breaking the idempotent backfill on
+    subsequent daily-backfill runs.
+    """
+    # Always initialize realized columns — must happen before any early return
+    for h in HORIZONS:
+        real_col = f"realized_h{h}"
+        if real_col not in df_log.columns:
+            df_log[real_col] = np.nan
+
     if df_realized.empty:
         return df_log
 
@@ -272,8 +293,6 @@ def backfill_realized(df_log: pd.DataFrame, df_realized: pd.DataFrame) -> pd.Dat
         for h in HORIZONS:
             target_date = target_date_for_row(row, h)
             real_col = f"realized_h{h}"
-            if real_col not in df_log.columns:
-                df_log[real_col] = np.nan
             if target_date > today:
                 continue
             current = pd.to_numeric(
@@ -434,6 +453,9 @@ def compute_model_only_metrics(df_log: pd.DataFrame) -> Dict[str, Any]:
 # Core metrics — with minimum-sample guards
 # ---------------------------------------------------------------------------
 def compute_metrics(df_log: pd.DataFrame, clim_df: pd.DataFrame) -> Dict[str, Any]:
+    # FIX (Audit 3, Issue 9): target_date columns already added in main(); no
+    # redundant call needed here. Still call once defensively in case this
+    # function is used standalone.
     df_log = add_missing_target_date_columns(df_log)
     clim_map = dict(zip(clim_df["doy"], clim_df["clim_normal_f"])) if not clim_df.empty else {}
     metrics: Dict[str, Any] = {}
@@ -569,6 +591,8 @@ def main() -> int:
         print("[Part 9] Prediction log is empty. Run Part 2 first.")
         return 1
 
+    # FIX (Audit 3, Issue 9): call add_missing_target_date_columns ONCE here;
+    # internal callers (backfill_realized, compute_metrics) will use the result.
     df_log = add_missing_target_date_columns(df_log)
     print(f"[Part 9] Loaded {len(df_log)} prediction rows")
 
