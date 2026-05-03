@@ -1,6 +1,6 @@
 {
   "schema_version": "1.1.0",
-  "run_at": "2026-05-03T09:46:43.119452",
+  "run_at": "2026-05-03T14:33:31.624796",
   "decision_date": "2026-05-03",
   "publish_mode": "NORMAL",
   "forecast_source": "blend+nws_anchor",
@@ -17,7 +17,7 @@
       "level": "CRITICAL",
       "message": "OK",
       "details": {
-        "fetched_at": "2026-05-03 09:46:07.084323",
+        "fetched_at": "2026-05-03 14:33:04.764741",
         "age_hours": 0.0,
         "historical_end": "2026-05-02",
         "staleness_days": 1
@@ -168,14 +168,14 @@
         "intervals_publishable": false,
         "intervals_displayable": true,
         "coverage_by_horizon": {
-          "h1": 0.851,
-          "h3": 0.8352,
-          "h5": 0.8081
+          "h1": 0.8488,
+          "h3": 0.8375,
+          "h5": 0.8104
         },
         "val_diagnostic_coverage_by_horizon": {
-          "h1": 0.8874,
+          "h1": 0.8829,
           "h3": 0.8874,
-          "h5": 0.8874
+          "h5": 0.8919
         },
         "min_coverage_threshold": 0.75,
         "min_validation_coverage": 0.85,

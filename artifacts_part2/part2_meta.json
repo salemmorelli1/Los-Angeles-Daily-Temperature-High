@@ -258,7 +258,7 @@
     "val_end": "2025-01-26",
     "test_end": "2026-04-27"
   },
-  "last_prediction_at": "2026-05-03T09:46:28.781960",
+  "last_prediction_at": "2026-05-03T14:33:11.801620",
   "decision_date": "2026-05-03T00:00:00",
   "feature_date": "2026-05-02T00:00:00",
   "lstm_output_clipped": false,
