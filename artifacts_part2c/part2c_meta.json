@@ -1,0 +1,88 @@
+{
+  "schema_version": "1.1.0",
+  "run_at": "2026-05-03T02:59:49.906608",
+  "part2_model_type": "lstm",
+  "feature_date": "2026-05-02T00:00:00",
+  "target_clock": "target_date_h = feature_date + h calendar days",
+  "n_mc_samples": 200,
+  "sequence_len": 14,
+  "dropout_rate": 0.2,
+  "live_predictions": {
+    "h1": {
+      "target_date": "2026-05-03",
+      "canonical_center_f": 65.8250732421875,
+      "canonical_source": "blend+nws_anchor",
+      "interval_label": "canonical_display_interval",
+      "lo90_f": 58.761749267578125,
+      "hi90_f": 72.88839721679688,
+      "bnn_diagnostic_mean_f": 66.07556915283203,
+      "std_f": 1.6394633054733276
+    },
+    "h3": {
+      "target_date": "2026-05-05",
+      "canonical_center_f": 65.60859680175781,
+      "canonical_source": "blend+nws_anchor",
+      "interval_label": "canonical_display_interval",
+      "lo90_f": 57.58283996582031,
+      "hi90_f": 73.63435363769531,
+      "bnn_diagnostic_mean_f": 66.29266357421875,
+      "std_f": 1.2856082916259766
+    },
+    "h5": {
+      "target_date": "2026-05-07",
+      "canonical_center_f": 83.0,
+      "canonical_source": "blend+nws_anchor",
+      "interval_label": "canonical_display_interval",
+      "lo90_f": 75.13459014892578,
+      "hi90_f": 90.86540985107422,
+      "bnn_diagnostic_mean_f": 67.30049896240234,
+      "std_f": 1.5682140588760376
+    }
+  },
+  "interval_method": "split_conformal_on_validation_residuals",
+  "conformal_quantile_f_by_horizon": {
+    "h1": 7.063323974609375,
+    "h3": 8.0257568359375,
+    "h5": 7.865409851074219
+  },
+  "min_validation_coverage": 0.85,
+  "min_test_coverage": 0.8,
+  "raw_mc_dropout_calibration_summary": {
+    "h1_coverage_90pct": 0.6162528216704289,
+    "h1_mean_ci_width_f": 6.3566813468933105,
+    "h1_calibration_error": 0.2837471783295711,
+    "h3_coverage_90pct": 0.46275395033860045,
+    "h3_mean_ci_width_f": 5.888615131378174,
+    "h3_calibration_error": 0.43724604966139957,
+    "h5_coverage_90pct": 0.5688487584650113,
+    "h5_mean_ci_width_f": 7.011777400970459,
+    "h5_calibration_error": 0.33115124153498876
+  },
+  "calibration_summary": {
+    "h1_coverage_90pct": 0.9029345372460497,
+    "h1_mean_ci_width_f": 14.12664794921875,
+    "h1_calibration_error": 0.00293453724604964,
+    "h3_coverage_90pct": 0.9029345372460497,
+    "h3_mean_ci_width_f": 16.051513671875,
+    "h3_calibration_error": 0.00293453724604964,
+    "h5_coverage_90pct": 0.9029345372460497,
+    "h5_mean_ci_width_f": 15.730819702148438,
+    "h5_calibration_error": 0.00293453724604964
+  },
+  "test_coverage_summary": {
+    "h1_coverage_90pct": 0.9413092550790068,
+    "h1_mean_ci_width_f": 14.12664794921875,
+    "h1_calibration_error": 0.041309255079006735,
+    "h3_coverage_90pct": 0.8803611738148984,
+    "h3_mean_ci_width_f": 16.051513671875,
+    "h3_calibration_error": 0.0196388261851016,
+    "h5_coverage_90pct": 0.8532731376975169,
+    "h5_mean_ci_width_f": 15.730819702148438,
+    "h5_calibration_error": 0.04672686230248313
+  },
+  "validation_calibration_pass": true,
+  "test_calibration_pass": true,
+  "calibration_pass": true,
+  "interval_status": "CONFORMAL_CALIBRATED",
+  "intervals_publishable": true
+}
