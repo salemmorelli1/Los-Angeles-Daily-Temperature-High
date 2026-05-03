@@ -97,6 +97,11 @@ jobs:
         run: |
           python run_daily_forecast.py ${{ steps.args.outputs.args }}
 
+      - name: Run artifact contract validator
+        run: |
+          python validate_artifacts.py
+          echo "✅ Artifact contract validation passed."
+
       - name: Verify required artifacts
         id: verify
         if: always()
