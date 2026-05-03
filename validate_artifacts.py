@@ -377,6 +377,103 @@ def check_prediction_log_schema() -> Tuple[str, str, str]:
         return _warn("prediction_log_schema", f"Error: {e}")
 
 
+
+def _bnn_expected_from_current_stack() -> Dict[str, Any]:
+    """Determine whether Part 2C artifacts are expected for this run."""
+    result: Dict[str, Any] = {
+        "expected": False,
+        "part2_model_type": None,
+        "part2b_gate_validation_passed": None,
+        "part2b_bnn_sleeve_recommended": None,
+        "reason": "insufficient_metadata",
+    }
+
+    p2_path = PROJECT_DIR / "artifacts_part2" / "part2_meta.json"
+    p2b_path = PROJECT_DIR / "artifacts_part2b" / "part2b_summary.json"
+
+    if not p2_path.exists():
+        result["reason"] = "part2_meta_missing"
+        return result
+    if not p2b_path.exists():
+        result["reason"] = "part2b_summary_missing"
+        return result
+
+    with open(p2_path) as f:
+        p2 = json.load(f)
+    with open(p2b_path) as f:
+        p2b = json.load(f)
+
+    model_type = str(p2.get("model_type", "")).lower()
+    gate_pass = bool(p2b.get("gate_validation_passed", False))
+    bnn_rec = bool(p2b.get("bnn_sleeve_recommended", False))
+
+    result.update({
+        "part2_model_type": model_type,
+        "part2b_gate_validation_passed": gate_pass,
+        "part2b_bnn_sleeve_recommended": bnn_rec,
+    })
+
+    if model_type != "lstm":
+        result["reason"] = "part2_not_lstm"
+        return result
+    if not gate_pass:
+        result["reason"] = "part2b_gate_failed"
+        return result
+
+    result["expected"] = True
+    result["reason"] = "lstm_and_part2b_gate_passed"
+    return result
+
+
+def check_bnn_expected_artifacts() -> Tuple[str, str, str]:
+    """Part 2C artifacts must exist when the current stack expects intervals."""
+    try:
+        expected = _bnn_expected_from_current_stack()
+        if not expected.get("expected", False):
+            return _ok(
+                "bnn_expected_artifacts",
+                f"Part 2C not required: {expected.get('reason')}",
+            )
+
+        cal_path = PROJECT_DIR / "artifacts_part2c" / "calibration_report.json"
+        bnn_pred_path = PROJECT_DIR / "artifacts_part2c" / "bnn_predictions.parquet"
+        log_path = _load_prediction_log_path()
+
+        missing = []
+        if not cal_path.exists():
+            missing.append("artifacts_part2c/calibration_report.json")
+        if not bnn_pred_path.exists():
+            missing.append("artifacts_part2c/bnn_predictions.parquet")
+        if log_path is None:
+            missing.append("prediction_log.csv")
+
+        if missing:
+            return _fail(
+                "bnn_expected_artifacts",
+                f"Part 2C artifacts expected but missing: {missing}; expected={expected}",
+            )
+
+        import pandas as pd
+
+        with open(cal_path) as f:
+            cal = json.load(f)
+        df_log = pd.read_csv(log_path)
+
+        bnn_available = bool(df_log.iloc[-1].get("bnn_available", False)) if not df_log.empty else False
+        if not bnn_available:
+            return _fail(
+                "bnn_expected_artifacts",
+                "Part 2C artifacts exist/are expected, but latest prediction_log row has bnn_available=False",
+            )
+
+        return _ok(
+            "bnn_expected_artifacts",
+            "Part 2C artifacts present and latest prediction_log row has bnn_available=True",
+        )
+
+    except Exception as e:
+        return _warn("bnn_expected_artifacts", f"Error: {e}")
+
 def check_bnn_display_gate() -> Tuple[str, str, str]:
     """Governance display flag must match Part 2C displayability contract.
 
@@ -700,6 +797,7 @@ def run_all_checks() -> List[Tuple[str, str, str]]:
         check_xgb_predictions_split_column(),
         check_bnn_predictions_split_column(),
         check_prediction_log_schema(),
+        check_bnn_expected_artifacts(),
         check_bnn_display_gate(),
         check_model_only_metrics_uses_pre_anchor(),
         check_attribution_report(),
@@ -742,6 +840,12 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+
+
+
+
+
 
 
 
