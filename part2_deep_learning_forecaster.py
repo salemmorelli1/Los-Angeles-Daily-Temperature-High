@@ -584,10 +584,11 @@ def write_prediction_row(
 # Persistence helpers
 # ---------------------------------------------------------------------------
 def save_training_artifacts(model, model_type, feat_scaler, tgt_scaler, history, meta):
+    # FIX (Audit 3, Issue 7): single torch.save — removed the duplicate write
+    # that previously called torch.save a second time for model_type == "lstm"
+    # on the identical path returned by _model_path("lstm").
     torch, _, _, _ = _try_import_torch()
     torch.save(model.state_dict(), _model_path(model_type))
-    if model_type == "lstm":
-        torch.save(model.state_dict(), ARTIFACTS_DIR / "lstm_model.pt")
     with open(ARTIFACTS_DIR / "feature_scaler.pkl", "wb") as f:
         pickle.dump(feat_scaler, f)
     with open(ARTIFACTS_DIR / "target_scaler.pkl", "wb") as f:
@@ -599,13 +600,16 @@ def save_training_artifacts(model, model_type, feat_scaler, tgt_scaler, history,
 
 
 def load_training_artifacts(model_type: str, input_size: int):
+    # FIX (Audit 3, Issue 8): removed the redundant fallback guard
+    #   if not mpath.exists() and model_type == "lstm":
+    #       mpath = ARTIFACTS_DIR / "lstm_model.pt"   ← identical to _model_path("lstm")
+    # _model_path("lstm") already returns ARTIFACTS_DIR / "lstm_model.pt",
+    # so the condition could never change mpath.
     torch, _, _, _ = _try_import_torch()
     feat_path = ARTIFACTS_DIR / "feature_scaler.pkl"
     tgt_path = ARTIFACTS_DIR / "target_scaler.pkl"
     meta_path = ARTIFACTS_DIR / "part2_meta.json"
     mpath = _model_path(model_type)
-    if not mpath.exists() and model_type == "lstm":
-        mpath = ARTIFACTS_DIR / "lstm_model.pt"
     for p in [feat_path, tgt_path, meta_path, mpath]:
         if not p.exists():
             raise FileNotFoundError(f"{p.name} not found. Run Part 2 --mode=train first.")
@@ -822,6 +826,10 @@ if __name__ == "__main__":
     parser.add_argument("--predict-only", action="store_true")
     args = parser.parse_args()
     raise SystemExit(main(model_type=args.model, mode="predict" if args.predict_only else args.mode))
+
+
+
+
 
 
 
