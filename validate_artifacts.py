@@ -15,16 +15,26 @@ Checks
   5.  xgb_predictions.parquet has a 'split' column with 'val' and 'test' rows
   6.  prediction_log.csv has required columns
   7.  governance_report.json: if intervals_publishable=False, bnn_intervals_displayable=False
-  8.  Part 9 model_only_metrics uses a pre-anchor column, not forecast_h*
+  8.  Part 9 model_only_metrics uses a pre-anchor column (forecast_pre_anchor_h* or
+      blend_h*), not the anchored forecast_h* column  [IMPLEMENTED in this version]
   9.  live_attribution_report.json exists and has nws_anchor_rows_by_horizon
   10. No alpha_ feature column in feature_matrix is constant zero after Part 2A merge
   11. bnn_predictions.parquet uses bnn_diagnostic_mean_h* (not legacy bnn_mean_h*)
   12. part2_meta.json hyperparameters include heat_event_f and heat_weight
+  13. No perfectly correlated feature pairs in feature_matrix (regime redundancy check)
 
 Exit codes
 ----------
   0 — all checks passed (or only warnings)
   1 — one or more FAIL checks
+
+Fixes applied (Audit 3)
+-----------------------
+  FIX 1: check_attribution_report now verifies pred_col_used in model_only_metrics
+          is NOT forecast_h* (implements the previously documented-but-missing check 8).
+  FIX 2: check_no_redundant_features (new check 13) — detects perfectly correlated
+          feature pairs, specifically the prob_regime_N / prob_physical_label pairs
+          that Part 6 can produce.
 """
 
 from __future__ import annotations
@@ -163,17 +173,7 @@ def check_no_object_features() -> Tuple[str, str, str]:
 
 
 def check_split_counts() -> Tuple[str, str, str]:
-    """Validate split internal consistency rather than hard-coded absolute counts.
-
-    Checks:
-      - train_end < val_end < test_end (chronological ordering)
-      - n_labeled == n_train + n_val + n_test (no missing or double-counted rows)
-      - n_feature_rows >= n_labeled (live tail preserved)
-      - n_train >= n_val and n_train >= n_test (train is the largest split)
-
-    Hard-coding Train=2126/Val=456/Test=456 is fragile as the dataset grows daily.
-    These structural invariants hold regardless of absolute row counts.
-    """
+    """Validate split internal consistency rather than hard-coded absolute counts."""
     try:
         split_path = PROJECT_DIR / "artifacts_part1" / "train_val_test_split.json"
         if not split_path.exists():
@@ -183,7 +183,6 @@ def check_split_counts() -> Tuple[str, str, str]:
 
         issues = []
 
-        # Required keys
         for key in ["train_end", "val_end", "test_end", "n_train", "n_val", "n_test",
                     "n_labeled", "n_feature_rows"]:
             if key not in splits:
@@ -200,32 +199,27 @@ def check_split_counts() -> Tuple[str, str, str]:
         n_labeled = int(splits["n_labeled"])
         n_feature_rows = int(splits["n_feature_rows"])
 
-        # Chronological ordering
         if not (train_end < val_end < test_end):
             issues.append(f"split dates not ordered: {train_end} / {val_end} / {test_end}")
 
-        # Labeled row count consistency (allow ±2 for sequence trimming edge cases)
         expected_labeled = n_train + n_val + n_test
         if abs(n_labeled - expected_labeled) > 2:
             issues.append(
                 f"n_labeled={n_labeled} != n_train+n_val+n_test={expected_labeled}"
             )
 
-        # Feature rows >= labeled rows (live unlabeled tail must be retained)
         if n_feature_rows < n_labeled:
             issues.append(
                 f"n_feature_rows={n_feature_rows} < n_labeled={n_labeled} "
                 "(live tail missing)"
             )
 
-        # Train is the largest split
         if n_train < n_val or n_train < n_test:
             issues.append(
                 f"n_train={n_train} is not the largest split "
                 f"(val={n_val}, test={n_test})"
             )
 
-        # Non-empty splits
         for label, n in [("n_train", n_train), ("n_val", n_val), ("n_test", n_test)]:
             if n <= 0:
                 issues.append(f"{label}={n} (empty split)")
@@ -298,7 +292,7 @@ def check_bnn_display_gate() -> Tuple[str, str, str]:
         with open(gov_path) as f:
             gov = json.load(f)
 
-        intervals_publishable = True  # default: assume publishable if no BNN
+        intervals_publishable = True
         if cal_path.exists():
             with open(cal_path) as f:
                 cal = json.load(f)
@@ -321,7 +315,14 @@ def check_bnn_display_gate() -> Tuple[str, str, str]:
 
 
 def check_attribution_report() -> Tuple[str, str, str]:
-    """live_attribution_report.json must exist and contain nws_anchor_rows_by_horizon."""
+    """live_attribution_report.json must exist, have nws_anchor_rows_by_horizon,
+    AND model_only_metrics must use a pre-anchor column (not forecast_h*).
+
+    FIX (Audit 3): Previously this check only verified file existence and key
+    presence. It now also verifies that pred_col_used in model_only_metrics is
+    NOT forecast_h* (which would be the anchored value and would contaminate
+    the model-vs-NWS skill comparison).
+    """
     try:
         path = PROJECT_DIR / "artifacts_part9" / "live_attribution_report.json"
         if not path.exists():
@@ -335,10 +336,25 @@ def check_attribution_report() -> Tuple[str, str, str]:
             issues.append("nws_anchor_rows_by_horizon missing from forecast_source_summary")
         if "model_only_metrics" not in rpt:
             issues.append("model_only_metrics missing from report")
+        else:
+            # NEW: verify pred_col_used is NOT forecast_h* (the anchored value)
+            bad_cols = []
+            for h in HORIZONS:
+                h_metrics = rpt["model_only_metrics"].get(f"h{h}", {})
+                col_used = h_metrics.get("pred_col_used", "")
+                if col_used == f"forecast_h{h}":
+                    bad_cols.append(f"H={h}: pred_col_used='{col_used}' "
+                                    "(anchored column — use forecast_pre_anchor_h* or blend_h*)")
+            if bad_cols:
+                issues.append(
+                    "model_only_metrics is using the NWS-anchored forecast_h* column, "
+                    "which invalidates model-vs-NWS skill comparisons: " + "; ".join(bad_cols)
+                )
 
         if issues:
             return _warn("attribution_report", "; ".join(issues))
-        return _ok("attribution_report", "live_attribution_report.json valid")
+        return _ok("attribution_report", "live_attribution_report.json valid; "
+                   "model_only_metrics uses pre-anchor column")
     except Exception as e:
         return _warn("attribution_report", f"Error: {e}")
 
@@ -433,6 +449,63 @@ def check_heat_weight_in_meta() -> Tuple[str, str, str]:
         return _warn("heat_weight_in_meta", f"Error: {e}")
 
 
+def check_no_redundant_features() -> Tuple[str, str, str]:
+    """No perfectly correlated (corr=1.0) feature pairs in feature_matrix.
+
+    FIX (Audit 3, Issue 3): Part 6 maps validated physical probability labels
+    (prob_marine_layer, prob_dry_clear) from the corresponding regime probability
+    columns (prob_regime_0, prob_regime_2). Both sets are then lagged into the
+    feature matrix by Part 1, creating perfectly correlated feature pairs that
+    waste model capacity. This check catches that regression.
+
+    Only checks prob_* lag columns against each other to keep runtime fast.
+    """
+    try:
+        import pandas as pd
+        import numpy as np
+        matrix_path = PROJECT_DIR / "artifacts_part1" / "feature_matrix.parquet"
+        if not matrix_path.exists():
+            return _warn("no_redundant_features", "feature_matrix.parquet not found")
+
+        df = pd.read_parquet(matrix_path)
+        target_cols = {c for c in df.columns if c.startswith("target_h")}
+        # Only check probability columns (fast) — full correlation matrix is too slow
+        prob_cols = [
+            c for c in df.columns
+            if c not in (["date"] + list(target_cols))
+            and ("prob_" in c or "regime_" in c)
+        ]
+
+        if len(prob_cols) < 2:
+            return _ok("no_redundant_features", "Too few prob/regime columns to check")
+
+        redundant_pairs = []
+        for i in range(len(prob_cols)):
+            for j in range(i + 1, len(prob_cols)):
+                a = pd.to_numeric(df[prob_cols[i]], errors="coerce").dropna()
+                b = pd.to_numeric(df[prob_cols[j]], errors="coerce").dropna()
+                common = a.index.intersection(b.index)
+                if len(common) < 10:
+                    continue
+                corr = float(np.corrcoef(a.loc[common], b.loc[common])[0, 1])
+                if abs(corr) > 0.9999:
+                    redundant_pairs.append(
+                        f"({prob_cols[i]}, {prob_cols[j]}, corr={corr:.6f})"
+                    )
+
+        if redundant_pairs:
+            return _fail(
+                "no_redundant_features",
+                f"{len(redundant_pairs)} perfectly correlated feature pair(s) found: "
+                f"{redundant_pairs}. Remove the physical-name copy from regime_tape "
+                f"or drop the prob_regime_N source column after mapping."
+            )
+        return _ok("no_redundant_features",
+                   f"No perfectly correlated prob/regime pairs found ({len(prob_cols)} checked)")
+    except Exception as e:
+        return _warn("no_redundant_features", f"Error: {e}")
+
+
 # ---------------------------------------------------------------------------
 # Runner
 # ---------------------------------------------------------------------------
@@ -445,17 +518,19 @@ def run_all_checks() -> List[Tuple[str, str, str]]:
         check_xgb_predictions_split_column(),
         check_prediction_log_schema(),
         check_bnn_display_gate(),
-        check_attribution_report(),
+        check_attribution_report(),        # check 8: now verifies pred_col_used
         check_alpha_feature_meta_updated(),
         check_nws_row_level_storage(),
         check_bnn_parquet_column_names(),
         check_heat_weight_in_meta(),
+        check_no_redundant_features(),     # new check 13
     ]
 
 
 def main() -> int:
+    n_checks = 13
     print(f"[Validator] Project root: {PROJECT_DIR}")
-    print(f"[Validator] Running {12} artifact contract checks...\n")
+    print(f"[Validator] Running {n_checks} artifact contract checks...\n")
 
     results = run_all_checks()
     n_pass = sum(1 for r in results if r[0] == "PASS")
