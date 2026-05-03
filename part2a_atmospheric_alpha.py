@@ -392,6 +392,27 @@ def build_alpha_features(df: pd.DataFrame, enso_df: Optional[pd.DataFrame] = Non
         print(f"[Part 2A] Dropping {len(constant_alpha)} constant alpha feature(s) before merge: "
               f"{constant_alpha}")
     alpha_cols = nonconstant_alpha
+
+    # Drop nearly-constant binary flag columns that fire on too few observations.
+    # A binary feature with fewer than MIN_FLAG_EVENTS positive observations provides
+    # almost no learning signal — e.g. alpha_santa_ana_flag with only 3 events out of
+    # 3043 days passes the zero-variance guard but is practically useless.
+    MIN_FLAG_EVENTS = 10
+    sparse_dropped: List[str] = []
+    dense_alpha: List[str] = []
+    for col in alpha_cols:
+        s = pd.to_numeric(alpha_all[col], errors="coerce")
+        # Apply only to flag/indicator columns (binary or near-binary)
+        uniq = s.dropna().unique()
+        is_binary = len(uniq) <= 2 and set(uniq).issubset({0.0, 1.0})
+        if is_binary and int((s > 0).sum()) < MIN_FLAG_EVENTS:
+            sparse_dropped.append(col)
+        else:
+            dense_alpha.append(col)
+    if sparse_dropped:
+        print(f"[Part 2A] Dropping {len(sparse_dropped)} sparse binary flag(s) "
+              f"(< {MIN_FLAG_EVENTS} events): {sparse_dropped}")
+    alpha_cols = dense_alpha
     alpha_all = alpha_all[["date"] + alpha_cols]
 
     print(f"[Part 2A] Built {len(alpha_cols)} alpha features over {len(alpha_all)} rows")
