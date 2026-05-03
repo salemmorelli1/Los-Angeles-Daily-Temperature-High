@@ -22,6 +22,7 @@ Checks
   13. bnn_predictions.parquet uses bnn_diagnostic_mean_h*, not bnn_mean_h*
   14. part2_meta.json records heat_event_f and heat_weight
   15. No redundant physical/regime probability duplicate features remain
+  16. No exact duplicate numeric feature columns remain in feature_matrix
 
 Exit codes
 ----------
@@ -785,6 +786,63 @@ def check_no_redundant_regime_probability_features() -> Tuple[str, str, str]:
         return _warn("no_redundant_regime_probability_features", f"Error: {e}")
 
 
+
+def check_no_exact_duplicate_features() -> Tuple[str, str, str]:
+    """No numeric feature column should be an exact date-aligned duplicate.
+
+    This is stricter than a high-correlation screen: it only fails when two
+    feature columns have the same numeric values on all overlapping non-null
+    rows. It catches source/alpha duplication such as
+    pressure_tendency_lag1 == alpha_pressure_tend_1d without blocking merely
+    correlated but distinct meteorological signals.
+    """
+    try:
+        import numpy as np
+        import pandas as pd
+
+        matrix_path = PROJECT_DIR / "artifacts_part1" / "feature_matrix.parquet"
+        if not matrix_path.exists():
+            return _warn("no_exact_duplicate_features", "feature_matrix.parquet not found")
+
+        df = pd.read_parquet(matrix_path)
+        target_cols = {c for c in df.columns if c.startswith("target_h")}
+        feature_cols = [c for c in df.columns if c not in (["date"] + list(target_cols))]
+
+        numeric = {}
+        for col in feature_cols:
+            s = pd.to_numeric(df[col], errors="coerce")
+            # Skip columns with no usable values; the constant/coverage checks
+            # are responsible for flagging degenerate columns.
+            if int(s.notna().sum()) > 0:
+                numeric[col] = s
+
+        duplicate_pairs = []
+        cols = list(numeric.keys())
+        for i, c1 in enumerate(cols):
+            s1 = numeric[c1]
+            for c2 in cols[i + 1:]:
+                s2 = numeric[c2]
+                mask = s1.notna() & s2.notna()
+                if int(mask.sum()) == 0:
+                    continue
+                max_abs_diff = float(np.nanmax(np.abs(s1[mask].to_numpy() - s2[mask].to_numpy())))
+                if max_abs_diff <= 1e-12:
+                    duplicate_pairs.append((c1, c2))
+
+        if duplicate_pairs:
+            return _fail(
+                "no_exact_duplicate_features",
+                f"Exact duplicate numeric feature pair(s): {duplicate_pairs}",
+            )
+
+        return _ok(
+            "no_exact_duplicate_features",
+            f"No exact duplicate numeric features among {len(cols)} checked columns",
+        )
+
+    except Exception as e:
+        return _warn("no_exact_duplicate_features", f"Error: {e}")
+
 # ---------------------------------------------------------------------------
 # Runner
 # ---------------------------------------------------------------------------
@@ -806,6 +864,7 @@ def run_all_checks() -> List[Tuple[str, str, str]]:
         check_bnn_parquet_column_names(),
         check_heat_weight_in_meta(),
         check_no_redundant_regime_probability_features(),
+        check_no_exact_duplicate_features(),
     ]
 
 
@@ -840,6 +899,9 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+
+
 
 
 
