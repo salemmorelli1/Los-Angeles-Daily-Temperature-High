@@ -339,6 +339,22 @@ def main() -> int:
                 validated_phys.add(target_col)
                 print(f"[Part 6] Mapped {target_col} ← {source_col} (validated)", flush=True)
 
+        # FIX (Audit 3, Issue 3): Drop the source prob_regime_{idx} columns for
+        # validated states. The physical-named copy (prob_marine_layer, etc.) is
+        # the canonical feature; keeping prob_regime_N alongside creates a
+        # perfectly correlated duplicate (corr = 1.000) that wastes model
+        # capacity and fails validate_artifacts.py check_no_redundant_features.
+        for state_idx, suggestion in physical_label_suggestions.items():
+            if not suggestion.get("validated", False):
+                continue
+            source_col = f"prob_regime_{state_idx}"
+            if source_col in tape.columns:
+                tape = tape.drop(columns=[source_col])
+                print(
+                    f"[Part 6] Dropped {source_col} — superseded by validated physical label",
+                    flush=True,
+                )
+
         # Drop any physical prob column that was zero-padded but never validated.
         for col in ["prob_marine_layer", "prob_dry_clear", "prob_santa_ana"]:
             if col not in validated_phys and col in tape.columns:
