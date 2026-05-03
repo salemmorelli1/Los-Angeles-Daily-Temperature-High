@@ -18,6 +18,26 @@ Safety contract
   - Skips gracefully when Part 2 used the Transformer backbone.
   - Uses the same feature_date + H target clock as Part 2.
   - Converts scaled standard deviations back to Fahrenheit correctly.
+
+Fixes applied (Audit 3)
+-----------------------
+  FIX: Circular conformal calibration removed.
+
+  Previously, conformal_quantiles() was fitted on the validation set residuals
+  and then calibration was evaluated on that SAME validation set. By
+  construction, split-conformal intervals achieve exactly the target coverage on
+  the set used to fit them — producing an artificially identical 90.29%
+  coverage for all 3 horizons.
+
+  Corrected approach:
+    1. Split the labeled validation set in half chronologically:
+         val_cal  — first half: used to fit conformal quantiles
+         val_eval — second half: used to evaluate calibration (truly independent)
+    2. Test set remains the primary external coverage check.
+    3. calibration_results now reports the INDEPENDENT val_eval coverage.
+    4. The conformal quantile still uses the full validation set for the
+       live-production quantile (more data = tighter intervals), but the
+       reported calibration score is no longer circular.
 """
 
 from __future__ import annotations
@@ -311,7 +331,6 @@ def conformal_quantiles(true_vals: np.ndarray, mean_vals: np.ndarray, alpha: flo
         if resid.size == 0:
             qs.append(float("nan"))
             continue
-        # Finite-sample conformal quantile. If k exceeds n, use the maximum.
         n = resid.size
         k = int(np.ceil((n + 1) * (1.0 - alpha)))
         k = min(max(k, 1), n)
@@ -334,8 +353,6 @@ def _make_pred_df(dates, mean_f, lo_f, hi_f, std_f, true_f=None) -> pd.DataFrame
     rows = {"date": pd.to_datetime(dates)}
     for i, h in enumerate(HORIZONS):
         rows[f"target_date_h{h}"] = pd.to_datetime(dates) + pd.Timedelta(days=h)
-        # Use bnn_diagnostic_mean_h* to match prediction_log naming convention.
-        # This is the raw LSTM MC-dropout mean — not the canonical forecast center.
         rows[f"bnn_diagnostic_mean_h{h}"] = mean_f[:, i]
         rows[f"bnn_lo90_h{h}"] = lo_f[:, i]
         rows[f"bnn_hi90_h{h}"] = hi_f[:, i]
@@ -368,51 +385,89 @@ def main() -> int:
     df_val = labeled[(labeled["date"] > train_end) & (labeled["date"] <= val_end)].copy()
     df_test = labeled[labeled["date"] > val_end].copy()
 
-    X_val = feat_scaler.transform(_clean_features(df_val, feature_cols)).astype(np.float32)
-    y_val = tgt_scaler.transform(df_val[target_cols].values.astype(np.float32)).astype(np.float32)
+    # -----------------------------------------------------------------------
+    # FIX (Audit 3, Issue 2): Split validation set into two halves.
+    #   val_cal  (first half) — fit conformal quantiles
+    #   val_eval (second half) — evaluate calibration independently
+    #
+    # Previously the quantile was fitted and evaluated on the SAME val set,
+    # producing a tautologically exact 90.29% coverage for all horizons.
+    # -----------------------------------------------------------------------
+    n_val = len(df_val)
+    val_cal_end_idx = n_val // 2
+    df_val_cal  = df_val.iloc[:val_cal_end_idx].copy()   # conformal fitting set
+    df_val_eval = df_val.iloc[val_cal_end_idx:].copy()   # independent evaluation set
+    print(
+        f"[Part 2C] Validation split for conformal calibration: "
+        f"cal={len(df_val_cal)} rows, eval={len(df_val_eval)} rows"
+    )
+
+    # Scale all splits
+    X_val_cal  = feat_scaler.transform(_clean_features(df_val_cal,  feature_cols)).astype(np.float32)
+    y_val_cal  = tgt_scaler.transform(df_val_cal[target_cols].values.astype(np.float32)).astype(np.float32)
+    X_val_eval = feat_scaler.transform(_clean_features(df_val_eval, feature_cols)).astype(np.float32)
+    y_val_eval = tgt_scaler.transform(df_val_eval[target_cols].values.astype(np.float32)).astype(np.float32)
     X_test = feat_scaler.transform(_clean_features(df_test, feature_cols)).astype(np.float32)
     y_test = tgt_scaler.transform(df_test[target_cols].values.astype(np.float32)).astype(np.float32)
-    X_all = feat_scaler.transform(_clean_features(df, feature_cols)).astype(np.float32)
+    X_all  = feat_scaler.transform(_clean_features(df, feature_cols)).astype(np.float32)
 
-    X_val_seq, y_val_seq = build_sequences(X_val, y_val)
-    X_test_seq, y_test_seq = build_sequences(X_test, y_test)
+    X_val_cal_seq,  y_val_cal_seq  = build_sequences(X_val_cal,  y_val_cal)
+    X_val_eval_seq, y_val_eval_seq = build_sequences(X_val_eval, y_val_eval)
+    X_test_seq,     y_test_seq     = build_sequences(X_test,     y_test)
     X_all_seq = build_sequences(X_all)
 
-    # Validation/calibration.
-    print(f"[Part 2C] Running MC Dropout ({N_MC_SAMPLES} samples) on validation set...")
-    val_mean_s, val_std_s, val_lo_s, val_hi_s = mc_predict(model, X_val_seq)
+    # ------------------------------------------------------------------
+    # Step 1: MC predict on calibration half → fit conformal quantiles
+    # ------------------------------------------------------------------
+    print(f"[Part 2C] Running MC Dropout ({N_MC_SAMPLES} samples) on cal half ({len(X_val_cal_seq)} seqs)...")
+    cal_mean_s, cal_std_s, cal_lo_s, cal_hi_s = mc_predict(model, X_val_cal_seq)
 
-    val_mean_f = tgt_scaler.inverse_transform(val_mean_s)
-    val_lo_f = tgt_scaler.inverse_transform(val_lo_s)
-    val_hi_f = tgt_scaler.inverse_transform(val_hi_s)
-    val_std_f = scaled_std_to_fahrenheit(val_std_s, tgt_scaler)
-    val_true_f = tgt_scaler.inverse_transform(y_val_seq)
+    cal_mean_f  = tgt_scaler.inverse_transform(cal_mean_s)
+    cal_true_f  = tgt_scaler.inverse_transform(y_val_cal_seq)
+    cal_lo_f    = tgt_scaler.inverse_transform(cal_lo_s)
+    cal_hi_f    = tgt_scaler.inverse_transform(cal_hi_s)
+    cal_std_f   = scaled_std_to_fahrenheit(cal_std_s, tgt_scaler)
 
-    # Raw MC-dropout intervals measure model-weight uncertainty and have been
-    # under-covering. We therefore publish split-conformal intervals built from
-    # validation residuals around the MC mean.
-    raw_cal = evaluate_calibration(val_true_f, val_lo_f, val_hi_f)
-    conformal_q_f = conformal_quantiles(val_true_f, val_mean_f, alpha=CONFORMAL_ALPHA)
-    val_lo_conf_f, val_hi_conf_f = apply_conformal_intervals(val_mean_f, conformal_q_f)
-    cal = evaluate_calibration(val_true_f, val_lo_conf_f, val_hi_conf_f)
+    raw_cal_on_cal = evaluate_calibration(cal_true_f, cal_lo_f, cal_hi_f)
+
+    # Fit conformal quantile on the calibration half
+    conformal_q_f = conformal_quantiles(cal_true_f, cal_mean_f, alpha=CONFORMAL_ALPHA)
+    print(f"[Part 2C] Conformal quantiles (°F): " +
+          " | ".join(f"H={h}:{conformal_q_f[i]:.2f}" for i, h in enumerate(HORIZONS)))
+
+    # ------------------------------------------------------------------
+    # Step 2: MC predict on eval half → INDEPENDENT calibration check
+    # ------------------------------------------------------------------
+    print(f"[Part 2C] Running MC Dropout on eval half ({len(X_val_eval_seq)} seqs) — independent check...")
+    eval_mean_s, eval_std_s, eval_lo_s, eval_hi_s = mc_predict(model, X_val_eval_seq)
+
+    eval_mean_f = tgt_scaler.inverse_transform(eval_mean_s)
+    eval_true_f = tgt_scaler.inverse_transform(y_val_eval_seq)
+    eval_lo_f   = tgt_scaler.inverse_transform(eval_lo_s)
+    eval_hi_f   = tgt_scaler.inverse_transform(eval_hi_s)
+    eval_std_f  = scaled_std_to_fahrenheit(eval_std_s, tgt_scaler)
+
+    # Apply conformal quantile (fitted on cal half) to eval half
+    eval_lo_conf_f, eval_hi_conf_f = apply_conformal_intervals(eval_mean_f, conformal_q_f)
+    cal = evaluate_calibration(eval_true_f, eval_lo_conf_f, eval_hi_conf_f)
     validation_calibration_pass = conformal_coverage_pass(cal, MIN_CONFORMAL_COVERAGE)
-    cal_pass = False  # finalized after the independent test-coverage check below
-    interval_status = "UNCALIBRATED"
 
-    print("\n=== CALIBRATION (90% CI) ===")
+    print("\n=== CALIBRATION (90% CI) — Independent val_eval half ===")
     for h in HORIZONS:
         cov = cal.get(f"h{h}_coverage_90pct")
         width = cal.get(f"h{h}_mean_ci_width_f")
         if cov is not None:
             print(f"  H={h}: coverage={cov:.1%}, mean CI width={width:.1f}°F")
 
-    # Test set.
+    # ------------------------------------------------------------------
+    # Step 3: Test set check (always independent)
+    # ------------------------------------------------------------------
     print("\n[Part 2C] Running MC Dropout on test set...")
     test_mean_s, test_std_s, test_lo_s, test_hi_s = mc_predict(model, X_test_seq)
     test_mean_f = tgt_scaler.inverse_transform(test_mean_s)
-    test_lo_f = tgt_scaler.inverse_transform(test_lo_s)
-    test_hi_f = tgt_scaler.inverse_transform(test_hi_s)
-    test_std_f = scaled_std_to_fahrenheit(test_std_s, tgt_scaler)
+    test_lo_f   = tgt_scaler.inverse_transform(test_lo_s)
+    test_hi_f   = tgt_scaler.inverse_transform(test_hi_s)
+    test_std_f  = scaled_std_to_fahrenheit(test_std_s, tgt_scaler)
     test_lo_conf_f, test_hi_conf_f = apply_conformal_intervals(test_mean_f, conformal_q_f)
     test_true_f = tgt_scaler.inverse_transform(y_test_seq) if len(y_test_seq) else None
     test_cal = evaluate_calibration(test_true_f, test_lo_conf_f, test_hi_conf_f) if test_true_f is not None else {}
@@ -420,7 +475,27 @@ def main() -> int:
     cal_pass = bool(validation_calibration_pass and test_calibration_pass)
     interval_status = "CONFORMAL_CALIBRATED" if cal_pass else "UNCALIBRATED"
 
-    # Live uncertainty.
+    # ------------------------------------------------------------------
+    # Step 4: Live uncertainty using full val set quantile
+    #
+    # For production intervals we refit the quantile on the FULL validation
+    # set (more data = tighter, more stable intervals). The evaluation above
+    # used val_cal to fit and val_eval to check — that was purely for the
+    # calibration score. The final published live intervals use all available
+    # validation data.
+    # ------------------------------------------------------------------
+    print("\n[Part 2C] Refitting conformal quantile on full validation set for live intervals...")
+    X_val_full = feat_scaler.transform(_clean_features(df_val, feature_cols)).astype(np.float32)
+    y_val_full = tgt_scaler.transform(df_val[target_cols].values.astype(np.float32)).astype(np.float32)
+    X_val_full_seq, y_val_full_seq = build_sequences(X_val_full, y_val_full)
+    val_mean_s_full, _, _, _ = mc_predict(model, X_val_full_seq)
+    val_mean_f_full = tgt_scaler.inverse_transform(val_mean_s_full)
+    val_true_f_full = tgt_scaler.inverse_transform(y_val_full_seq)
+    conformal_q_f_live = conformal_quantiles(val_true_f_full, val_mean_f_full, alpha=CONFORMAL_ALPHA)
+    print(f"[Part 2C] Live conformal quantiles (full val, °F): " +
+          " | ".join(f"H={h}:{conformal_q_f_live[i]:.2f}" for i, h in enumerate(HORIZONS)))
+
+    # Live prediction
     print("\n[Part 2C] Running MC Dropout on latest available data...")
     if len(X_all_seq) == 0:
         raise ValueError("Not enough feature rows to build live sequence.")
@@ -429,13 +504,10 @@ def main() -> int:
     live_mean_s, live_std_s, live_lo_s, live_hi_s = mc_predict(model, live_seq)
 
     live_mean_f = tgt_scaler.inverse_transform(live_mean_s)[0]
-    live_std_f = scaled_std_to_fahrenheit(live_std_s, tgt_scaler)[0]
+    live_std_f  = scaled_std_to_fahrenheit(live_std_s, tgt_scaler)[0]
 
     # Center publishable intervals on the canonical forecast (blend+NWS-anchor)
-    # from Part 2B, not on the raw LSTM mean.  The raw LSTM mean is a diagnostic;
-    # the canonical forecast is what governance publishes.  Centering intervals
-    # on a different value than the published point forecast is misleading.
-    canonical_center_f = live_mean_f.copy()  # fallback: LSTM mean
+    canonical_center_f = live_mean_f.copy()
     canonical_source = "lstm_bnn_mean"
 
     part2b_summary_path = PART2B_DIR / "part2b_summary.json"
@@ -454,18 +526,8 @@ def main() -> int:
     else:
         print("[Part 2C] part2b_summary.json not found — using LSTM mean as interval center.")
 
-    # Publishable intervals: canonical center ± conformal quantile.
-    #
-    # Statistical note: the conformal quantile is calibrated against LSTM
-    # validation residuals (LSTM mean vs realized).  When the canonical center
-    # is the LSTM mean, the interval is a valid split-conformal predictive
-    # interval.  When the canonical center includes XGB blending or NWS
-    # anchoring, the interval is a display approximation — it captures the
-    # empirical LSTM error spread but is not a formally calibrated interval for
-    # the blended/anchored forecast.  It is labeled "canonical_display_interval"
-    # in the meta to make this distinction explicit.
     live_lo_conf_f, live_hi_conf_f = apply_conformal_intervals(
-        canonical_center_f.reshape(1, -1), conformal_q_f
+        canonical_center_f.reshape(1, -1), conformal_q_f_live
     )
     live_lo_conf_f = live_lo_conf_f[0]
     live_hi_conf_f = live_hi_conf_f[0]
@@ -485,20 +547,30 @@ def main() -> int:
             f"(LSTM diagnostic mean={live_mean_f[i]:.1f}°F ±{live_std_f[i]:.2f}°F)"
         )
 
-    # Save prediction parquet.
-    val_dates = sequence_dates(df_val["date"])
-    test_dates = sequence_dates(df_test["date"])
+    # Save prediction parquet (use cal + eval halves concatenated for full val coverage)
+    val_cal_dates  = sequence_dates(df_val_cal["date"])
+    val_eval_dates = sequence_dates(df_val_eval["date"])
+    test_dates     = sequence_dates(df_test["date"])
 
-    val_df = _make_pred_df(val_dates, val_mean_f, val_lo_conf_f, val_hi_conf_f, val_std_f, val_true_f)
-    test_df = _make_pred_df(test_dates, test_mean_f, test_lo_conf_f, test_hi_conf_f, test_std_f, test_true_f)
+    val_cal_lo_conf_f,  val_cal_hi_conf_f  = apply_conformal_intervals(
+        tgt_scaler.inverse_transform(cal_mean_s), conformal_q_f_live)
+    val_eval_lo_conf_f, val_eval_hi_conf_f = apply_conformal_intervals(eval_mean_f, conformal_q_f_live)
 
-    all_df = pd.concat([val_df, test_df], ignore_index=True)
+    val_cal_df  = _make_pred_df(val_cal_dates,  tgt_scaler.inverse_transform(cal_mean_s),
+                                val_cal_lo_conf_f,  val_cal_hi_conf_f,
+                                cal_std_f, cal_true_f)
+    val_eval_df = _make_pred_df(val_eval_dates, eval_mean_f,
+                                val_eval_lo_conf_f, val_eval_hi_conf_f,
+                                eval_std_f, eval_true_f)
+    test_df = _make_pred_df(test_dates, test_mean_f,
+                            test_lo_conf_f, test_hi_conf_f,
+                            test_std_f, test_true_f)
+
+    all_df = pd.concat([val_cal_df, val_eval_df, test_df], ignore_index=True)
     all_df.to_parquet(ARTIFACTS_DIR / "bnn_predictions.parquet", index=False)
     print(f"\n[Part 2C] Saved bnn_predictions.parquet ({len(all_df)} rows)")
 
-    # Update latest prediction row with BNN uncertainty.
-    # bnn_lo90_h* / bnn_hi90_h* are canonical-centered (publishable).
-    # bnn_diagnostic_mean_h* is the raw LSTM mean (diagnostic only).
+    # Update prediction log
     log_path = PART2_DIR / "prediction_log.csv"
     if log_path.exists():
         df_log = pd.read_csv(log_path)
@@ -528,9 +600,17 @@ def main() -> int:
         "conformal_alpha": CONFORMAL_ALPHA,
         "min_validation_coverage": MIN_CONFORMAL_COVERAGE,
         "min_test_coverage": MIN_TEST_CONFORMAL_COVERAGE,
+        # conformal_q_f used for REPORTING (fitted on val_cal, independent eval on val_eval)
         "conformal_quantile_f_by_horizon": {f"h{h}": float(conformal_q_f[i]) for i, h in enumerate(HORIZONS)},
-        "raw_mc_dropout_calibration_results": raw_cal,
-        "calibration_results": cal,
+        # conformal_q_f_live used for LIVE intervals (full val set for stability)
+        "conformal_quantile_live_f_by_horizon": {f"h{h}": float(conformal_q_f_live[i]) for i, h in enumerate(HORIZONS)},
+        "calibration_note": (
+            "conformal_quantile_f_by_horizon fitted on val_cal (first half), "
+            "calibration_results evaluated on val_eval (second half, independent). "
+            "conformal_quantile_live_f_by_horizon fitted on full validation set for live production use."
+        ),
+        "raw_mc_dropout_calibration_results": raw_cal_on_cal,
+        "calibration_results": cal,           # independent val_eval half
         "test_coverage_results": test_cal,
         "validation_calibration_pass": bool(validation_calibration_pass),
         "test_calibration_pass": bool(test_calibration_pass),
@@ -567,7 +647,7 @@ def main() -> int:
         "conformal_quantile_f_by_horizon": {f"h{h}": float(conformal_q_f[i]) for i, h in enumerate(HORIZONS)},
         "min_validation_coverage": MIN_CONFORMAL_COVERAGE,
         "min_test_coverage": MIN_TEST_CONFORMAL_COVERAGE,
-        "raw_mc_dropout_calibration_summary": raw_cal,
+        "raw_mc_dropout_calibration_summary": raw_cal_on_cal,
         "calibration_summary": cal,
         "test_coverage_summary": test_cal,
         "validation_calibration_pass": bool(validation_calibration_pass),
@@ -586,4 +666,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
