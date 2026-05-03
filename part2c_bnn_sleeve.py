@@ -334,7 +334,9 @@ def _make_pred_df(dates, mean_f, lo_f, hi_f, std_f, true_f=None) -> pd.DataFrame
     rows = {"date": pd.to_datetime(dates)}
     for i, h in enumerate(HORIZONS):
         rows[f"target_date_h{h}"] = pd.to_datetime(dates) + pd.Timedelta(days=h)
-        rows[f"bnn_mean_h{h}"] = mean_f[:, i]
+        # Use bnn_diagnostic_mean_h* to match prediction_log naming convention.
+        # This is the raw LSTM MC-dropout mean — not the canonical forecast center.
+        rows[f"bnn_diagnostic_mean_h{h}"] = mean_f[:, i]
         rows[f"bnn_lo90_h{h}"] = lo_f[:, i]
         rows[f"bnn_hi90_h{h}"] = hi_f[:, i]
         rows[f"bnn_std_h{h}"] = std_f[:, i]
