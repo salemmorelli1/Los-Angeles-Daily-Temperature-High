@@ -15,7 +15,7 @@ Governance Checks
   4.  FORECAST_SOURCE_CHECK  — forecast_h* exists and source is not "unavailable"[CRITICAL]
   5.  FORECAST_BOUNDS        — canonical forecast in [32°F, 125°F]               [CRITICAL]
   6.  FORECAST_SPREAD        — H1–H5 spread ≤ MAX_SPREAD_F                      [WARN]
-  7.  PERSISTENCE_SANITY     — canonical forecast deviation ≤ 15°F from last obs [CRITICAL]
+  7.  PERSISTENCE_SANITY     — forecast deviation ≤ 15°F from last obs; NWS-anchored horizons use pre-anchor value [CRITICAL]
   8.  NWS_SANITY             — canonical forecast deviation ≤ 20°F from NWS     [WARN]
   9.  BNN_CALIBRATION_GATE   — BNN calibration_pass=true (if BNN ran)           [WARN]
 
@@ -254,32 +254,81 @@ def check_forecast_spread(row: pd.Series) -> GovernanceCheck:
 
 
 def check_persistence_sanity(row: pd.Series, df_hist: pd.DataFrame) -> GovernanceCheck:
-    """Compare canonical forecast_h* against last observed temp. CRITICAL level."""
+    """Compare forecast behavior against last observed temperature.
+
+    For normal horizons, this check uses the canonical forecast_h* value.
+
+    For horizons where the NWS anchor was applied
+    (nws_anchor_applied_h{h}=True), this check uses the pre-anchor model/blend
+    value instead of the anchored canonical value. The anchored value is already
+    checked by NWS_SANITY, so persistence should not double-penalize a valid
+    NWS-driven heat-event adjustment.
+    """
     chk = GovernanceCheck("PERSISTENCE_SANITY", level="CRITICAL")
+
     if df_hist.empty or "temp_high_f" not in df_hist.columns:
         return chk.warn("Cannot check persistence: no historical data")
 
     last_obs = float(df_hist["temp_high_f"].dropna().iloc[-1])
     fcast = _forecast_vals(row)
+
     violations = []
-    deviations: Dict = {}
+    check_deviations: Dict[str, float] = {}
+    canonical_deviations: Dict[str, float] = {}
+    anchored_horizons: List[int] = []
+
     for h in HORIZONS:
-        v = fcast.get(f"h{h}", float("nan"))
-        if not np.isfinite(v):
+        canonical_val = fcast.get(f"h{h}", float("nan"))
+        if not np.isfinite(canonical_val):
             continue
-        dev = abs(v - last_obs)
-        deviations[f"h{h}"] = round(dev, 1)
+
+        canonical_deviations[f"h{h}"] = round(abs(canonical_val - last_obs), 1)
+
+        anchor_applied_col = f"nws_anchor_applied_h{h}"
+        anchor_applied = bool(
+            pd.to_numeric(
+                pd.Series([row.get(anchor_applied_col, False)]),
+                errors="coerce"
+            ).fillna(0).iloc[0]
+        )
+
+        if anchor_applied:
+            pre_anchor_col = f"forecast_pre_anchor_h{h}"
+            pre_anchor_val = pd.to_numeric(
+                pd.Series([row.get(pre_anchor_col, np.nan)]),
+                errors="coerce"
+            ).iloc[0]
+
+            check_val = float(pre_anchor_val) if np.isfinite(pre_anchor_val) else canonical_val
+            anchored_horizons.append(h)
+        else:
+            check_val = canonical_val
+
+        dev = abs(check_val - last_obs)
+        check_deviations[f"h{h}"] = round(dev, 1)
+
         if dev > MAX_PERSISTENCE_DEVIATION_F:
-            violations.append(f"H={h}: forecast={v:.1f}°F deviates {dev:.1f}°F from {last_obs:.1f}°F")
+            violations.append(
+                f"H={h}: forecast={canonical_val:.1f}°F "
+                f"(check_val={check_val:.1f}°F) deviates "
+                f"{dev:.1f}°F from {last_obs:.1f}°F"
+            )
 
     chk.details = {
         "last_observed_f": round(last_obs, 1),
-        "deviations_f": deviations,
+        "check_deviations_f": check_deviations,
+        "canonical_deviations_f": canonical_deviations,
         "threshold_f": MAX_PERSISTENCE_DEVIATION_F,
         "forecast_source": str(row.get("forecast_source", "")),
+        "anchored_horizons_exempted": anchored_horizons,
     }
+
     if violations:
-        return chk.fail(f"Persistence sanity FAILED: {'; '.join(violations)}", **chk.details)
+        return chk.fail(
+            f"Persistence sanity FAILED: {'; '.join(violations)}",
+            **chk.details
+        )
+
     return chk
 
 
@@ -608,6 +657,9 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+
+
 
 
 
