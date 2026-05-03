@@ -514,7 +514,6 @@ def main() -> int:
         today = date.today()
         if last_date >= today - timedelta(days=1):
             print(f"[Part 0] Historical cache is current (last: {last_date}).")
-            start_date = HISTORY_START
             do_full = False
         else:
             start_date = (last_date + timedelta(days=1)).strftime("%Y-%m-%d")
