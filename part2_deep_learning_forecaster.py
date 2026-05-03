@@ -745,6 +745,8 @@ def main(model_type: str = "lstm", mode: str = "train") -> int:
                 "dropout": DROPOUT, "batch_size": BATCH_SIZE,
                 "max_epochs": MAX_EPOCHS, "patience": PATIENCE,
                 "lr": LR, "horizon_weights": HORIZON_WEIGHTS,
+                "heat_event_f": HEAT_EVENT_F,
+                "heat_weight": HEAT_WEIGHT,
             },
             "best_val_mae_scaled_01": best_scaled_mae,
             "val_mae_f": val_mae_f,
@@ -820,17 +822,6 @@ if __name__ == "__main__":
     parser.add_argument("--predict-only", action="store_true")
     args = parser.parse_args()
     raise SystemExit(main(model_type=args.model, mode="predict" if args.predict_only else args.mode))
-
-
-
-
-
-
-
-
-
-
-
 
 
 
