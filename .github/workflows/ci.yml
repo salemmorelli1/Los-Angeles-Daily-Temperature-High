@@ -61,7 +61,8 @@ jobs:
             part3_forecast_governance.py \
             part6_weather_regime_engine.py \
             part9_live_attribution.py \
-            run_daily_forecast.py
+            run_daily_forecast.py \
+            validate_artifacts.py
           echo "✅ All scripts compile successfully."
 
       - name: Check CLI interfaces
@@ -125,5 +126,6 @@ jobs:
             part3_forecast_governance.py \
             part6_weather_regime_engine.py \
             part9_live_attribution.py \
-            run_daily_forecast.py
+            run_daily_forecast.py \
+            validate_artifacts.py
           echo "✅ All scripts compile successfully."
