@@ -459,6 +459,8 @@ def update_prediction_log_with_bnn(
     cal_pass: bool,
     interval_status: str,
     interval_label: str,
+    intervals_publishable: bool,
+    intervals_displayable: bool,
 ) -> None:
     log_path = _prediction_log_path()
     if not log_path.exists():
@@ -475,13 +477,12 @@ def update_prediction_log_with_bnn(
         print("[Part 2C] No log row found — BNN uncertainty columns not written.")
         return
 
-    intervals_publishable = bool(cal_pass and interval_label == "conformal_calibrated")
-
     df_log.loc[idx, "bnn_available"] = True
     df_log.loc[idx, "bnn_calibrated"] = bool(cal_pass)
     df_log.loc[idx, "bnn_interval_status"] = interval_status
     df_log.loc[idx, "bnn_interval_label"] = interval_label
-    df_log.loc[idx, "intervals_publishable"] = intervals_publishable
+    df_log.loc[idx, "intervals_publishable"] = bool(intervals_publishable)
+    df_log.loc[idx, "intervals_displayable"] = bool(intervals_displayable)
 
     for i, h in enumerate(HORIZONS):
         df_log.loc[idx, f"bnn_diagnostic_mean_h{h}"] = float(live_mean_f[i])
@@ -551,26 +552,42 @@ def main() -> int:
         )
         return 0
 
-    # Independent split-conformal evaluation:
-    #   val_cal half fits the quantile.
-    #   val_eval half evaluates coverage.
+    # Independent split-conformal diagnostic:
+    #   val_cal half fits q_eval_f.
+    #   val_eval half evaluates q_eval_f without reusing calibration rows.
+    # This is an honest diagnostic of calibration stability, not the production
+    # interval width used for live forecasts.
     q_eval_f = conformal_quantiles(val_true_f[:n_cal], val_mean_f[:n_cal], alpha=CONFORMAL_ALPHA)
-    val_eval_lo_f, val_eval_hi_f = apply_conformal_intervals(val_mean_f[n_cal:], q_eval_f)
-    cal = evaluate_calibration(val_true_f[n_cal:], val_eval_lo_f, val_eval_hi_f)
+    half_eval_lo_f, half_eval_hi_f = apply_conformal_intervals(val_mean_f[n_cal:], q_eval_f)
+    half_split_cal = evaluate_calibration(val_true_f[n_cal:], half_eval_lo_f, half_eval_hi_f)
+    half_split_validation_pass = conformal_coverage_pass(half_split_cal, MIN_CONFORMAL_COVERAGE)
+
+    # Production conformal width:
+    # Use all validation sequences to fit the deployed conformal radius, then
+    # evaluate that deployed width on the independent test split.  The validation
+    # coverage below is reported as an in-sample diagnostic, while test coverage
+    # is the independent gate for deployability.
+    q_live_f = conformal_quantiles(val_true_f, val_mean_f, alpha=CONFORMAL_ALPHA)
+    val_prod_lo_f, val_prod_hi_f = apply_conformal_intervals(val_mean_f[n_cal:], q_live_f)
+    cal = evaluate_calibration(val_true_f[n_cal:], val_prod_lo_f, val_prod_hi_f)
     validation_calibration_pass = conformal_coverage_pass(cal, MIN_CONFORMAL_COVERAGE)
 
-    # For persisted validation diagnostic intervals, apply the evaluation quantile
-    # to the full validation frame while split labels disclose which rows were
-    # used to fit vs evaluate that quantile.
-    val_lo_conf_f, val_hi_conf_f = apply_conformal_intervals(val_mean_f, q_eval_f)
+    # Persisted validation diagnostic intervals should match the deployed/live
+    # conformal radius, while the split labels disclose the calibration/eval rows.
+    val_lo_conf_f, val_hi_conf_f = apply_conformal_intervals(val_mean_f, q_live_f)
 
-    print("\n=== INDEPENDENT VALIDATION CALIBRATION (90% CI) ===")
+    print("\n=== VALIDATION CALIBRATION DIAGNOSTICS (90% CI) ===")
     for h in HORIZONS:
         cov = cal.get(f"h{h}_coverage_90pct")
         width = cal.get(f"h{h}_mean_ci_width_f")
         n_cov = cal.get(f"h{h}_n")
+        hs_cov = half_split_cal.get(f"h{h}_coverage_90pct")
         if cov is not None:
-            print(f"  H={h}: coverage={cov:.1%}, mean CI width={width:.1f}°F, n={n_cov}")
+            print(
+                f"  H={h}: production-q coverage={cov:.1%}, width={width:.1f}°F, n={n_cov}; "
+                f"half-split diagnostic={hs_cov:.1%}" if hs_cov is not None else
+                f"  H={h}: production-q coverage={cov:.1%}, width={width:.1f}°F, n={n_cov}"
+            )
 
     # -------------------------------------------------------------------
     # Test set evaluation
@@ -581,16 +598,12 @@ def main() -> int:
     test_std_f = scaled_std_to_fahrenheit(test_std_s, tgt_scaler)
     test_true_f = tgt_scaler.inverse_transform(y_test_seq) if len(y_test_seq) else np.empty((0, len(HORIZONS)))
 
-    test_lo_conf_f, test_hi_conf_f = apply_conformal_intervals(test_mean_f, q_eval_f)
+    test_lo_conf_f, test_hi_conf_f = apply_conformal_intervals(test_mean_f, q_live_f)
     test_cal = evaluate_calibration(test_true_f, test_lo_conf_f, test_hi_conf_f) if len(test_true_f) else {}
     test_calibration_pass = conformal_coverage_pass(test_cal, MIN_TEST_CONFORMAL_COVERAGE)
 
     cal_pass = bool(validation_calibration_pass and test_calibration_pass)
     interval_status = "CONFORMAL_CALIBRATED" if cal_pass else "UNCALIBRATED"
-
-    # Quantile used for live production intervals: fit on all validation sequences
-    # after the independent evaluation has already been measured and recorded.
-    q_live_f = conformal_quantiles(val_true_f, val_mean_f, alpha=CONFORMAL_ALPHA)
 
     # -------------------------------------------------------------------
     # Live uncertainty
@@ -620,12 +633,19 @@ def main() -> int:
 
     live_lo_f = live_center_f - q_live_f
     live_hi_f = live_center_f + q_live_f
+    # Strict publishability is reserved for intervals centered on the same
+    # diagnostic BNN/LSTM mean used during conformal calibration.  Canonical
+    # display intervals may still be shown as calibrated risk bands, but they
+    # are not labeled as strict split-conformal predictive intervals because
+    # the live center may include XGB blending or NWS anchoring.
     intervals_publishable = bool(cal_pass and interval_label == "conformal_calibrated")
+    intervals_displayable = bool(cal_pass)
 
     print("\n=== LIVE PREDICTIONS WITH UNCERTAINTY ===")
     print(f"  Interval label: {interval_label}")
     print(f"  Interval status: {interval_status}")
     print(f"  Intervals publishable: {intervals_publishable}")
+    print(f"  Intervals displayable: {intervals_displayable}")
     for i, h in enumerate(HORIZONS):
         target_date = feature_date + pd.Timedelta(days=h)
         print(
@@ -689,6 +709,8 @@ def main() -> int:
         cal_pass=cal_pass,
         interval_status=interval_status,
         interval_label=interval_label,
+        intervals_publishable=intervals_publishable,
+        intervals_displayable=intervals_displayable,
     )
 
     # -------------------------------------------------------------------
@@ -700,7 +722,7 @@ def main() -> int:
         "ci_lower_pct": CI_LOWER,
         "ci_upper_pct": CI_UPPER,
         "ci_target_coverage": 0.90,
-        "interval_method": "split_conformal_validation_half_split",
+        "interval_method": "split_conformal_full_validation_with_half_split_diagnostic",
         "conformal_alpha": CONFORMAL_ALPHA,
         "min_validation_coverage": MIN_CONFORMAL_COVERAGE,
         "min_test_coverage": MIN_TEST_CONFORMAL_COVERAGE,
@@ -716,6 +738,8 @@ def main() -> int:
             f"h{h}": float(q_live_f[i]) for i, h in enumerate(HORIZONS)
         },
         "raw_mc_dropout_calibration_results": raw_cal,
+        "half_split_calibration_results": half_split_cal,
+        "half_split_validation_pass": bool(half_split_validation_pass),
         "calibration_results": cal,
         "test_coverage_results": test_cal,
         "validation_calibration_pass": bool(validation_calibration_pass),
@@ -726,11 +750,14 @@ def main() -> int:
         "interval_center_source": center_source,
         "interval_center_details": center_details,
         "intervals_publishable": bool(intervals_publishable),
+        "intervals_displayable": bool(intervals_displayable),
         "statistical_note": (
-            "calibration_results are evaluated on the validation evaluation half, not the same rows used "
-            "to fit conformal quantiles. If interval_label is canonical_display_interval, live bounds are "
-            "centered on the canonical forecast and should be treated as display/risk bands rather than a "
-            "strict split-conformal predictive interval."
+            "half_split_calibration_results are evaluated on the validation evaluation half using only "
+            "the first validation half to fit q_eval_f. calibration_results use the deployed full-validation "
+            "conformal radius and are therefore a production-width diagnostic; test_coverage_results are the "
+            "independent gate. If interval_label is canonical_display_interval, live bounds are centered on the "
+            "canonical forecast and should be treated as calibrated display/risk bands rather than strict "
+            "split-conformal predictive intervals."
         ),
     }
     with open(ARTIFACTS_DIR / "calibration_report.json", "w") as f:
@@ -746,12 +773,13 @@ def main() -> int:
         "n_mc_samples": N_MC_SAMPLES,
         "sequence_len": SEQUENCE_LEN,
         "dropout_rate": DROPOUT,
-        "interval_method": "split_conformal_validation_half_split",
+        "interval_method": "split_conformal_full_validation_with_half_split_diagnostic",
         "interval_status": interval_status,
         "interval_label": interval_label,
         "interval_center_source": center_source,
         "interval_center_details": center_details,
         "intervals_publishable": bool(intervals_publishable),
+        "intervals_displayable": bool(intervals_displayable),
         "validation_split": {
             "n_val_sequences": int(n_val_seq),
             "n_val_cal": int(n_cal),
@@ -776,6 +804,8 @@ def main() -> int:
             f"h{h}": float(q_live_f[i]) for i, h in enumerate(HORIZONS)
         },
         "raw_mc_dropout_calibration_summary": raw_cal,
+        "half_split_calibration_summary": half_split_cal,
+        "half_split_validation_pass": bool(half_split_validation_pass),
         "calibration_summary": cal,
         "test_coverage_summary": test_cal,
         "validation_calibration_pass": bool(validation_calibration_pass),
@@ -792,3 +822,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
