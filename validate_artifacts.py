@@ -14,7 +14,7 @@ Checks
   5.  xgb_predictions.parquet has a split column with val/test rows
   6.  bnn_predictions.parquet has a split column with val_cal/val_eval/test rows
   7.  prediction_log.csv has required columns
-  8.  If BNN intervals are not publishable, governance suppresses display
+  8.  BNN interval display gate agrees with Part 2C displayability contract
   9.  Part 9 model_only_metrics uses pre-anchor columns, not forecast_h*
   10. live_attribution_report.json has NWS-anchor tracking
   11. feature_meta.json confirms alpha features were merged
@@ -378,41 +378,49 @@ def check_prediction_log_schema() -> Tuple[str, str, str]:
 
 
 def check_bnn_display_gate() -> Tuple[str, str, str]:
-    """If intervals_publishable=False, bnn_intervals_displayable must be False."""
+    """Governance display flag must match Part 2C displayability contract.
+
+    intervals_publishable means strict split-conformal predictive intervals.
+    intervals_displayable means calibrated display/risk bands are allowed.
+    Canonical display intervals should usually be displayable when calibrated,
+    but not publishable as strict split-conformal intervals.
+    """
     try:
         gov_path = PROJECT_DIR / "artifacts_part3" / "governance_report.json"
         cal_path = PROJECT_DIR / "artifacts_part2c" / "calibration_report.json"
 
         if not gov_path.exists():
             return _warn("bnn_display_gate", "governance_report.json not found")
+        if not cal_path.exists():
+            return _warn("bnn_display_gate", "calibration_report.json not found")
 
         with open(gov_path) as f:
             gov = json.load(f)
+        with open(cal_path) as f:
+            cal = json.load(f)
 
-        intervals_publishable = True
-        if cal_path.exists():
-            with open(cal_path) as f:
-                cal = json.load(f)
-            intervals_publishable = bool(cal.get("intervals_publishable", False))
+        interval_label = str(cal.get("interval_label", "UNKNOWN"))
+        intervals_publishable = bool(cal.get("intervals_publishable", False))
+        intervals_displayable = bool(cal.get("intervals_displayable", intervals_publishable))
+        governance_displayable = bool(gov.get("bnn_intervals_displayable", False))
 
-        displayable = bool(gov.get("bnn_intervals_displayable", False))
-
-        if not intervals_publishable and displayable:
+        if interval_label == "canonical_display_interval" and intervals_publishable:
             return _fail(
                 "bnn_display_gate",
-                "intervals_publishable=False but bnn_intervals_displayable=True",
+                "canonical_display_interval must not be marked intervals_publishable=True",
             )
 
-        if not intervals_publishable:
-            return _ok(
+        if governance_displayable != intervals_displayable:
+            return _fail(
                 "bnn_display_gate",
-                "BNN intervals not publishable; display gate correctly suppressed",
+                "governance bnn_intervals_displayable does not match Part 2C "
+                f"intervals_displayable ({governance_displayable} != {intervals_displayable})",
             )
 
         return _ok(
             "bnn_display_gate",
-            f"bnn_intervals_displayable={displayable}, "
-            f"intervals_publishable={intervals_publishable}",
+            f"label={interval_label}, displayable={intervals_displayable}, "
+            f"publishable={intervals_publishable}",
         )
 
     except Exception as e:
@@ -734,4 +742,8 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+
+
+
 
