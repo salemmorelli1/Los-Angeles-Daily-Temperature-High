@@ -419,6 +419,69 @@ def build_alpha_features(df: pd.DataFrame, enso_df: Optional[pd.DataFrame] = Non
     return alpha_all
 
 
+
+def drop_duplicate_alpha_features_against_part1(alpha_df: pd.DataFrame) -> pd.DataFrame:
+    """Drop alpha columns that exactly duplicate an existing Part 1 feature.
+
+    Part 2A runs after Part 1 and merges new alpha signals into the model matrix.
+    Some alpha definitions are intentionally similar to Part 1 derived features;
+    if an alpha column is an exact date-aligned copy of an existing non-alpha
+    feature, keeping both only adds redundant capacity and feature-importance
+    ambiguity.  The check is strict by design: it only drops a column when the
+    maximum absolute aligned difference is effectively zero.
+    """
+    feat_path = PART1_DIR / "feature_matrix.parquet"
+    if not feat_path.exists() or alpha_df.empty:
+        return alpha_df
+
+    try:
+        df_feat = pd.read_parquet(feat_path)
+        df_feat["date"] = pd.to_datetime(df_feat["date"]).dt.normalize()
+    except Exception as exc:
+        print(f"[Part 2A] WARNING: Could not read Part 1 feature matrix for duplicate-alpha check: {exc}")
+        return alpha_df
+
+    target_cols = {c for c in df_feat.columns if c.startswith("target_h")}
+    base_feature_cols = [
+        c for c in df_feat.columns
+        if c not in (["date"] + list(target_cols)) and not c.startswith("alpha_")
+    ]
+    if not base_feature_cols:
+        return alpha_df
+
+    base = df_feat[["date"] + base_feature_cols].copy()
+    merged = alpha_df.merge(base, on="date", how="left", suffixes=("", "__base"))
+
+    alpha_cols = [c for c in alpha_df.columns if c != "date"]
+    duplicate_pairs: List[Tuple[str, str]] = []
+    keep_cols: List[str] = []
+
+    for ac in alpha_cols:
+        a = pd.to_numeric(merged[ac], errors="coerce")
+        duplicate_of: Optional[str] = None
+        for bc in base_feature_cols:
+            b = pd.to_numeric(merged[bc], errors="coerce")
+            mask = a.notna() & b.notna()
+            if int(mask.sum()) == 0:
+                continue
+            max_abs_diff = float(np.nanmax(np.abs(a[mask].to_numpy() - b[mask].to_numpy())))
+            if max_abs_diff <= 1e-12:
+                duplicate_of = bc
+                break
+
+        if duplicate_of is None:
+            keep_cols.append(ac)
+        else:
+            duplicate_pairs.append((ac, duplicate_of))
+
+    if duplicate_pairs:
+        print(
+            "[Part 2A] Dropping exact duplicate alpha feature(s) already present in Part 1: "
+            f"{duplicate_pairs}"
+        )
+
+    return alpha_df[["date"] + keep_cols].copy()
+
 # ---------------------------------------------------------------------------
 # Merge alphas into Part 1 feature matrix
 # ---------------------------------------------------------------------------
@@ -480,6 +543,10 @@ def main() -> int:
     # Build all alpha features
     alpha_df = build_alpha_features(df, enso_df)
 
+    # Drop exact date-aligned duplicates of existing Part 1 features before
+    # saving or merging, so alpha_meta.json and feature_meta.json stay aligned.
+    alpha_df = drop_duplicate_alpha_features_against_part1(alpha_df)
+
     # Save alpha features
     alpha_path = ARTIFACTS_DIR / "alpha_features.parquet"
     alpha_df.to_parquet(alpha_path, index=False)
@@ -532,4 +599,5 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
 
