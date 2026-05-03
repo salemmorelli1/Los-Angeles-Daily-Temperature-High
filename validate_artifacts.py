@@ -18,6 +18,8 @@ Checks
   8.  Part 9 model_only_metrics uses a pre-anchor column, not forecast_h*
   9.  live_attribution_report.json exists and has nws_anchor_rows_by_horizon
   10. No alpha_ feature column in feature_matrix is constant zero after Part 2A merge
+  11. bnn_predictions.parquet uses bnn_diagnostic_mean_h* (not legacy bnn_mean_h*)
+  12. part2_meta.json hyperparameters include heat_event_f and heat_weight
 
 Exit codes
 ----------
@@ -383,6 +385,54 @@ def check_nws_row_level_storage() -> Tuple[str, str, str]:
         return _warn("nws_row_level_storage", f"Error: {e}")
 
 
+def check_bnn_parquet_column_names() -> Tuple[str, str, str]:
+    """bnn_predictions.parquet must use bnn_diagnostic_mean_h* (not bnn_mean_h*)."""
+    try:
+        import pandas as pd
+        path = PROJECT_DIR / "artifacts_part2c" / "bnn_predictions.parquet"
+        if not path.exists():
+            return _warn("bnn_parquet_column_names",
+                         "bnn_predictions.parquet not found (Part 2C may not have run)")
+
+        df = pd.read_parquet(path)
+        old_style = [c for c in df.columns if c.startswith("bnn_mean_h")]
+        new_style = [c for c in df.columns if c.startswith("bnn_diagnostic_mean_h")]
+
+        if old_style:
+            return _fail("bnn_parquet_column_names",
+                         f"Old-style 'bnn_mean_h*' columns found: {old_style}. "
+                         "Rename to 'bnn_diagnostic_mean_h*' to match prediction_log.")
+        if not new_style:
+            return _warn("bnn_parquet_column_names",
+                         "No bnn_diagnostic_mean_h* columns found in bnn_predictions.parquet")
+        return _ok("bnn_parquet_column_names",
+                   f"bnn_diagnostic_mean_h* columns present: {new_style}")
+    except Exception as e:
+        return _warn("bnn_parquet_column_names", f"Error: {e}")
+
+
+def check_heat_weight_in_meta() -> Tuple[str, str, str]:
+    """part2_meta.json hyperparameters must include heat_event_f and heat_weight."""
+    try:
+        meta_path = PROJECT_DIR / "artifacts_part2" / "part2_meta.json"
+        if not meta_path.exists():
+            return _warn("heat_weight_in_meta", "part2_meta.json not found")
+
+        with open(meta_path) as f:
+            meta = json.load(f)
+
+        hp = meta.get("hyperparameters", {})
+        missing = [k for k in ["heat_event_f", "heat_weight"] if k not in hp]
+        if missing:
+            return _warn("heat_weight_in_meta",
+                         f"Heat weighting params missing from hyperparameters: {missing}. "
+                         "Retrain to record them.")
+        return _ok("heat_weight_in_meta",
+                   f"heat_event_f={hp['heat_event_f']} heat_weight={hp['heat_weight']}")
+    except Exception as e:
+        return _warn("heat_weight_in_meta", f"Error: {e}")
+
+
 # ---------------------------------------------------------------------------
 # Runner
 # ---------------------------------------------------------------------------
@@ -398,12 +448,14 @@ def run_all_checks() -> List[Tuple[str, str, str]]:
         check_attribution_report(),
         check_alpha_feature_meta_updated(),
         check_nws_row_level_storage(),
+        check_bnn_parquet_column_names(),
+        check_heat_weight_in_meta(),
     ]
 
 
 def main() -> int:
     print(f"[Validator] Project root: {PROJECT_DIR}")
-    print(f"[Validator] Running {10} artifact contract checks...\n")
+    print(f"[Validator] Running {12} artifact contract checks...\n")
 
     results = run_all_checks()
     n_pass = sum(1 for r in results if r[0] == "PASS")
