@@ -1,0 +1,123 @@
+{
+  "schema_version": "1.2.0",
+  "run_at": "2026-05-03T09:46:42.384714",
+  "part2_model_type": "lstm",
+  "feature_date": "2026-05-02T00:00:00",
+  "target_clock": "target_date_h = feature_date + h calendar days",
+  "n_mc_samples": 200,
+  "sequence_len": 14,
+  "dropout_rate": 0.2,
+  "interval_method": "split_conformal_full_validation_with_half_split_diagnostic",
+  "interval_status": "CONFORMAL_CALIBRATED",
+  "interval_label": "canonical_display_interval",
+  "interval_center_source": "canonical_forecast",
+  "interval_center_details": {
+    "forecast_source": "blend+nws_anchor"
+  },
+  "intervals_publishable": false,
+  "intervals_displayable": true,
+  "validation_split": {
+    "n_val_sequences": 443,
+    "n_val_cal": 221,
+    "n_val_eval": 222
+  },
+  "live_predictions": {
+    "h1": {
+      "target_date": "2026-05-03",
+      "diagnostic_mean_f": 66.54032897949219,
+      "interval_center_f": 66.62839965820314,
+      "lo90_f": 60.176426696777355,
+      "hi90_f": 73.08037261962892,
+      "std_f": 1.879563331604004,
+      "interval_label": "canonical_display_interval"
+    },
+    "h3": {
+      "target_date": "2026-05-05",
+      "diagnostic_mean_f": 67.19583892822266,
+      "interval_center_f": 66.3160400390625,
+      "lo90_f": 58.36664581298828,
+      "hi90_f": 74.26543426513672,
+      "std_f": 1.2106432914733887,
+      "interval_label": "canonical_display_interval"
+    },
+    "h5": {
+      "target_date": "2026-05-07",
+      "diagnostic_mean_f": 66.59920501708984,
+      "interval_center_f": 86.0,
+      "lo90_f": 78.13016510009766,
+      "hi90_f": 93.86983489990234,
+      "std_f": 1.2663995027542114,
+      "interval_label": "canonical_display_interval"
+    }
+  },
+  "conformal_quantile_eval_f_by_horizon": {
+    "h1": 6.134593963623047,
+    "h3": 7.26348876953125,
+    "h5": 6.083457946777344
+  },
+  "conformal_quantile_live_f_by_horizon": {
+    "h1": 6.451972961425781,
+    "h3": 7.949394226074219,
+    "h5": 7.869834899902344
+  },
+  "raw_mc_dropout_calibration_summary": {
+    "h1_coverage_90pct": 0.708803611738149,
+    "h1_mean_ci_width_f": 7.350817247653384,
+    "h1_calibration_error": 0.19119638826185104,
+    "h1_n": 443,
+    "h3_coverage_90pct": 0.5259593679458239,
+    "h3_mean_ci_width_f": 5.578967049213349,
+    "h3_calibration_error": 0.37404063205417615,
+    "h3_n": 443,
+    "h5_coverage_90pct": 0.5440180586907449,
+    "h5_mean_ci_width_f": 5.956765650626499,
+    "h5_calibration_error": 0.3559819413092551,
+    "h5_n": 443
+  },
+  "half_split_calibration_summary": {
+    "h1_coverage_90pct": 0.8648648648648649,
+    "h1_mean_ci_width_f": 12.269187927246094,
+    "h1_calibration_error": 0.03513513513513511,
+    "h1_n": 222,
+    "h3_coverage_90pct": 0.8648648648648649,
+    "h3_mean_ci_width_f": 14.5269775390625,
+    "h3_calibration_error": 0.03513513513513511,
+    "h3_n": 222,
+    "h5_coverage_90pct": 0.7882882882882883,
+    "h5_mean_ci_width_f": 12.166915893554688,
+    "h5_calibration_error": 0.11171171171171168,
+    "h5_n": 222
+  },
+  "half_split_validation_pass": false,
+  "calibration_summary": {
+    "h1_coverage_90pct": 0.8873873873873874,
+    "h1_mean_ci_width_f": 12.903945922851562,
+    "h1_calibration_error": 0.012612612612612595,
+    "h1_n": 222,
+    "h3_coverage_90pct": 0.8873873873873874,
+    "h3_mean_ci_width_f": 15.898788452148438,
+    "h3_calibration_error": 0.012612612612612595,
+    "h3_n": 222,
+    "h5_coverage_90pct": 0.8873873873873874,
+    "h5_mean_ci_width_f": 15.739669799804688,
+    "h5_calibration_error": 0.012612612612612595,
+    "h5_n": 222
+  },
+  "test_coverage_summary": {
+    "h1_coverage_90pct": 0.8510158013544018,
+    "h1_mean_ci_width_f": 12.903945922851562,
+    "h1_calibration_error": 0.04898419864559822,
+    "h1_n": 443,
+    "h3_coverage_90pct": 0.835214446952596,
+    "h3_mean_ci_width_f": 15.898788452148438,
+    "h3_calibration_error": 0.06478555304740408,
+    "h3_n": 443,
+    "h5_coverage_90pct": 0.8081264108352144,
+    "h5_mean_ci_width_f": 15.739669799804688,
+    "h5_calibration_error": 0.09187358916478561,
+    "h5_n": 443
+  },
+  "validation_calibration_pass": true,
+  "test_calibration_pass": true,
+  "calibration_pass": true
+}

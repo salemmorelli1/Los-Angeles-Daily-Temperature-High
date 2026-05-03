@@ -1,0 +1,199 @@
+{
+  "schema_version": "1.1.0",
+  "run_at": "2026-05-03T09:46:43.119452",
+  "decision_date": "2026-05-03",
+  "publish_mode": "NORMAL",
+  "forecast_source": "blend+nws_anchor",
+  "bnn_available": true,
+  "bnn_calibrated": true,
+  "bnn_interval_status": "CONFORMAL_CALIBRATED",
+  "bnn_intervals_displayable": true,
+  "checks_passed": 9,
+  "checks_total": 9,
+  "checks": [
+    {
+      "name": "DATA_FRESHNESS",
+      "passed": true,
+      "level": "CRITICAL",
+      "message": "OK",
+      "details": {
+        "fetched_at": "2026-05-03 09:46:07.084323",
+        "age_hours": 0.0,
+        "historical_end": "2026-05-02",
+        "staleness_days": 1
+      }
+    },
+    {
+      "name": "MODEL_FRESHNESS",
+      "passed": true,
+      "level": "WARN",
+      "message": "OK",
+      "details": {
+        "trained_at": "2026-05-03 09:46:28.767647",
+        "age_days": 0
+      }
+    },
+    {
+      "name": "SCHEMA_INTEGRITY",
+      "passed": true,
+      "level": "CRITICAL",
+      "message": "OK",
+      "details": {
+        "required_cols": [
+          "decision_date",
+          "feature_date",
+          "model",
+          "target_h1",
+          "target_h3",
+          "target_h5",
+          "forecast_h1",
+          "forecast_h3",
+          "forecast_h5",
+          "forecast_source"
+        ],
+        "missing_cols": []
+      }
+    },
+    {
+      "name": "FORECAST_SOURCE_CHECK",
+      "passed": true,
+      "level": "CRITICAL",
+      "message": "OK",
+      "details": {
+        "forecast_source": "blend+nws_anchor",
+        "forecast_values": {
+          "h1": 66.63,
+          "h3": 66.32,
+          "h5": 86.0
+        }
+      }
+    },
+    {
+      "name": "FORECAST_BOUNDS",
+      "passed": true,
+      "level": "CRITICAL",
+      "message": "OK",
+      "details": {
+        "forecast_values": {
+          "h1": 66.63,
+          "h3": 66.32,
+          "h5": 86.0
+        },
+        "bounds": {
+          "min_f": 32.0,
+          "max_f": 125.0
+        }
+      }
+    },
+    {
+      "name": "FORECAST_SPREAD",
+      "passed": true,
+      "level": "WARN",
+      "message": "OK",
+      "details": {
+        "spread_f": 19.7,
+        "max_spread_f": 35.0
+      }
+    },
+    {
+      "name": "PERSISTENCE_SANITY",
+      "passed": true,
+      "level": "CRITICAL",
+      "message": "OK",
+      "details": {
+        "last_observed_f": 66.5,
+        "check_deviations_f": {
+          "h1": 0.1,
+          "h3": 0.2,
+          "h5": 0.5
+        },
+        "canonical_deviations_f": {
+          "h1": 0.1,
+          "h3": 0.2,
+          "h5": 19.5
+        },
+        "threshold_f": 15.0,
+        "forecast_source": "blend+nws_anchor",
+        "anchored_horizons_exempted": [
+          5
+        ]
+      }
+    },
+    {
+      "name": "NWS_SANITY",
+      "passed": true,
+      "level": "WARN",
+      "message": "OK",
+      "details": {
+        "comparisons": {
+          "h1": {
+            "forecast_f": 66.6,
+            "nws_f": 68.0,
+            "deviation_f": 1.4,
+            "direction": "cold",
+            "tier": "OK"
+          },
+          "h3": {
+            "forecast_f": 66.3,
+            "nws_f": 67.0,
+            "deviation_f": 0.7,
+            "direction": "cold",
+            "tier": "OK"
+          },
+          "h5": {
+            "forecast_f": 86.0,
+            "nws_f": 86.0,
+            "deviation_f": 0.0,
+            "direction": "cold",
+            "tier": "OK"
+          }
+        },
+        "soft_warn_deviation_f": 8.0,
+        "strong_warn_deviation_f": 12.0,
+        "max_deviation_f": 20.0,
+        "soft_notes": []
+      }
+    },
+    {
+      "name": "BNN_CALIBRATION_GATE",
+      "passed": true,
+      "level": "WARN",
+      "message": "OK",
+      "details": {
+        "calibration_pass": true,
+        "validation_calibration_pass": true,
+        "test_calibration_pass": true,
+        "interval_status": "CONFORMAL_CALIBRATED",
+        "interval_label": "canonical_display_interval",
+        "intervals_publishable": false,
+        "intervals_displayable": true,
+        "coverage_by_horizon": {
+          "h1": 0.851,
+          "h3": 0.8352,
+          "h5": 0.8081
+        },
+        "val_diagnostic_coverage_by_horizon": {
+          "h1": 0.8874,
+          "h3": 0.8874,
+          "h5": 0.8874
+        },
+        "min_coverage_threshold": 0.75,
+        "min_validation_coverage": 0.85,
+        "min_test_coverage": 0.8,
+        "bnn_available": true
+      }
+    }
+  ],
+  "thresholds": {
+    "max_data_staleness_days": 2,
+    "max_model_age_days": 30,
+    "la_temp_min_f": 32.0,
+    "la_temp_max_f": 125.0,
+    "max_spread_f": 35.0,
+    "max_persistence_deviation_f": 15.0,
+    "nws_soft_warn_deviation_f": 8.0,
+    "nws_strong_warn_deviation_f": 12.0,
+    "max_nws_deviation_f": 20.0,
+    "min_bnn_coverage": 0.75
+  }
+}
