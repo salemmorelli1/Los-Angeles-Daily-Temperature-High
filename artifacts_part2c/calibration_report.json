@@ -1,0 +1,54 @@
+{
+  "schema_version": "1.1.0",
+  "n_mc_samples": 200,
+  "ci_lower_pct": 5.0,
+  "ci_upper_pct": 95.0,
+  "ci_target_coverage": 0.9,
+  "interval_method": "split_conformal_on_validation_residuals",
+  "conformal_alpha": 0.1,
+  "min_validation_coverage": 0.85,
+  "min_test_coverage": 0.8,
+  "conformal_quantile_f_by_horizon": {
+    "h1": 6.936962127685547,
+    "h3": 7.883460998535156,
+    "h5": 8.145278930664062
+  },
+  "raw_mc_dropout_calibration_results": {
+    "h1_coverage_90pct": 0.6930022573363431,
+    "h1_mean_ci_width_f": 7.299571990966797,
+    "h1_calibration_error": 0.2069977426636569,
+    "h3_coverage_90pct": 0.5846501128668171,
+    "h3_mean_ci_width_f": 6.57864236831665,
+    "h3_calibration_error": 0.3153498871331829,
+    "h5_coverage_90pct": 0.5598194130925508,
+    "h5_mean_ci_width_f": 6.1446919441223145,
+    "h5_calibration_error": 0.34018058690744923
+  },
+  "calibration_results": {
+    "h1_coverage_90pct": 0.9029345372460497,
+    "h1_mean_ci_width_f": 13.873924255371094,
+    "h1_calibration_error": 0.00293453724604964,
+    "h3_coverage_90pct": 0.9029345372460497,
+    "h3_mean_ci_width_f": 15.766921997070312,
+    "h3_calibration_error": 0.00293453724604964,
+    "h5_coverage_90pct": 0.9029345372460497,
+    "h5_mean_ci_width_f": 16.290557861328125,
+    "h5_calibration_error": 0.00293453724604964
+  },
+  "test_coverage_results": {
+    "h1_coverage_90pct": 0.8893905191873589,
+    "h1_mean_ci_width_f": 13.873924255371094,
+    "h1_calibration_error": 0.010609480812641126,
+    "h3_coverage_90pct": 0.8487584650112867,
+    "h3_mean_ci_width_f": 15.766921997070312,
+    "h3_calibration_error": 0.05124153498871331,
+    "h5_coverage_90pct": 0.8216704288939052,
+    "h5_mean_ci_width_f": 16.290557861328125,
+    "h5_calibration_error": 0.07832957110609484
+  },
+  "validation_calibration_pass": true,
+  "test_calibration_pass": true,
+  "calibration_pass": true,
+  "interval_status": "CONFORMAL_CALIBRATED",
+  "intervals_publishable": true
+}
