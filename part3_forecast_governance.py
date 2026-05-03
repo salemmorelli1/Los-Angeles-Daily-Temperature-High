@@ -425,43 +425,59 @@ def check_bnn_calibration() -> GovernanceCheck:
 
     cal_pass = cal.get("calibration_pass", None)
     interval_status = cal.get("interval_status", "UNKNOWN")
+    interval_label = str(cal.get("interval_label", "UNKNOWN"))
     intervals_publishable = bool(cal.get("intervals_publishable", False))
+    intervals_displayable = bool(cal.get("intervals_displayable", intervals_publishable))
     validation_pass = cal.get("validation_calibration_pass", None)
     test_pass = cal.get("test_calibration_pass", None)
-    results = cal.get("calibration_results", {})
+    # FIX (Audit 5): Use test_coverage_results (independent holdout) for both
+    # coverage_by_horizon display and the per-horizon failing check.
+    # calibration_results uses q_live_f evaluated on val_eval, which is partially
+    # in-sample (val_eval rows contributed to fitting q_live_f) and biases
+    # coverage toward ~90%. Displaying those numbers as coverage_by_horizon in
+    # the governance report was misleading — the truly independent signal is the
+    # test set.  Val-width diagnostic numbers are now stored separately as
+    # val_diagnostic_coverage_by_horizon for traceability.
+    val_diag_results = cal.get("calibration_results", {})
     test_results = cal.get("test_coverage_results", {})
-    coverage_summary: Dict = {}
-    test_coverage_summary: Dict = {}
+    coverage_summary: Dict = {}          # independent test coverage (authoritative)
+    val_diagnostic_summary: Dict = {}    # in-sample val diagnostic (for reference only)
     failing: List[str] = []
 
     for h in HORIZONS:
-        cov = results.get(f"h{h}_coverage_90pct")
-        if cov is not None:
-            coverage_summary[f"h{h}"] = round(float(cov), 4)
-            if float(cov) < MIN_BNN_COVERAGE:
-                failing.append(f"H={h}: validation coverage={cov:.1%} < min {MIN_BNN_COVERAGE:.0%}")
+        # Independent test coverage — the authoritative metric
         tcov = test_results.get(f"h{h}_coverage_90pct")
         if tcov is not None:
-            test_coverage_summary[f"h{h}"] = round(float(tcov), 4)
+            coverage_summary[f"h{h}"] = round(float(tcov), 4)
+            if float(tcov) < MIN_BNN_COVERAGE:
+                failing.append(
+                    f"H={h}: test coverage={tcov:.1%} < min {MIN_BNN_COVERAGE:.0%}"
+                )
+        # In-sample val diagnostic — stored for traceability, not used as gate
+        vcov = val_diag_results.get(f"h{h}_coverage_90pct")
+        if vcov is not None:
+            val_diagnostic_summary[f"h{h}"] = round(float(vcov), 4)
 
     chk.details = {
         "calibration_pass": cal_pass,
         "validation_calibration_pass": validation_pass,
         "test_calibration_pass": test_pass,
         "interval_status": interval_status,
+        "interval_label": interval_label,
         "intervals_publishable": intervals_publishable,
-        "coverage_by_horizon": coverage_summary,
-        "test_coverage_by_horizon": test_coverage_summary,
+        "intervals_displayable": intervals_displayable,
+        "coverage_by_horizon": coverage_summary,             # independent test coverage
+        "val_diagnostic_coverage_by_horizon": val_diagnostic_summary,  # in-sample, informational
         "min_coverage_threshold": MIN_BNN_COVERAGE,
         "min_validation_coverage": cal.get("min_validation_coverage"),
         "min_test_coverage": cal.get("min_test_coverage"),
         "bnn_available": True,
     }
 
-    if cal_pass is False or not intervals_publishable or failing:
+    if cal_pass is False or not intervals_displayable or failing:
         return chk.warn(
-            f"BNN calibration FAILED — intervals are UNCALIBRATED. "
-            f"Failures: {'; '.join(failing) if failing else 'calibration_pass=false or intervals_publishable=false'}",
+            f"BNN calibration FAILED — intervals are not displayable. "
+            f"Failures: {'; '.join(failing) if failing else 'calibration_pass=false or intervals_displayable=false'}",
             **chk.details
         )
     return chk
@@ -570,11 +586,18 @@ def main() -> int:
     else:
         bnn_interval_status = str(bnn_chk.details.get("interval_status", "CALIBRATED" if bnn_calibrated else "UNCALIBRATED"))
 
-    # BNN intervals are safe to display only when all three conditions are met.
+    # BNN intervals are safe to display when Part 2C says they are calibrated
+    # enough for display. This is intentionally broader than strict
+    # intervals_publishable because canonical_display_interval bands may be
+    # useful display/risk bands while not being labeled as strict split-conformal
+    # predictive intervals.
     bnn_intervals_displayable = bool(
         bnn_available
         and bnn_calibrated
-        and bnn_chk.details.get("intervals_publishable", False)
+        and bnn_chk.details.get(
+            "intervals_displayable",
+            bnn_chk.details.get("intervals_publishable", False),
+        )
     )
     if bnn_available and not bnn_intervals_displayable:
         print(
@@ -657,10 +680,6 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
-
-
-
 
 
 
