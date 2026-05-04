@@ -172,6 +172,7 @@ def _get_feature_cols(df: pd.DataFrame) -> List[str]:
     for col in df.columns:
         if col in excluded:
             continue
+
         s = df[col]
         if pd.api.types.is_numeric_dtype(s) or pd.api.types.is_bool_dtype(s):
             feature_cols.append(col)
@@ -189,6 +190,7 @@ def _get_feature_cols(df: pd.DataFrame) -> List[str]:
 
     nonconstant: List[str] = []
     dropped_constant: List[str] = []
+
     for col in feature_cols:
         s_num = pd.to_numeric(df[col], errors="coerce")
         if s_num.nunique(dropna=True) > 1:
@@ -204,6 +206,7 @@ def _get_feature_cols(df: pd.DataFrame) -> List[str]:
 
     if not nonconstant:
         raise ValueError("No numeric nonconstant feature columns available for Part 2.")
+
     return nonconstant
 
 
@@ -214,7 +217,12 @@ def _clean_feature_frame(df: pd.DataFrame, feature_cols: List[str]) -> np.ndarra
             X[col] = X[col].astype(np.float32)
         elif not pd.api.types.is_numeric_dtype(X[col]):
             X[col] = pd.to_numeric(X[col], errors="coerce")
-    return X.replace([np.inf, -np.inf], np.nan).fillna(0.0).to_numpy(dtype=np.float32)
+
+    return (
+        X.replace([np.inf, -np.inf], np.nan)
+        .fillna(0.0)
+        .to_numpy(dtype=np.float32)
+    )
 
 
 def _build_labeled_splits(
@@ -257,14 +265,17 @@ def build_sequences(
 
     Xs = []
     ys = []
+
     for i in range(seq_len - 1, len(X)):
         Xs.append(X[i - seq_len + 1 : i + 1])
         if y is not None:
             ys.append(y[i])
 
     Xs = np.array(Xs, dtype=np.float32)
+
     if y is None:
         return Xs
+
     return Xs, np.array(ys, dtype=np.float32)
 
 
@@ -359,6 +370,7 @@ def build_model(model_type: str, input_size: int):
             dropout=DROPOUT,
             n_outputs=len(HORIZONS),
         )
+
     return build_lstm_model(
         input_size=input_size,
         hidden_size=HIDDEN_SIZE,
@@ -416,6 +428,7 @@ def _asymmetric_warm_heat_loss(
         sample_weight = torch.ones(pred.shape[0], dtype=dtype, device=device)
     else:
         sample_weight = sample_weight.to(device=device, dtype=dtype)
+
     sample_weight = sample_weight.view(-1, 1)
 
     sq_err = (pred - target) ** 2
@@ -527,12 +540,14 @@ def train_model(
         model.eval()
         val_losses = []
         val_maes = []
+
         with torch.no_grad():
             for batch in val_loader:
                 if len(batch) == 3:
                     xb, yb, _wb = batch
                 else:
                     xb, yb = batch
+
                 xb = xb.to(device)
                 yb = yb.to(device)
                 pred = model(xb)
@@ -591,15 +606,18 @@ def train_model(
 # ---------------------------------------------------------------------------
 def predict_scaled(model, X_seq: np.ndarray) -> np.ndarray:
     torch, _, _, _ = _try_import_torch()
+
     if len(X_seq) == 0:
         return np.empty((0, len(HORIZONS)), dtype=np.float32)
 
     model.eval()
     preds = []
+
     with torch.no_grad():
         for start in range(0, len(X_seq), BATCH_SIZE):
             batch = torch.tensor(X_seq[start : start + BATCH_SIZE], dtype=torch.float32)
             preds.append(model(batch).cpu().numpy())
+
     return np.vstack(preds).astype(np.float32)
 
 
@@ -618,6 +636,7 @@ def heat_event_diagnostics(
 ) -> Dict[str, object]:
     pred = np.asarray(pred, dtype=float)
     true = np.asarray(true, dtype=float)
+
     mask = np.isfinite(pred) & np.isfinite(true)
     heat = mask & (true >= threshold_f)
     n_heat = int(heat.sum())
@@ -635,6 +654,7 @@ def heat_event_diagnostics(
         }
 
     err = pred[heat] - true[heat]
+
     return {
         "threshold_f": float(threshold_f),
         "n_true_heat_days": n_heat,
@@ -688,28 +708,40 @@ def make_prediction_frame(
     split: str,
 ) -> pd.DataFrame:
     out = pd.DataFrame({"date": pd.to_datetime(dates), "split": split})
+
     for i, h in enumerate(HORIZONS):
         out[f"pred_h{h}"] = pred_f[:, i] if len(pred_f) else []
         out[f"true_h{h}"] = true_f[:, i] if len(true_f) else []
         out[f"target_date_h{h}"] = pd.to_datetime(out["date"]) + pd.Timedelta(days=h)
         out[f"error_h{h}"] = out[f"pred_h{h}"] - out[f"true_h{h}"]
         out[f"abs_error_h{h}"] = out[f"error_h{h}"].abs()
+
     return out
 
 
 # ---------------------------------------------------------------------------
 # Persistence
 # ---------------------------------------------------------------------------
-def save_training_artifacts(model, model_type: str, feat_scaler, tgt_scaler, history: Dict, meta: Dict) -> None:
+def save_training_artifacts(
+    model,
+    model_type: str,
+    feat_scaler,
+    tgt_scaler,
+    history: Dict,
+    meta: Dict,
+) -> None:
     torch, _, _, _ = _try_import_torch()
     torch.save(model.state_dict(), _model_path(model_type))
 
     with open(ARTIFACTS_DIR / "feature_scaler.pkl", "wb") as f:
         pickle.dump(feat_scaler, f)
+
     with open(ARTIFACTS_DIR / "target_scaler.pkl", "wb") as f:
         pickle.dump(tgt_scaler, f)
+
     with open(ARTIFACTS_DIR / "training_history.json", "w") as f:
         json.dump(history, f, indent=2)
+
     with open(ARTIFACTS_DIR / "part2_meta.json", "w") as f:
         json.dump(meta, f, indent=2)
 
@@ -730,8 +762,10 @@ def load_training_artifacts(model_type: str, input_size: int):
 
     with open(feat_path, "rb") as f:
         feat_scaler = pickle.load(f)
+
     with open(tgt_path, "rb") as f:
         tgt_scaler = pickle.load(f)
+
     with open(meta_path) as f:
         meta = json.load(f)
 
@@ -767,6 +801,7 @@ def load_prediction_log() -> pd.DataFrame:
 
 def upsert_log_row(row: Dict) -> None:
     df = load_prediction_log()
+
     if df.empty:
         pd.DataFrame([row]).to_csv(_log_path(), index=False)
         print("[Part 2] Created prediction_log.csv with first row.")
@@ -774,6 +809,7 @@ def upsert_log_row(row: Dict) -> None:
 
     key_vals = {k: str(row.get(k, "")).strip() for k in LOG_KEY_COLS}
     match = pd.Series([True] * len(df))
+
     for k, v in key_vals.items():
         col = df[k].astype(str).str.strip() if k in df.columns else pd.Series([""] * len(df))
         match = match & (col == v)
@@ -822,11 +858,17 @@ def write_prediction_row(
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
-def _build_live_sequence(df: pd.DataFrame, feature_cols: List[str], feat_scaler) -> Tuple[np.ndarray, pd.Timestamp]:
+def _build_live_sequence(
+    df: pd.DataFrame,
+    feature_cols: List[str],
+    feat_scaler,
+) -> Tuple[np.ndarray, pd.Timestamp]:
     X_all = feat_scaler.transform(_clean_feature_frame(df, feature_cols)).astype(np.float32)
     X_all_seq = build_sequences(X_all, y=None, seq_len=SEQUENCE_LEN)
+
     if len(X_all_seq) == 0:
         raise ValueError("Not enough feature rows for live prediction sequence.")
+
     feature_date = pd.Timestamp(df["date"].max()).normalize()
     return X_all_seq[-1:, :, :], feature_date
 
@@ -849,9 +891,11 @@ def main(model_type: str = "lstm", mode: str = "train") -> int:
     splits = load_splits()
     feature_cols = _get_feature_cols(df)
     target_cols = _target_cols()
+
     print(f"[Part 2] {len(df)} feature rows, {len(feature_cols)} features")
 
     df_train, df_val, df_test = _build_labeled_splits(df, splits)
+
     print(f"[Part 2] Fully labeled — Train:{len(df_train)} Val:{len(df_val)} Test:{len(df_test)}")
     print(f"[Part 2] Live feature date: {df['date'].max().date()}")
 
@@ -868,13 +912,16 @@ def main(model_type: str = "lstm", mode: str = "train") -> int:
 
         X_train = feat_scaler.fit_transform(_clean_feature_frame(df_train, feature_cols)).astype(np.float32)
         y_train = tgt_scaler.fit_transform(df_train[target_cols].values.astype(np.float32)).astype(np.float32)
+
         X_val = feat_scaler.transform(_clean_feature_frame(df_val, feature_cols)).astype(np.float32)
         y_val = tgt_scaler.transform(df_val[target_cols].values.astype(np.float32)).astype(np.float32)
+
         X_test = feat_scaler.transform(_clean_feature_frame(df_test, feature_cols)).astype(np.float32)
         y_test = tgt_scaler.transform(df_test[target_cols].values.astype(np.float32)).astype(np.float32)
 
         warm_thresh_f = np.full((1, len(HORIZONS)), WARM_EVENT_F, dtype=np.float32)
         heat_thresh_f = np.full((1, len(HORIZONS)), HEAT_EVENT_F, dtype=np.float32)
+
         warm_threshold_scaled = tgt_scaler.transform(warm_thresh_f)[0].astype(np.float32)
         heat_threshold_scaled = tgt_scaler.transform(heat_thresh_f)[0].astype(np.float32)
 
@@ -901,8 +948,10 @@ def main(model_type: str = "lstm", mode: str = "train") -> int:
             warm_threshold_scaled=warm_threshold_scaled,
             heat_threshold_scaled=heat_threshold_scaled,
         )
+
         n_warm = int((train_sample_weights >= WARM_WEIGHT).sum())
         n_heat = int((train_sample_weights >= HEAT_WEIGHT).sum())
+
         print(
             f"[Part 2] Weighted training sequences: warm_or_hot={n_warm}/{len(train_sample_weights)}, "
             f"heat={n_heat}/{len(train_sample_weights)}"
@@ -913,6 +962,7 @@ def main(model_type: str = "lstm", mode: str = "train") -> int:
             torch.tensor(y_train_seq, dtype=torch.float32),
             torch.tensor(train_sample_weights, dtype=torch.float32),
         )
+
         val_ds = TensorDataset(
             torch.tensor(X_val_seq, dtype=torch.float32),
             torch.tensor(y_val_seq, dtype=torch.float32),
@@ -922,6 +972,7 @@ def main(model_type: str = "lstm", mode: str = "train") -> int:
         val_loader = DataLoader(val_ds, batch_size=BATCH_SIZE, shuffle=False)
 
         model = build_model(model_type, input_size)
+
         model, history = train_model(
             model,
             train_loader,
@@ -941,15 +992,19 @@ def main(model_type: str = "lstm", mode: str = "train") -> int:
 
         val_metrics = evaluate_predictions(val_pred_f, val_true_f, prefix="val_")
         test_metrics = evaluate_predictions(test_pred_f, test_true_f, prefix="test_")
+
         val_mae_f = float(val_metrics.get("val_avg_mae_f", np.nan))
         test_mae_f = float(test_metrics.get("test_avg_mae_f", np.nan))
 
         val_dates = sequence_dates(df_val["date"], SEQUENCE_LEN)
         test_dates = sequence_dates(df_test["date"], SEQUENCE_LEN)
+
         val_df = make_prediction_frame(val_dates, val_pred_f, val_true_f, split="val")
         test_df = make_prediction_frame(test_dates, test_pred_f, test_true_f, split="test")
         all_pred_df = pd.concat([val_df, test_df], ignore_index=True)
+
         all_pred_df.to_parquet(ARTIFACTS_DIR / "val_predictions.parquet", index=False)
+
         print(f"[Part 2] Saved val_predictions.parquet ({len(all_pred_df)} rows, val+test).")
 
         meta: Dict = {
@@ -1014,27 +1069,19 @@ def main(model_type: str = "lstm", mode: str = "train") -> int:
     else:
         model, feat_scaler, tgt_scaler, meta = load_training_artifacts(model_type, input_size)
         saved_cols = meta.get("feature_cols", feature_cols)
+
         if saved_cols != feature_cols:
             raise ValueError(
                 "Current feature_cols differ from saved feature_cols. "
                 "Run Part 2 with --mode=train after feature-schema changes."
             )
 
-    # -----------------------------------------------------------------------
-    # Live prediction branch — runs after training or after loading.
-    # -----------------------------------------------------------------------
-    if mode == "train":
-        # Model/scalers already defined in local scope.
-        pass
-    else:
-        # Variables supplied by load_training_artifacts().
-        pass
-
     X_live_seq, feature_date = _build_live_sequence(df, feature_cols, feat_scaler)
+
     live_scaled = predict_scaled(model, X_live_seq)
     live_f, live_clipped = inverse_clip_predictions(live_scaled, tgt_scaler)
-
     live_pred = live_f[0]
+
     print("\n=== LIVE PART 2 PRELIMINARY FORECAST ===")
     for i, h in enumerate(HORIZONS):
         target_date = feature_date + pd.Timedelta(days=h)
@@ -1075,6 +1122,3 @@ def _parse_args():
 if __name__ == "__main__":
     args = _parse_args()
     raise SystemExit(main(model_type=args.model, mode=args.mode))
-
-
-
