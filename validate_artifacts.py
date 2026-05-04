@@ -22,6 +22,7 @@ Checks
   13. bnn_predictions.parquet uses bnn_diagnostic_mean_h*, not bnn_mean_h*
   14. part2_meta.json records heat_event_f and heat_weight
   15. No redundant physical/regime probability duplicate features remain
+  16. alpha_meta feature descriptions match retained alpha_feature_cols
   16. No exact duplicate numeric feature columns remain in feature_matrix
 
 Exit codes
@@ -843,6 +844,42 @@ def check_no_exact_duplicate_features() -> Tuple[str, str, str]:
     except Exception as e:
         return _warn("no_exact_duplicate_features", f"Error: {e}")
 
+
+
+def check_alpha_meta_descriptions_match_features() -> Tuple[str, str, str]:
+    """alpha_meta should describe only retained alpha features.
+
+    Part 2A may build candidate features that are later removed by the
+    constant/sparse-binary guards. The metadata should not advertise dropped
+    columns such as alpha_santa_ana_flag or alpha_heat_wave_streak unless they
+    are actually present in alpha_feature_cols.
+    """
+    try:
+        with open(PROJECT_DIR / "artifacts_part2a" / "alpha_meta.json") as f:
+            meta = json.load(f)
+
+        alpha_cols = set(meta.get("alpha_feature_cols", []))
+        descriptions = set(meta.get("feature_descriptions", {}).keys())
+
+        extra = sorted(descriptions - alpha_cols)
+        missing = sorted(alpha_cols - descriptions)
+
+        if extra or missing:
+            return _fail(
+                "alpha_meta_description_contract",
+                f"description/feature mismatch: extra={extra}, missing={missing}",
+            )
+
+        return _ok(
+            "alpha_meta_description_contract",
+            f"alpha_meta descriptions match {len(alpha_cols)} retained alpha features",
+        )
+
+    except FileNotFoundError:
+        return _warn("alpha_meta_description_contract", "alpha_meta.json not found")
+    except Exception as e:
+        return _warn("alpha_meta_description_contract", f"Error: {e}")
+
 # ---------------------------------------------------------------------------
 # Runner
 # ---------------------------------------------------------------------------
@@ -865,6 +902,7 @@ def run_all_checks() -> List[Tuple[str, str, str]]:
         check_heat_weight_in_meta(),
         check_no_redundant_regime_probability_features(),
         check_no_exact_duplicate_features(),
+        check_alpha_meta_descriptions_match_features(),
     ]
 
 
@@ -899,6 +937,14 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+
+
+
+
+
+
+
 
 
 
