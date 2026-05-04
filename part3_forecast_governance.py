@@ -468,7 +468,15 @@ def _bnn_expected_from_current_stack() -> Dict[str, Any]:
     return result
 
 def check_bnn_calibration() -> GovernanceCheck:
-    """Check BNN calibration coverage if Part 2C has run. WARN level."""
+    """Check BNN calibration coverage if Part 2C has run. WARN level.
+
+    Fix (Audit 4, Issue 5): surfaces half_split_validation_pass=False as a
+    warning annotation when the independent half-split diagnostic fails for
+    any horizon, while still leaving chk.passed=True when the authoritative
+    test coverage gate passes.  This ensures publish_mode stays NORMAL for
+    a single diagnostic miss; the warning is visible in governance_report.json
+    and the dashboard without forcing CAUTION unnecessarily.
+    """
     chk = GovernanceCheck("BNN_CALIBRATION_GATE", level="WARN")
     cal_path = PART2C_DIR / "calibration_report.json"
     if not cal_path.exists():
@@ -493,22 +501,13 @@ def check_bnn_calibration() -> GovernanceCheck:
     intervals_displayable = bool(cal.get("intervals_displayable", intervals_publishable))
     validation_pass = cal.get("validation_calibration_pass", None)
     test_pass = cal.get("test_calibration_pass", None)
-    # FIX (Audit 5): Use test_coverage_results (independent holdout) for both
-    # coverage_by_horizon display and the per-horizon failing check.
-    # calibration_results uses q_live_f evaluated on val_eval, which is partially
-    # in-sample (val_eval rows contributed to fitting q_live_f) and biases
-    # coverage toward ~90%. Displaying those numbers as coverage_by_horizon in
-    # the governance report was misleading — the truly independent signal is the
-    # test set.  Val-width diagnostic numbers are now stored separately as
-    # val_diagnostic_coverage_by_horizon for traceability.
     val_diag_results = cal.get("calibration_results", {})
     test_results = cal.get("test_coverage_results", {})
-    coverage_summary: Dict = {}          # independent test coverage (authoritative)
-    val_diagnostic_summary: Dict = {}    # in-sample val diagnostic (for reference only)
+    coverage_summary: Dict = {}
+    val_diagnostic_summary: Dict = {}
     failing: List[str] = []
 
     for h in HORIZONS:
-        # Independent test coverage — the authoritative metric
         tcov = test_results.get(f"h{h}_coverage_90pct")
         if tcov is not None:
             coverage_summary[f"h{h}"] = round(float(tcov), 4)
@@ -516,10 +515,28 @@ def check_bnn_calibration() -> GovernanceCheck:
                 failing.append(
                     f"H={h}: test coverage={tcov:.1%} < min {MIN_BNN_COVERAGE:.0%}"
                 )
-        # In-sample val diagnostic — stored for traceability, not used as gate
         vcov = val_diag_results.get(f"h{h}_coverage_90pct")
         if vcov is not None:
             val_diagnostic_summary[f"h{h}"] = round(float(vcov), 4)
+
+    # Half-split diagnostic — informational only, does not flip chk.passed.
+    # The half-split diagnostic uses only the first half of validation rows to
+    # fit q_eval_f and evaluates on the second half. If it fails, the deployed
+    # conformal radius (fitted on the full validation set) has already passed
+    # the independent test gate, so the deployed intervals are still valid.
+    # We surface the failure as a warning annotation for monitoring purposes.
+    half_split_pass = cal.get("half_split_validation_pass", None)
+    half_split_results = cal.get("half_split_calibration_results", {})
+    half_split_notes: List[str] = []
+    MIN_HALF_SPLIT_COVERAGE = 0.85
+
+    if half_split_pass is False and half_split_results:
+        for h in HORIZONS:
+            hs_cov = half_split_results.get(f"h{h}_coverage_90pct")
+            if hs_cov is not None and float(hs_cov) < MIN_HALF_SPLIT_COVERAGE:
+                half_split_notes.append(
+                    f"H={h}: half-split={hs_cov:.1%} < {MIN_HALF_SPLIT_COVERAGE:.0%}"
+                )
 
     chk.details = {
         "calibration_pass": cal_pass,
@@ -529,20 +546,40 @@ def check_bnn_calibration() -> GovernanceCheck:
         "interval_label": interval_label,
         "intervals_publishable": intervals_publishable,
         "intervals_displayable": intervals_displayable,
-        "coverage_by_horizon": coverage_summary,             # independent test coverage
-        "val_diagnostic_coverage_by_horizon": val_diagnostic_summary,  # in-sample, informational
+        "coverage_by_horizon": coverage_summary,
+        "val_diagnostic_coverage_by_horizon": val_diagnostic_summary,
         "min_coverage_threshold": MIN_BNN_COVERAGE,
         "min_validation_coverage": cal.get("min_validation_coverage"),
         "min_test_coverage": cal.get("min_test_coverage"),
         "bnn_available": True,
+        "half_split_validation_pass": half_split_pass,
+        "half_split_notes": half_split_notes,
     }
 
+    # Hard failure: test coverage gate missed or intervals not displayable.
     if cal_pass is False or not intervals_displayable or failing:
         return chk.warn(
             f"BNN calibration FAILED — intervals are not displayable. "
             f"Failures: {'; '.join(failing) if failing else 'calibration_pass=false or intervals_displayable=false'}",
             **chk.details
         )
+
+    # Soft annotation: half-split diagnostic failed but test gate passed.
+    # Leave chk.passed = True so publish_mode stays NORMAL.
+    if half_split_notes:
+        chk.message = (
+            "OK (test gate passed) — half-split diagnostic warning: "
+            + "; ".join(half_split_notes)
+            + ". Monitor; consider BNN retrain if this persists."
+        )
+        chk.details["half_split_warning"] = (
+            "Half-split diagnostic failed for one or more horizons. "
+            "The deployed conformal radius uses the full validation set and "
+            "passes the independent test gate. This is a stability note only. "
+            "publish_mode is NOT affected."
+        )
+        return chk
+
     return chk
 
 
