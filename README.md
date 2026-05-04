@@ -159,18 +159,21 @@ All sources are **free, open, and require no API key.**
 
 ### Part 2 — LSTM Forecaster
 - **Architecture**: 2-layer stacked LSTM → BatchNorm → 3 independent forecast heads (H=1, H=3, H=5)
-- **Input**: 14-day look-back window of ~80+ engineered features
-- **Training**: Adam + ReduceLROnPlateau scheduler, early stopping (patience=20), MSE loss weighted by horizon
+- **Input**: 14-day look-back window of ~100+ engineered features
+- **Training**: Adam + ReduceLROnPlateau scheduler, early stopping, horizon-weighted MSE, heat-event row weighting, and an asymmetric heat under-prediction penalty
 - **Typical performance**: H=1 MAE ≈ 2–4°F (vs NWS H=1 ≈ 2–3°F)
 
 ### Part 6 — Weather Regime Engine
-Three canonical Southern California regimes detected by Gaussian HMM:
+The Gaussian HMM emits neutral statistical states (`REGIME_0`, `REGIME_1`, `REGIME_2`). Physical names are added only when state means satisfy the validation rules. In the current accepted run, the validated physical columns are:
 
-| Regime | Temp | Humidity | Wind | When |
-|--------|------|----------|------|------|
-| **MARINE_LAYER** | Cool (65–75°F) | High (80–95%) | Light W | Jun–Sep mornings |
-| **DRY_CLEAR** | Warm (75–90°F) | Moderate (40–60%) | Variable | Spring/Fall |
-| **SANTA_ANA** | Hot (90–110°F+) | Very low (<25%) | Strong NE/E | Oct–Mar |
+| Physical label | Source state | Validation status | Current interpretation |
+|----------------|--------------|-------------------|------------------------|
+| **DRY_CLEAR** | `REGIME_1` | Validated | Lower humidity, low cloud cover, wide diurnal range, higher pressure, near-zero precipitation |
+| **MARINE_LAYER** | `REGIME_2` | Validated | Cool, humid, cloudy, lower diurnal range |
+| **SANTA_ANA** | none | Not validated in current run | No probability column is written unless a state satisfies the Santa Ana validation rules |
+| **UNVALIDATED** | `REGIME_0` | Neutral statistical state | Kept as `prob_regime_0` because no physical label was justified |
+
+Validated physical probability columns replace their matching `prob_regime_*` source columns to avoid perfect duplicate features. Unvalidated states remain neutral as `prob_regime_*`.
 
 ### Part 2C — BNN Uncertainty
 Monte Carlo Dropout with N=200 samples produces calibrated 90% confidence intervals. Good calibration means ~90% of observed temperature highs fall within the CI bounds.
