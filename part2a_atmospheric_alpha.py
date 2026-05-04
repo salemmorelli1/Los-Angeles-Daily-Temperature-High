@@ -587,6 +587,34 @@ def main() -> int:
 
     # Metadata
     alpha_cols = [c for c in alpha_df.columns if c != "date"]
+    all_feature_descriptions = {
+        "alpha_pressure_tend_2d": "Two-day pressure tendency shifted one day; distinct from Part 1 pressure_tendency_2d",
+        "alpha_pressure_tend_3d": "Three-day pressure tendency shifted one day",
+        "alpha_pressure_accel": "Pressure rate-of-change acceleration",
+        "alpha_pressure_anom_30d": "Pressure anomaly vs 30-day rolling mean",
+        "alpha_high_pressure_days": "Consecutive days above 1015 hPa",
+        "alpha_dew_depression_f": "Dew point depression (temp_low - dew_point)",
+        "alpha_marine_layer_flag": "1 if dew depression < 10°F (marine layer likely)",
+        "alpha_marine_streak": "Consecutive marine layer days",
+        "alpha_cloud_anom_30d": "Cloud cover anomaly vs 30-day mean",
+        "alpha_humidity_tend_1d": "One-day humidity tendency shifted one day",
+        "alpha_humidity_tend_3d": "Three-day humidity tendency shifted one day",
+        "alpha_santa_ana_index": "Offshore wind × dryness composite index",
+        "alpha_santa_ana_flag": "1 if classic Santa Ana conditions detected; omitted from metadata when sparse/constant guard drops it",
+        "alpha_gust_spread": "Wind gust minus mean wind speed",
+        "alpha_wind_accel_1d": "Wind speed 1-day acceleration",
+        "alpha_temp_mom_1d": "One-day temperature momentum shifted one day",
+        "alpha_temp_mom_3d": "Three-day temperature momentum shifted one day",
+        "alpha_temp_mom_7d": "Seven-day temperature momentum shifted one day",
+        "alpha_temp_accel": "Temperature acceleration (2nd derivative)",
+        "alpha_temp_zscore_30d": "Temperature z-score vs 30-day distribution",
+        "alpha_heat_wave_streak": "Consecutive days at or above 95°F; omitted from metadata when sparse/constant guard drops it",
+        "alpha_days_from_peak": "Days from Aug 15 (climatological hottest day)",
+        "alpha_enso_proxy": "Local proxy for ENSO state from P/T anomalies",
+        "alpha_nino34_anom": "NOAA Niño 3.4 monthly anomaly (if available)",
+        "alpha_el_nino_flag": "1 if El Niño conditions (Niño 3.4 > 0.5)",
+        "alpha_la_nina_flag": "1 if La Niña conditions (Niño 3.4 < -0.5)",
+    }
     meta = {
         "schema_version": SCHEMA_VERSION,
         "built_at": pd.Timestamp.now().isoformat(),
@@ -595,29 +623,14 @@ def main() -> int:
         "enso_available": enso_df is not None,
         "enso_source_url": ENSO_URL if enso_df is not None else None,
         "enso_note": "alpha_nino34_anom is an anomaly series; absolute SST inputs are converted defensively",
-        "feature_descriptions": {
-            "alpha_pressure_tend_Xd": "Pressure tendency over X days (hPa/day)",
-            "alpha_pressure_accel": "Pressure rate-of-change acceleration",
-            "alpha_pressure_anom_30d": "Pressure anomaly vs 30-day rolling mean",
-            "alpha_high_pressure_days": "Consecutive days above 1015 hPa",
-            "alpha_dew_depression_f": "Dew point depression (temp_low - dew_point)",
-            "alpha_marine_layer_flag": "1 if dew depression < 10°F (marine layer likely)",
-            "alpha_marine_streak": "Consecutive marine layer days",
-            "alpha_cloud_anom_30d": "Cloud cover anomaly vs 30-day mean",
-            "alpha_santa_ana_index": "Offshore wind × dryness composite index",
-            "alpha_santa_ana_flag": "1 if classic Santa Ana conditions detected",
-            "alpha_gust_spread": "Wind gust minus mean wind speed",
-            "alpha_wind_accel_1d": "Wind speed 1-day acceleration",
-            "alpha_temp_mom_Xd": "Temperature momentum over X days",
-            "alpha_temp_accel": "Temperature acceleration (2nd derivative)",
-            "alpha_temp_zscore_30d": "Temperature z-score vs 30-day distribution",
-            "alpha_heat_wave_streak": "Consecutive days at or above 95°F",
-            "alpha_days_from_peak": "Days from Aug 15 (climatological hottest day)",
-            "alpha_enso_proxy": "Local proxy for ENSO state from P/T anomalies",
-            "alpha_nino34_anom": "NOAA Niño 3.4 monthly anomaly (if available)",
-            "alpha_el_nino_flag": "1 if El Niño conditions (Niño 3.4 > 0.5)",
-            "alpha_la_nina_flag": "1 if La Niña conditions (Niño 3.4 < -0.5)",
-        },
+        # Keep metadata contract aligned with the artifact: do not advertise
+        # sparse/constant alpha features that were intentionally dropped.
+        "feature_descriptions": {c: all_feature_descriptions[c] for c in alpha_cols if c in all_feature_descriptions},
+        "dropped_feature_description_note": (
+            "feature_descriptions is intentionally limited to alpha_feature_cols. "
+            "Sparse/constant candidates such as alpha_santa_ana_flag or "
+            "alpha_heat_wave_streak are excluded when guards remove them."
+        ),
     }
     with open(ARTIFACTS_DIR / "alpha_meta.json", "w") as f:
         json.dump(meta, f, indent=2)
