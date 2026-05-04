@@ -6,19 +6,16 @@ Part 2 — Deep Learning Forecaster (LSTM / Transformer)
 Trains or loads a multi-horizon neural forecaster for LA daily temperature highs
 at H=1, H=3, and H=5 calendar days ahead.
 
-Heat-branch experiment
-----------------------
-This replacement keeps the existing Part 2 production contracts but upgrades the
-training objective for warm/heat days:
+Heat-branch experiment status
+-----------------------------
+The asymmetric heat-branch training objective is retained in the file for
+controlled experiments, but it is disabled by default for production after the
+latest audit showed that it worsened global LSTM MAE and still produced 0/5
+test-set heat-event hits.
 
-  * Warm threshold: 78°F
-  * Heat threshold: 85°F
-  * Warm sequence weight: 2x
-  * Heat sequence weight: 5x
-  * Extra asymmetric penalty when the model under-predicts warm/heat targets
-
-Validation remains unweighted and symmetric so model quality is measured on the
-real forecasting task rather than on the weighted training objective.
+When HEAT_BRANCH_EXPERIMENT = False, training uses the ordinary unweighted
+horizon-weighted MSE objective. Validation and test metrics remain computed in
+Fahrenheit units.
 
 Key production contracts
 ------------------------
@@ -78,7 +75,7 @@ PART1_DIR = PROJECT_DIR / "artifacts_part1"
 ARTIFACTS_DIR = PROJECT_DIR / "artifacts_part2"
 ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
 
-SCHEMA_VERSION = "1.3.0-heat-branch"
+SCHEMA_VERSION = "1.3.1-heat-branch-disabled"
 HORIZONS = [1, 3, 5]
 SEQUENCE_LEN = 14
 HIDDEN_SIZE = 128
@@ -98,7 +95,10 @@ CLIP_MAX = 1.0
 # ---------------------------------------------------------------------------
 # Heat-branch experiment controls
 # ---------------------------------------------------------------------------
-HEAT_BRANCH_EXPERIMENT = True
+# Disabled by default after the heat branch failed the audit: global LSTM MAE worsened
+# and the test-set heat-event hit-rate remained 0/5. Keep the code path only for
+# future named experiments, not production retrains.
+HEAT_BRANCH_EXPERIMENT = False
 WARM_EVENT_F = 78.0
 HEAT_EVENT_F = 85.0
 WARM_WEIGHT = 2.0
@@ -526,11 +526,12 @@ def train_model(
                     heat_threshold_scaled=heat_threshold_scaled,
                 )
             else:
+                # Production/default objective.  Do not apply warm/heat sample
+                # weights unless HEAT_BRANCH_EXPERIMENT is explicitly enabled,
+                # because the latest heat-branch audit showed that the weighted
+                # asymmetric objective worsened global LSTM performance.
                 sq_err = (pred - yb) ** 2
-                if wb is not None:
-                    loss = (sq_err * horizon_w * wb.to(device).view(-1, 1)).mean()
-                else:
-                    loss = (sq_err * horizon_w).mean()
+                loss = (sq_err * horizon_w).mean()
 
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
@@ -952,16 +953,27 @@ def main(model_type: str = "lstm", mode: str = "train") -> int:
         n_warm = int((train_sample_weights >= WARM_WEIGHT).sum())
         n_heat = int((train_sample_weights >= HEAT_WEIGHT).sum())
 
-        print(
-            f"[Part 2] Weighted training sequences: warm_or_hot={n_warm}/{len(train_sample_weights)}, "
-            f"heat={n_heat}/{len(train_sample_weights)}"
-        )
-
-        train_ds = TensorDataset(
-            torch.tensor(X_train_seq, dtype=torch.float32),
-            torch.tensor(y_train_seq, dtype=torch.float32),
-            torch.tensor(train_sample_weights, dtype=torch.float32),
-        )
+        if HEAT_BRANCH_EXPERIMENT:
+            print(
+                f"[Part 2] Weighted heat-branch training sequences: "
+                f"warm_or_hot={n_warm}/{len(train_sample_weights)}, "
+                f"heat={n_heat}/{len(train_sample_weights)}"
+            )
+            train_ds = TensorDataset(
+                torch.tensor(X_train_seq, dtype=torch.float32),
+                torch.tensor(y_train_seq, dtype=torch.float32),
+                torch.tensor(train_sample_weights, dtype=torch.float32),
+            )
+        else:
+            print(
+                "[Part 2] Heat-branch training disabled. "
+                f"Diagnostic warm_or_hot={n_warm}/{len(train_sample_weights)}, "
+                f"heat={n_heat}/{len(train_sample_weights)}; sample weights not applied."
+            )
+            train_ds = TensorDataset(
+                torch.tensor(X_train_seq, dtype=torch.float32),
+                torch.tensor(y_train_seq, dtype=torch.float32),
+            )
 
         val_ds = TensorDataset(
             torch.tensor(X_val_seq, dtype=torch.float32),
@@ -1042,6 +1054,7 @@ def main(model_type: str = "lstm", mode: str = "train") -> int:
             },
             "heat_experiment": {
                 "enabled": bool(HEAT_BRANCH_EXPERIMENT),
+                "decision": "disabled_after_failed_audit" if not HEAT_BRANCH_EXPERIMENT else "experimental_enabled",
                 "warm_event_f": float(WARM_EVENT_F),
                 "heat_event_f": float(HEAT_EVENT_F),
                 "warm_weight": float(WARM_WEIGHT),
