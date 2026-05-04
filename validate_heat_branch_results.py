@@ -19,6 +19,7 @@ from pathlib import Path
 
 P2_META = Path("artifacts_part2/part2_meta.json")
 P2B_SUMMARY = Path("artifacts_part2b/part2b_summary.json")
+P3_GOVERNANCE = Path("artifacts_part3/governance_report.json")
 
 
 def _load_json(path: Path):
@@ -39,11 +40,16 @@ def main() -> int:
         return 1
 
     heat = meta.get("heat_experiment", {})
+
     print("\n=== PART 2 HEAT EXPERIMENT ===")
     print(f"enabled: {heat.get('enabled')}")
+    print(f"warm_event_f: {heat.get('warm_event_f')}")
     print(f"heat_event_f: {heat.get('heat_event_f')}")
+    print(f"warm_weight: {heat.get('warm_weight')}")
     print(f"heat_weight: {heat.get('heat_weight')}")
+    print(f"warm_underpred_penalty: {heat.get('warm_underpred_penalty')}")
     print(f"heat_underpred_penalty: {heat.get('heat_underpred_penalty')}")
+    print(f"n_warm_or_hot_train_sequences: {heat.get('n_warm_or_hot_train_sequences')}")
     print(f"n_heat_train_sequences: {heat.get('n_heat_train_sequences')}")
 
     print("\n=== GLOBAL MAE ===")
@@ -57,9 +63,24 @@ def main() -> int:
     for h in [1, 3, 5]:
         v = _heat_diag(val_metrics, "val_", h)
         t = _heat_diag(test_metrics, "test_", h)
+
         print(f"H={h}")
-        print(f"  val : n={v.get('n_true_heat_days')} hits={v.get('predicted_heat_hits')} hit_rate={v.get('hit_rate')} bias={v.get('heat_bias_f')}")
-        print(f"  test: n={t.get('n_true_heat_days')} hits={t.get('predicted_heat_hits')} hit_rate={t.get('hit_rate')} bias={t.get('heat_bias_f')}")
+        print(
+            "  val : "
+            f"n={v.get('n_true_heat_days')} "
+            f"hits={v.get('predicted_heat_hits')} "
+            f"hit_rate={v.get('hit_rate')} "
+            f"bias={v.get('heat_bias_f')} "
+            f"mae={v.get('heat_mae_f')}"
+        )
+        print(
+            "  test: "
+            f"n={t.get('n_true_heat_days')} "
+            f"hits={t.get('predicted_heat_hits')} "
+            f"hit_rate={t.get('hit_rate')} "
+            f"bias={t.get('heat_bias_f')} "
+            f"mae={t.get('heat_mae_f')}"
+        )
 
     p2b = _load_json(P2B_SUMMARY)
     if p2b:
@@ -67,9 +88,18 @@ def main() -> int:
         print(f"forecast_source: {p2b.get('forecast_source')}")
         print(f"nws_anchor_used: {p2b.get('nws_anchor_used')}")
         print(f"canonical_forecast: {p2b.get('canonical_forecast')}")
+        print(f"nws_anchor_details: {p2b.get('nws_anchor_details')}")
+
+    gov = _load_json(P3_GOVERNANCE)
+    if gov:
+        print("\n=== GOVERNANCE ===")
+        print(f"publish_mode: {gov.get('publish_mode')}")
+        print(f"bnn_intervals_displayable: {gov.get('bnn_intervals_displayable')}")
+        print(f"checks_passed: {gov.get('checks_passed')}/{gov.get('checks_total')}")
 
     print("\nDecision rule:")
     print("  Keep branch only if heat-event bias improves without a material global MAE regression.")
+    print("  If global test_mae_f worsens materially and heat hit-rate/bias does not improve, revert.")
     return 0
 
 
