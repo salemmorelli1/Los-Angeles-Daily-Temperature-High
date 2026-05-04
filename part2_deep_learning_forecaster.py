@@ -4,7 +4,21 @@
 Part 2 — Deep Learning Forecaster (LSTM / Transformer)
 =======================================================
 Trains or loads a multi-horizon neural forecaster for LA daily temperature highs
-at H=1, H=3, and H=5 days ahead.
+at H=1, H=3, and H=5 calendar days ahead.
+
+Heat-branch experiment
+----------------------
+This replacement keeps the existing Part 2 production contracts but upgrades the
+training objective for warm/heat days:
+
+  * Warm threshold: 78°F
+  * Heat threshold: 85°F
+  * Warm sequence weight: 2x
+  * Heat sequence weight: 5x
+  * Extra asymmetric penalty when the model under-predicts warm/heat targets
+
+Validation remains unweighted and symmetric so model quality is measured on the
+real forecasting task rather than on the weighted training objective.
 
 Key production contracts
 ------------------------
@@ -12,24 +26,21 @@ Key production contracts
   2. Targets are interpreted as temp_high_f at feature_date + H calendar days.
   3. Training uses only rows where all horizon targets are observed.
   4. Live inference uses the newest feature row, even if future targets are NaN.
-  5. Validation metrics saved as *_f are computed in real Fahrenheit units.
+  5. Validation/test metrics saved as *_f are computed in Fahrenheit units.
   6. Raw model output is clipped to [CLIP_MIN, CLIP_MAX] before inverse-scaling.
-     Any clipping is flagged in the prediction log as lstm_output_clipped=True.
   7. The prediction log is upserted by (decision_date, feature_date, model).
-     Duplicate rows are never created; reruns overwrite the existing row.
-  8. Part 2 writes preliminary forecast_h* columns (forecast_source=lstm_preliminary).
-     Part 2B overwrites these with the canonical fallback-chain forecast.
+  8. Part 2 writes preliminary forecast_h* columns; Part 2B overwrites them.
 
 Artifacts Written
 -----------------
   artifacts_part2/
-      lstm_model.pt / transformer_model.pt  — trained PyTorch weights
-      feature_scaler.pkl                    — fitted MinMaxScaler
-      target_scaler.pkl                     — fitted target scaler
-      training_history.json                 — scaled loss/MAE per epoch
-      val_predictions.parquet               — out-of-sample validation predictions
-      prediction_log.csv                    — live predictions, upserted daily
-      part2_meta.json                       — hyperparameters, metrics, schema version
+      lstm_model.pt / transformer_model.pt
+      feature_scaler.pkl
+      target_scaler.pkl
+      training_history.json
+      val_predictions.parquet
+      prediction_log.csv
+      part2_meta.json
 """
 
 from __future__ import annotations
@@ -38,9 +49,10 @@ import argparse
 import json
 import os
 import pickle
+import random
 import warnings
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -66,7 +78,7 @@ PART1_DIR = PROJECT_DIR / "artifacts_part1"
 ARTIFACTS_DIR = PROJECT_DIR / "artifacts_part2"
 ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
 
-SCHEMA_VERSION = "1.2.0"
+SCHEMA_VERSION = "1.3.0-heat-branch"
 HORIZONS = [1, 3, 5]
 SEQUENCE_LEN = 14
 HIDDEN_SIZE = 128
@@ -76,28 +88,29 @@ BATCH_SIZE = 64
 MAX_EPOCHS = 150
 PATIENCE = 15
 LR = 1e-3
+RANDOM_SEED = 42
 HORIZON_WEIGHTS = {1: 1.0, 3: 0.8, 5: 0.6}
 MODEL_FILES = {"lstm": "lstm_model.pt", "transformer": "transformer_model.pt"}
 
-# Scaled output is clipped to this range before inverse-scaling.
-# Values outside [0, 1] produce temperatures outside the training range.
 CLIP_MIN = 0.0
 CLIP_MAX = 1.0
 
-# Heat-event sample weight. Training rows where any horizon target >= HEAT_EVENT_F
-# (measured in Fahrenheit before scaling) receive an elevated loss weight to improve
-# upper-tail representation. The scaled threshold is computed from the fitted target
-# scaler after fit_transform, not hard-coded, so it stays correct across retrains.
-HEAT_WEIGHT = 5.0
+# ---------------------------------------------------------------------------
+# Heat-branch experiment controls
+# ---------------------------------------------------------------------------
+HEAT_BRANCH_EXPERIMENT = True
+WARM_EVENT_F = 78.0
 HEAT_EVENT_F = 85.0
-HEAT_UNDERPREDICTION_PENALTY = 2.0  # extra scaled-space penalty on under-predicted heat targets
+WARM_WEIGHT = 2.0
+HEAT_WEIGHT = 5.0
+WARM_UNDERPRED_PENALTY = 1.25
+HEAT_UNDERPRED_PENALTY = 2.00
 
-# Upsert key for prediction log
 LOG_KEY_COLS = ("decision_date", "feature_date", "model")
 
 
 # ---------------------------------------------------------------------------
-# PyTorch imports
+# PyTorch imports / reproducibility
 # ---------------------------------------------------------------------------
 def _try_import_torch():
     try:
@@ -110,6 +123,18 @@ def _try_import_torch():
             "PyTorch is required for Part 2.\n"
             "Install: pip install torch --index-url https://download.pytorch.org/whl/cpu"
         )
+
+
+def set_random_seeds(seed: int = RANDOM_SEED) -> None:
+    random.seed(seed)
+    np.random.seed(seed)
+    try:
+        torch, _, _, _ = _try_import_torch()
+        torch.manual_seed(seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(seed)
+    except Exception:
+        pass
 
 
 # ---------------------------------------------------------------------------
@@ -132,61 +157,54 @@ def load_splits() -> Dict:
         return json.load(f)
 
 
-def _get_feature_cols(df: pd.DataFrame) -> List[str]:
-    """Return model-eligible numeric feature columns only.
-
-    Drops string/object columns that cannot be fed to the scaler or model.
-    Bool columns (e.g. regime one-hots) are retained and cast to float32.
-    """
-    target_cols = {f"target_h{h}" for h in HORIZONS}
-    excluded = {"date"} | target_cols
-
-    feature_cols: List[str] = []
-    dropped: List[str] = []
-
-    for col in df.columns:
-        if col in excluded:
-            continue
-        series = df[col]
-        if pd.api.types.is_numeric_dtype(series) or pd.api.types.is_bool_dtype(series):
-            feature_cols.append(col)
-        else:
-            coerced = pd.to_numeric(series, errors="coerce")
-            non_null = series.notna()
-            if int(non_null.sum()) > 0 and coerced[non_null].notna().all():
-                feature_cols.append(col)
-            else:
-                dropped.append(col)
-
-    if dropped:
-        print(f"[Part 2] Dropping non-numeric columns: {dropped}")
-
-    # Drop zero-variance (constant) feature columns.  These include any
-    # column that was zero-padded (e.g. an alpha flag that never fires) and
-    # survives the Part 1 guard because Part 2A added it after Part 1 ran.
-    constant: List[str] = []
-    nonconstant: List[str] = []
-    for col in feature_cols:
-        s = pd.to_numeric(df[col], errors="coerce")
-        if s.nunique(dropna=True) > 1:
-            nonconstant.append(col)
-        else:
-            constant.append(col)
-    if constant:
-        print(f"[Part 2] Dropping {len(constant)} constant/zero-variance feature columns: {constant}")
-    feature_cols = nonconstant
-
-    if not feature_cols:
-        raise ValueError("No numeric feature columns available for Part 2.")
-    return feature_cols
-
-
 def _target_cols() -> List[str]:
     return [f"target_h{h}" for h in HORIZONS]
 
 
-def _model_path(model_type: str) -> Path:
-    return ARTIFACTS_DIR / MODEL_FILES.get(model_type, MODEL_FILES["lstm"])
+def _get_feature_cols(df: pd.DataFrame) -> List[str]:
+    """Return model-eligible numeric, nonconstant feature columns."""
+    target_cols = set(_target_cols())
+    excluded = {"date"} | target_cols
+
+    feature_cols: List[str] = []
+    dropped_non_numeric: List[str] = []
+
+    for col in df.columns:
+        if col in excluded:
+            continue
+        s = df[col]
+        if pd.api.types.is_numeric_dtype(s) or pd.api.types.is_bool_dtype(s):
+            feature_cols.append(col)
+            continue
+
+        coerced = pd.to_numeric(s, errors="coerce")
+        non_null = s.notna()
+        if int(non_null.sum()) > 0 and coerced[non_null].notna().all():
+            feature_cols.append(col)
+        else:
+            dropped_non_numeric.append(col)
+
+    if dropped_non_numeric:
+        print(f"[Part 2] Dropping non-numeric columns: {dropped_non_numeric}")
+
+    nonconstant: List[str] = []
+    dropped_constant: List[str] = []
+    for col in feature_cols:
+        s_num = pd.to_numeric(df[col], errors="coerce")
+        if s_num.nunique(dropna=True) > 1:
+            nonconstant.append(col)
+        else:
+            dropped_constant.append(col)
+
+    if dropped_constant:
+        print(
+            f"[Part 2] Dropping {len(dropped_constant)} constant/zero-variance "
+            f"feature columns: {dropped_constant}"
+        )
+
+    if not nonconstant:
+        raise ValueError("No numeric nonconstant feature columns available for Part 2.")
+    return nonconstant
 
 
 def _clean_feature_frame(df: pd.DataFrame, feature_cols: List[str]) -> np.ndarray:
@@ -200,37 +218,57 @@ def _clean_feature_frame(df: pd.DataFrame, feature_cols: List[str]) -> np.ndarra
 
 
 def _build_labeled_splits(
-    df: pd.DataFrame, splits: Dict
+    df: pd.DataFrame,
+    splits: Dict,
 ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     labeled = df.dropna(subset=_target_cols()).copy()
     train_end = pd.Timestamp(splits["train_end"])
     val_end = pd.Timestamp(splits["val_end"])
-    return (
-        labeled[labeled["date"] <= train_end].copy(),
-        labeled[(labeled["date"] > train_end) & (labeled["date"] <= val_end)].copy(),
-        labeled[labeled["date"] > val_end].copy(),
-    )
+
+    df_train = labeled[labeled["date"] <= train_end].copy()
+    df_val = labeled[(labeled["date"] > train_end) & (labeled["date"] <= val_end)].copy()
+    df_test = labeled[labeled["date"] > val_end].copy()
+
+    if df_train.empty or df_val.empty or df_test.empty:
+        raise ValueError(
+            f"Empty split detected: train={len(df_train)}, val={len(df_val)}, test={len(df_test)}"
+        )
+
+    return df_train, df_val, df_test
+
+
+def _model_path(model_type: str) -> Path:
+    return ARTIFACTS_DIR / MODEL_FILES.get(model_type, MODEL_FILES["lstm"])
 
 
 # ---------------------------------------------------------------------------
 # Sequence construction
 # ---------------------------------------------------------------------------
 def build_sequences(
-    X: np.ndarray, y: np.ndarray, seq_len: int
-) -> Tuple[np.ndarray, np.ndarray]:
+    X: np.ndarray,
+    y: Optional[np.ndarray] = None,
+    seq_len: int = SEQUENCE_LEN,
+):
     if len(X) < seq_len:
-        return (
-            np.empty((0, seq_len, X.shape[1]), dtype=np.float32),
-            np.empty((0, y.shape[1]), dtype=np.float32),
-        )
-    Xs, ys = [], []
+        X_empty = np.empty((0, seq_len, X.shape[1]), dtype=np.float32)
+        if y is None:
+            return X_empty
+        return X_empty, np.empty((0, y.shape[1]), dtype=np.float32)
+
+    Xs = []
+    ys = []
     for i in range(seq_len - 1, len(X)):
         Xs.append(X[i - seq_len + 1 : i + 1])
-        ys.append(y[i])
-    return np.array(Xs, dtype=np.float32), np.array(ys, dtype=np.float32)
+        if y is not None:
+            ys.append(y[i])
+
+    Xs = np.array(Xs, dtype=np.float32)
+    if y is None:
+        return Xs
+    return Xs, np.array(ys, dtype=np.float32)
 
 
-def sequence_dates(dates: pd.Series, seq_len: int) -> pd.Series:
+def sequence_dates(dates: pd.Series, seq_len: int = SEQUENCE_LEN) -> pd.Series:
     if len(dates) < seq_len:
         return pd.Series([], dtype="datetime64[ns]")
     return pd.to_datetime(dates).iloc[seq_len - 1 :].reset_index(drop=True)
@@ -246,19 +284,25 @@ def build_lstm_model(input_size, hidden_size, num_layers, dropout, n_outputs):
         def __init__(self):
             super().__init__()
             self.lstm = nn.LSTM(
-                input_size=input_size, hidden_size=hidden_size,
-                num_layers=num_layers, batch_first=True,
+                input_size=input_size,
+                hidden_size=hidden_size,
+                num_layers=num_layers,
+                batch_first=True,
                 dropout=dropout if num_layers > 1 else 0.0,
             )
             self.dropout = nn.Dropout(dropout)
             self.bn = nn.BatchNorm1d(hidden_size)
-            self.heads = nn.ModuleList([
-                nn.Sequential(
-                    nn.Linear(hidden_size, 64), nn.ReLU(),
-                    nn.Dropout(dropout * 0.5), nn.Linear(64, 1),
-                )
-                for _ in range(n_outputs)
-            ])
+            self.heads = nn.ModuleList(
+                [
+                    nn.Sequential(
+                        nn.Linear(hidden_size, 64),
+                        nn.ReLU(),
+                        nn.Dropout(dropout * 0.5),
+                        nn.Linear(64, 1),
+                    )
+                    for _ in range(n_outputs)
+                ]
+            )
 
         def forward(self, x):
             out, _ = self.lstm(x)
@@ -277,18 +321,25 @@ def build_transformer_model(input_size, d_model, nhead, num_encoder_layers, drop
             super().__init__()
             self.input_proj = nn.Linear(input_size, d_model)
             encoder_layer = nn.TransformerEncoderLayer(
-                d_model=d_model, nhead=nhead,
-                dim_feedforward=d_model * 4, dropout=dropout, batch_first=True,
+                d_model=d_model,
+                nhead=nhead,
+                dim_feedforward=d_model * 4,
+                dropout=dropout,
+                batch_first=True,
             )
             self.encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_encoder_layers)
             self.dropout = nn.Dropout(dropout)
-            self.heads = nn.ModuleList([
-                nn.Sequential(
-                    nn.Linear(d_model, 64), nn.ReLU(),
-                    nn.Dropout(dropout * 0.5), nn.Linear(64, 1),
-                )
-                for _ in range(n_outputs)
-            ])
+            self.heads = nn.ModuleList(
+                [
+                    nn.Sequential(
+                        nn.Linear(d_model, 64),
+                        nn.ReLU(),
+                        nn.Dropout(dropout * 0.5),
+                        nn.Linear(64, 1),
+                    )
+                    for _ in range(n_outputs)
+                ]
+            )
 
         def forward(self, x):
             x = self.input_proj(x)
@@ -300,219 +351,406 @@ def build_transformer_model(input_size, d_model, nhead, num_encoder_layers, drop
 
 def build_model(model_type: str, input_size: int):
     if model_type == "transformer":
-        return build_transformer_model(input_size, 128, 4, 2, DROPOUT, len(HORIZONS))
-    return build_lstm_model(input_size, HIDDEN_SIZE, NUM_LAYERS, DROPOUT, len(HORIZONS))
+        return build_transformer_model(
+            input_size=input_size,
+            d_model=128,
+            nhead=4,
+            num_encoder_layers=2,
+            dropout=DROPOUT,
+            n_outputs=len(HORIZONS),
+        )
+    return build_lstm_model(
+        input_size=input_size,
+        hidden_size=HIDDEN_SIZE,
+        num_layers=NUM_LAYERS,
+        dropout=DROPOUT,
+        n_outputs=len(HORIZONS),
+    )
 
 
 # ---------------------------------------------------------------------------
-# Training
+# Heat-branch loss
 # ---------------------------------------------------------------------------
-def _make_sample_weights(y_scaled: np.ndarray, heat_threshold_scaled: np.ndarray) -> np.ndarray:
-    """Return per-sequence sample weights.
+def _make_sample_weights(
+    y_scaled: np.ndarray,
+    warm_threshold_scaled: np.ndarray,
+    heat_threshold_scaled: np.ndarray,
+) -> np.ndarray:
+    """Return per-sequence weights for warm/heat-event training."""
+    y_scaled = np.asarray(y_scaled, dtype=np.float32)
+    warm_threshold_scaled = np.asarray(warm_threshold_scaled, dtype=np.float32).reshape(1, -1)
+    heat_threshold_scaled = np.asarray(heat_threshold_scaled, dtype=np.float32).reshape(1, -1)
 
-    Sequences containing at least one horizon target at or above the
-    per-horizon scaled threshold receive HEAT_WEIGHT; all others get 1.0.
+    warm_event = (y_scaled >= warm_threshold_scaled).any(axis=1)
+    heat_event = (y_scaled >= heat_threshold_scaled).any(axis=1)
 
-    Parameters
-    ----------
-    y_scaled : shape (n, n_horizons) — already MinMax-scaled targets.
-    heat_threshold_scaled : shape (n_horizons,) — per-horizon threshold
-        derived from the fitted target scaler so it stays correct across
-        retrains regardless of the target temperature range.
-    """
-    heat = (y_scaled >= heat_threshold_scaled.reshape(1, -1)).any(axis=1)
-    weights = np.where(heat, float(HEAT_WEIGHT), 1.0).astype(np.float32)
+    weights = np.ones(len(y_scaled), dtype=np.float32)
+    weights[warm_event] = float(WARM_WEIGHT)
+    weights[heat_event] = float(HEAT_WEIGHT)
     return weights
 
 
-def train_model(model, train_loader, val_loader, heat_threshold_scaled: Optional[np.ndarray] = None) -> Tuple[Dict, object, float]:
-    torch, nn, _, _ = _try_import_torch()
-    optimizer = torch.optim.Adam(model.parameters(), lr=LR, weight_decay=1e-5)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, mode="min", factor=0.5, patience=8
-    )
-    criterion = nn.MSELoss(reduction="none")
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = model.to(device)
-    w = torch.tensor(
-        [HORIZON_WEIGHTS[h] for h in HORIZONS], dtype=torch.float32, device=device
+def _asymmetric_warm_heat_loss(
+    pred,
+    target,
+    sample_weight,
+    warm_threshold_scaled,
+    heat_threshold_scaled,
+):
+    """Weighted MSE with extra penalty for under-predicting warm/heat targets."""
+    torch, _, _, _ = _try_import_torch()
+
+    device = pred.device
+    dtype = pred.dtype
+
+    warm_thr = torch.tensor(warm_threshold_scaled, dtype=dtype, device=device).view(1, -1)
+    heat_thr = torch.tensor(heat_threshold_scaled, dtype=dtype, device=device).view(1, -1)
+
+    horizon_w = torch.tensor(
+        [HORIZON_WEIGHTS[h] for h in HORIZONS],
+        dtype=dtype,
+        device=device,
     ).view(1, -1)
 
-    heat_threshold_t = None
-    if heat_threshold_scaled is not None:
-        heat_threshold_t = torch.tensor(
-            np.asarray(heat_threshold_scaled, dtype=np.float32),
-            dtype=torch.float32,
-            device=device,
-        ).view(1, -1)
+    if sample_weight is None:
+        sample_weight = torch.ones(pred.shape[0], dtype=dtype, device=device)
+    else:
+        sample_weight = sample_weight.to(device=device, dtype=dtype)
+    sample_weight = sample_weight.view(-1, 1)
 
-    history: Dict = {"train_loss": [], "val_loss": [], "val_mae_scaled": []}
-    best_val_mae = float("inf")
+    sq_err = (pred - target) ** 2
+
+    warm_mask = target >= warm_thr
+    heat_mask = target >= heat_thr
+    under_mask = pred < target
+
+    asym = torch.ones_like(sq_err)
+    asym = torch.where(
+        warm_mask & under_mask,
+        torch.full_like(asym, float(WARM_UNDERPRED_PENALTY)),
+        asym,
+    )
+    asym = torch.where(
+        heat_mask & under_mask,
+        torch.full_like(asym, float(HEAT_UNDERPRED_PENALTY)),
+        asym,
+    )
+
+    return (sq_err * horizon_w * sample_weight * asym).mean()
+
+
+def train_model(
+    model,
+    train_loader,
+    val_loader,
+    warm_threshold_scaled=None,
+    heat_threshold_scaled=None,
+) -> Tuple[object, Dict]:
+    """Train model using heat-branch objective and unweighted validation loss."""
+    import copy
+
+    torch, _, _, _ = _try_import_torch()
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = model.to(device)
+
+    optimizer = torch.optim.Adam(model.parameters(), lr=LR, weight_decay=1e-5)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer,
+        mode="min",
+        factor=0.5,
+        patience=8,
+    )
+
+    horizon_w = torch.tensor(
+        [HORIZON_WEIGHTS[h] for h in HORIZONS],
+        dtype=torch.float32,
+        device=device,
+    ).view(1, -1)
+
+    use_heat_branch_loss = bool(
+        HEAT_BRANCH_EXPERIMENT
+        and warm_threshold_scaled is not None
+        and heat_threshold_scaled is not None
+    )
+
+    best_val_loss = float("inf")
     best_state = None
-    no_improve = 0
+    patience_counter = 0
+
+    history: Dict = {
+        "train_loss": [],
+        "val_loss": [],
+        "val_mae_scaled": [],
+        "lr": [],
+        "heat_branch_experiment": bool(use_heat_branch_loss),
+    }
 
     for epoch in range(1, MAX_EPOCHS + 1):
         model.train()
         train_losses = []
+
         for batch in train_loader:
             if len(batch) == 3:
-                Xb, yb, sw = batch
-                sw = sw.to(device).view(-1, 1, 1)  # sample weight shape for broadcasting
+                xb, yb, wb = batch
+                wb = wb.to(device)
             else:
-                Xb, yb = batch
-                sw = torch.ones(len(Xb), 1, 1, device=device)
-            Xb, yb = Xb.to(device), yb.to(device)
+                xb, yb = batch
+                wb = None
+
+            xb = xb.to(device)
+            yb = yb.to(device)
+
             optimizer.zero_grad()
-            pred = model(Xb)
-            per_element_loss = criterion(pred, yb) * w   # (B, H)
+            pred = model(xb)
 
-            # Heat-event correction: the first heat-weighting pass improved
-            # general MAE but still produced 0/5 test heat hits on H=1/H=3/H=5.
-            # Sample weights make hot rows matter more; this asymmetric term
-            # specifically penalizes under-predicting heat-event targets while
-            # leaving non-heat rows unchanged.  The penalty is applied in scaled
-            # target space and only where the true target exceeds the fitted
-            # per-horizon heat threshold.
-            if heat_threshold_t is not None and HEAT_UNDERPREDICTION_PENALTY > 0:
-                heat_mask = (yb >= heat_threshold_t).float()
-                under_error = torch.relu(yb - pred)
-                under_loss = (under_error ** 2) * heat_mask * w
-                per_element_loss = per_element_loss + HEAT_UNDERPREDICTION_PENALTY * under_loss
+            if use_heat_branch_loss:
+                loss = _asymmetric_warm_heat_loss(
+                    pred=pred,
+                    target=yb,
+                    sample_weight=wb,
+                    warm_threshold_scaled=warm_threshold_scaled,
+                    heat_threshold_scaled=heat_threshold_scaled,
+                )
+            else:
+                sq_err = (pred - yb) ** 2
+                if wb is not None:
+                    loss = (sq_err * horizon_w * wb.to(device).view(-1, 1)).mean()
+                else:
+                    loss = (sq_err * horizon_w).mean()
 
-            # Apply sample weights per row, then average
-            loss = (per_element_loss * sw.squeeze(-1)).mean()
             loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
-            train_losses.append(float(loss.item()))
+            train_losses.append(float(loss.detach().cpu().item()))
 
         model.eval()
-        val_losses, val_maes = [], []
+        val_losses = []
+        val_maes = []
         with torch.no_grad():
-            for Xb, yb in val_loader:
-                Xb, yb = Xb.to(device), yb.to(device)
-                pred = model(Xb)
-                val_losses.append(float((criterion(pred, yb) * w).mean().item()))
-                val_maes.append(float(torch.abs(pred - yb).mean().item()))
+            for batch in val_loader:
+                if len(batch) == 3:
+                    xb, yb, _wb = batch
+                else:
+                    xb, yb = batch
+                xb = xb.to(device)
+                yb = yb.to(device)
+                pred = model(xb)
 
-        tl = float(np.mean(train_losses)) if train_losses else float("nan")
-        vl = float(np.mean(val_losses)) if val_losses else float("inf")
-        vm = float(np.mean(val_maes)) if val_maes else float("inf")
+                sq_err = (pred - yb) ** 2
+                val_loss = (sq_err * horizon_w).mean()
+                val_losses.append(float(val_loss.detach().cpu().item()))
+                val_maes.append(float(torch.abs(pred - yb).mean().detach().cpu().item()))
 
-        history["train_loss"].append(tl)
-        history["val_loss"].append(vl)
-        history["val_mae_scaled"].append(vm)
-        scheduler.step(vm)
+        train_loss = float(np.mean(train_losses)) if train_losses else float("nan")
+        val_loss = float(np.mean(val_losses)) if val_losses else float("nan")
+        val_mae_scaled = float(np.mean(val_maes)) if val_maes else float("nan")
 
-        if vm < best_val_mae - 1e-5:
-            best_val_mae = vm
-            best_state = {k: v.cpu().clone() for k, v in model.state_dict().items()}
-            no_improve = 0
+        scheduler.step(val_loss)
+        current_lr = float(optimizer.param_groups[0]["lr"])
+
+        history["train_loss"].append(train_loss)
+        history["val_loss"].append(val_loss)
+        history["val_mae_scaled"].append(val_mae_scaled)
+        history["lr"].append(current_lr)
+
+        print(
+            f"[Part 2] Epoch {epoch:03d} | "
+            f"train_loss={train_loss:.6f} | "
+            f"val_loss={val_loss:.6f} | "
+            f"val_mae_scaled={val_mae_scaled:.6f} | "
+            f"lr={current_lr:.6g}"
+        )
+
+        if np.isfinite(val_loss) and val_loss < best_val_loss - 1e-7:
+            best_val_loss = val_loss
+            best_state = copy.deepcopy(model.state_dict())
+            patience_counter = 0
         else:
-            no_improve += 1
+            patience_counter += 1
 
-        if epoch % 10 == 0 or epoch == 1:
-            print(f"  Epoch {epoch:4d}/{MAX_EPOCHS} | "
-                  f"train={tl:.5f} | val={vl:.5f} | val_mae_scaled={vm:.5f}")
-
-        if no_improve >= PATIENCE:
-            print(f"  Early stopping at epoch {epoch} (best={best_val_mae:.5f})")
+        if patience_counter >= PATIENCE:
+            print(f"[Part 2] Early stopping at epoch {epoch}; best_val_loss={best_val_loss:.6f}")
             break
 
-    if best_state:
+    if best_state is not None:
         model.load_state_dict(best_state)
-    return history, model.to("cpu"), best_val_mae
+
+    model = model.to("cpu")
+    model.eval()
+
+    history["best_val_loss"] = float(best_val_loss)
+    history["epochs_ran"] = int(len(history["train_loss"]))
+    history["patience"] = int(PATIENCE)
+
+    return model, history
 
 
 # ---------------------------------------------------------------------------
-# Inference helpers
+# Prediction / metrics
 # ---------------------------------------------------------------------------
 def predict_scaled(model, X_seq: np.ndarray) -> np.ndarray:
     torch, _, _, _ = _try_import_torch()
+    if len(X_seq) == 0:
+        return np.empty((0, len(HORIZONS)), dtype=np.float32)
+
     model.eval()
+    preds = []
     with torch.no_grad():
-        return model(torch.tensor(X_seq, dtype=torch.float32)).numpy()
+        for start in range(0, len(X_seq), BATCH_SIZE):
+            batch = torch.tensor(X_seq[start : start + BATCH_SIZE], dtype=torch.float32)
+            preds.append(model(batch).cpu().numpy())
+    return np.vstack(preds).astype(np.float32)
 
 
-def predict_fahrenheit(
-    model, X_seq: np.ndarray, tgt_scaler
-) -> Tuple[np.ndarray, bool]:
-    """Run inference, clip to [CLIP_MIN, CLIP_MAX], inverse-scale to °F.
-
-    Returns
-    -------
-    preds_f    : ndarray (n, n_horizons) in Fahrenheit
-    was_clipped: True if any raw output was outside [CLIP_MIN, CLIP_MAX]
-    """
-    raw = predict_scaled(model, X_seq)
-    clipped = np.clip(raw, CLIP_MIN, CLIP_MAX)
-    was_clipped = bool(not np.allclose(raw, clipped, atol=1e-4))
-    if was_clipped:
-        diff = np.abs(raw - clipped)
-        print(f"[Part 2] ⚠️  Output clipped. Max exceedance: {diff.max():.4f}")
-    return tgt_scaler.inverse_transform(clipped), was_clipped
-
-
-def metrics_fahrenheit(pred_f: np.ndarray, true_f: np.ndarray) -> Dict[str, float]:
-    out = {}
-    for i, h in enumerate(HORIZONS):
-        mask = np.isfinite(true_f[:, i]) & np.isfinite(pred_f[:, i])
-        if not mask.any():
-            continue
-        err = pred_f[mask, i] - true_f[mask, i]
-        out[f"h{h}_mae_f"] = float(np.mean(np.abs(err)))
-        out[f"h{h}_rmse_f"] = float(np.sqrt(np.mean(err ** 2)))
-        out[f"h{h}_bias_f"] = float(np.mean(err))
-    return out
-
-
-def average_horizon_mae(metrics: Dict[str, float]) -> float:
-    vals = [metrics[f"h{h}_mae_f"] for h in HORIZONS if f"h{h}_mae_f" in metrics]
-    return float(np.mean(vals)) if vals else float("nan")
+def inverse_clip_predictions(pred_scaled: np.ndarray, tgt_scaler) -> Tuple[np.ndarray, bool]:
+    pred_scaled = np.asarray(pred_scaled, dtype=np.float32)
+    clipped = np.clip(pred_scaled, CLIP_MIN, CLIP_MAX)
+    was_clipped = bool(np.any(np.abs(clipped - pred_scaled) > 1e-8))
+    pred_f = tgt_scaler.inverse_transform(clipped).astype(np.float32)
+    return pred_f, was_clipped
 
 
 def heat_event_diagnostics(
+    pred: np.ndarray,
+    true: np.ndarray,
+    threshold_f: float = HEAT_EVENT_F,
+) -> Dict[str, object]:
+    pred = np.asarray(pred, dtype=float)
+    true = np.asarray(true, dtype=float)
+    mask = np.isfinite(pred) & np.isfinite(true)
+    heat = mask & (true >= threshold_f)
+    n_heat = int(heat.sum())
+
+    if n_heat == 0:
+        return {
+            "threshold_f": float(threshold_f),
+            "n_true_heat_days": 0,
+            "predicted_heat_hits": 0,
+            "hit_rate": None,
+            "heat_mae_f": None,
+            "heat_bias_f": None,
+            "max_true_f": float(np.nanmax(true[mask])) if mask.any() else None,
+            "max_pred_f": float(np.nanmax(pred[mask])) if mask.any() else None,
+        }
+
+    err = pred[heat] - true[heat]
+    return {
+        "threshold_f": float(threshold_f),
+        "n_true_heat_days": n_heat,
+        "predicted_heat_hits": int((pred[heat] >= threshold_f).sum()),
+        "hit_rate": float((pred[heat] >= threshold_f).mean()),
+        "heat_mae_f": float(np.mean(np.abs(err))),
+        "heat_bias_f": float(np.mean(err)),
+        "max_true_f": float(np.max(true[heat])),
+        "max_pred_f": float(np.max(pred[mask])) if mask.any() else None,
+    }
+
+
+def evaluate_predictions(pred_f: np.ndarray, true_f: np.ndarray, prefix: str = "") -> Dict[str, object]:
+    pred_f = np.asarray(pred_f, dtype=float)
+    true_f = np.asarray(true_f, dtype=float)
+
+    out: Dict[str, object] = {}
+    mae_values = []
+
+    for i, h in enumerate(HORIZONS):
+        pred = pred_f[:, i]
+        true = true_f[:, i]
+        mask = np.isfinite(pred) & np.isfinite(true)
+
+        if not mask.any():
+            continue
+
+        err = pred[mask] - true[mask]
+        mae = float(np.mean(np.abs(err)))
+        rmse = float(np.sqrt(np.mean(err ** 2)))
+        bias = float(np.mean(err))
+
+        out[f"{prefix}h{h}_mae_f"] = mae
+        out[f"{prefix}h{h}_rmse_f"] = rmse
+        out[f"{prefix}h{h}_bias_f"] = bias
+        out[f"{prefix}h{h}_n"] = int(mask.sum())
+        out[f"{prefix}h{h}_heat_event_diagnostics"] = heat_event_diagnostics(pred, true)
+
+        mae_values.append(mae)
+
+    if mae_values:
+        out[f"{prefix}avg_mae_f"] = float(np.mean(mae_values))
+
+    return out
+
+
+def make_prediction_frame(
+    dates: pd.Series,
     pred_f: np.ndarray,
     true_f: np.ndarray,
-    threshold_f: float = 85.0,
-) -> Dict[str, Dict[str, float]]:
-    """Upper-tail diagnostics for hot-day forecasts.
-
-    This is not a training gate. It documents whether the model can represent
-    the LA upper tail, especially at H=3 and H=5 where ordinary MSE training
-    often regresses too strongly toward climatology.
-    """
-    out: Dict[str, Dict[str, float]] = {}
+    split: str,
+) -> pd.DataFrame:
+    out = pd.DataFrame({"date": pd.to_datetime(dates), "split": split})
     for i, h in enumerate(HORIZONS):
-        true = true_f[:, i]
-        pred = pred_f[:, i]
-        mask = np.isfinite(true) & np.isfinite(pred)
-        heat = mask & (true > threshold_f)
-        n_heat = int(heat.sum())
-        if n_heat == 0:
-            out[f"h{h}"] = {
-                "threshold_f": float(threshold_f),
-                "n_true_heat_days": 0,
-                "predicted_heat_hits": 0,
-                "hit_rate": None,
-                "heat_mae_f": None,
-                "heat_bias_f": None,
-                "max_true_f": float(np.nanmax(true[mask])) if mask.any() else None,
-                "max_pred_f": float(np.nanmax(pred[mask])) if mask.any() else None,
-            }
-            continue
-        err = pred[heat] - true[heat]
-        out[f"h{h}"] = {
-            "threshold_f": float(threshold_f),
-            "n_true_heat_days": n_heat,
-            "predicted_heat_hits": int((pred[heat] > threshold_f).sum()),
-            "hit_rate": float((pred[heat] > threshold_f).mean()),
-            "heat_mae_f": float(np.mean(np.abs(err))),
-            "heat_bias_f": float(np.mean(err)),
-            "max_true_f": float(np.max(true[heat])),
-            "max_pred_f": float(np.max(pred[mask])) if mask.any() else None,
-        }
+        out[f"pred_h{h}"] = pred_f[:, i] if len(pred_f) else []
+        out[f"true_h{h}"] = true_f[:, i] if len(true_f) else []
+        out[f"target_date_h{h}"] = pd.to_datetime(out["date"]) + pd.Timedelta(days=h)
+        out[f"error_h{h}"] = out[f"pred_h{h}"] - out[f"true_h{h}"]
+        out[f"abs_error_h{h}"] = out[f"error_h{h}"].abs()
     return out
+
+
+# ---------------------------------------------------------------------------
+# Persistence
+# ---------------------------------------------------------------------------
+def save_training_artifacts(model, model_type: str, feat_scaler, tgt_scaler, history: Dict, meta: Dict) -> None:
+    torch, _, _, _ = _try_import_torch()
+    torch.save(model.state_dict(), _model_path(model_type))
+
+    with open(ARTIFACTS_DIR / "feature_scaler.pkl", "wb") as f:
+        pickle.dump(feat_scaler, f)
+    with open(ARTIFACTS_DIR / "target_scaler.pkl", "wb") as f:
+        pickle.dump(tgt_scaler, f)
+    with open(ARTIFACTS_DIR / "training_history.json", "w") as f:
+        json.dump(history, f, indent=2)
+    with open(ARTIFACTS_DIR / "part2_meta.json", "w") as f:
+        json.dump(meta, f, indent=2)
+
+    print(f"[Part 2] Saved {model_type} model + scalers + metadata.")
+
+
+def load_training_artifacts(model_type: str, input_size: int):
+    torch, _, _, _ = _try_import_torch()
+
+    feat_path = ARTIFACTS_DIR / "feature_scaler.pkl"
+    tgt_path = ARTIFACTS_DIR / "target_scaler.pkl"
+    meta_path = ARTIFACTS_DIR / "part2_meta.json"
+    mpath = _model_path(model_type)
+
+    for p in [feat_path, tgt_path, meta_path, mpath]:
+        if not p.exists():
+            raise FileNotFoundError(f"{p.name} not found. Run Part 2 --mode=train first.")
+
+    with open(feat_path, "rb") as f:
+        feat_scaler = pickle.load(f)
+    with open(tgt_path, "rb") as f:
+        tgt_scaler = pickle.load(f)
+    with open(meta_path) as f:
+        meta = json.load(f)
+
+    saved_type = meta.get("model_type", model_type)
+    if saved_type != model_type:
+        raise ValueError(f"Saved model_type={saved_type} != requested {model_type}.")
+
+    saved_features = meta.get("feature_cols", [])
+    if len(saved_features) != input_size:
+        raise ValueError(
+            f"Feature count mismatch: current={input_size}, saved={len(saved_features)}. "
+            "Run Part 2 with --mode=train after feature-schema changes."
+        )
+
+    model = build_model(model_type, input_size)
+    model.load_state_dict(torch.load(mpath, map_location="cpu"))
+    model.eval()
+
+    return model, feat_scaler, tgt_scaler, meta
 
 
 # ---------------------------------------------------------------------------
@@ -528,12 +766,6 @@ def load_prediction_log() -> pd.DataFrame:
 
 
 def upsert_log_row(row: Dict) -> None:
-    """Write `row` to the prediction log, overwriting any existing row with the same key.
-
-    Key: (decision_date, feature_date, model).
-    Columns not present in `row` (e.g. realized_h*, blend_h* written by other parts)
-    are preserved on existing rows.
-    """
     df = load_prediction_log()
     if df.empty:
         pd.DataFrame([row]).to_csv(_log_path(), index=False)
@@ -565,11 +797,6 @@ def write_prediction_row(
     feature_date: pd.Timestamp,
     model_type: str,
 ) -> None:
-    """Write LSTM output + preliminary forecast_h* to the prediction log.
-
-    forecast_h* is set here as a preliminary value (source=lstm_preliminary).
-    Part 2B will overwrite forecast_h* with the canonical fallback-chain value.
-    """
     row: Dict = {
         "decision_date": decision_date.strftime("%Y-%m-%d"),
         "feature_date": feature_date.strftime("%Y-%m-%d"),
@@ -580,83 +807,42 @@ def write_prediction_row(
         "lstm_output_clipped": bool(was_clipped),
         "written_at": pd.Timestamp.now().isoformat(),
     }
+
     for i, h in enumerate(HORIZONS):
         val = float(preds_f[i])
         row[f"target_h{h}"] = val
-        row[f"forecast_h{h}"] = val  # preliminary; Part 2B will overwrite
+        row[f"forecast_h{h}"] = val
+
     row["forecast_source"] = "lstm_preliminary"
     row["forecast_reason"] = "awaiting_Part2B_fallback_chain"
-
-    # Preserve any realized_h* values already written by Part 9 on this key
-    existing = load_prediction_log()
-    if not existing.empty:
-        key_vals = {k: str(row.get(k, "")).strip() for k in LOG_KEY_COLS}
-        match = pd.Series([True] * len(existing))
-        for k, v in key_vals.items():
-            col = existing[k].astype(str).str.strip() if k in existing.columns else pd.Series([""] * len(existing))
-            match = match & (col == v)
-        if match.any():
-            idx = existing.index[match][-1]
-            for col in [f"realized_h{h}" for h in HORIZONS]:
-                if col in existing.columns and pd.notna(existing.at[idx, col]):
-                    row[col] = existing.at[idx, col]
 
     upsert_log_row(row)
 
 
 # ---------------------------------------------------------------------------
-# Persistence helpers
-# ---------------------------------------------------------------------------
-def save_training_artifacts(model, model_type, feat_scaler, tgt_scaler, history, meta):
-    # FIX (Audit 3, Issue 7): single torch.save — removed the duplicate write
-    # that previously called torch.save a second time for model_type == "lstm"
-    # on the identical path returned by _model_path("lstm").
-    torch, _, _, _ = _try_import_torch()
-    torch.save(model.state_dict(), _model_path(model_type))
-    with open(ARTIFACTS_DIR / "feature_scaler.pkl", "wb") as f:
-        pickle.dump(feat_scaler, f)
-    with open(ARTIFACTS_DIR / "target_scaler.pkl", "wb") as f:
-        pickle.dump(tgt_scaler, f)
-    with open(ARTIFACTS_DIR / "training_history.json", "w") as f:
-        json.dump(history, f, indent=2)
-    with open(ARTIFACTS_DIR / "part2_meta.json", "w") as f:
-        json.dump(meta, f, indent=2)
-
-
-def load_training_artifacts(model_type: str, input_size: int):
-    # FIX (Audit 3, Issue 8): removed the redundant fallback guard
-    #   if not mpath.exists() and model_type == "lstm":
-    #       mpath = ARTIFACTS_DIR / "lstm_model.pt"   ← identical to _model_path("lstm")
-    # _model_path("lstm") already returns ARTIFACTS_DIR / "lstm_model.pt",
-    # so the condition could never change mpath.
-    torch, _, _, _ = _try_import_torch()
-    feat_path = ARTIFACTS_DIR / "feature_scaler.pkl"
-    tgt_path = ARTIFACTS_DIR / "target_scaler.pkl"
-    meta_path = ARTIFACTS_DIR / "part2_meta.json"
-    mpath = _model_path(model_type)
-    for p in [feat_path, tgt_path, meta_path, mpath]:
-        if not p.exists():
-            raise FileNotFoundError(f"{p.name} not found. Run Part 2 --mode=train first.")
-    with open(feat_path, "rb") as f:
-        feat_scaler = pickle.load(f)
-    with open(tgt_path, "rb") as f:
-        tgt_scaler = pickle.load(f)
-    with open(meta_path) as f:
-        meta = json.load(f)
-    saved = meta.get("model_type", model_type)
-    if saved != model_type:
-        raise ValueError(f"Saved model_type={saved} != requested {model_type}. Retrain or use --model={saved}.")
-    model = build_model(model_type, input_size)
-    model.load_state_dict(torch.load(mpath, map_location="cpu"))
-    model.eval()
-    return model, feat_scaler, tgt_scaler, meta
-
-
-# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
+def _build_live_sequence(df: pd.DataFrame, feature_cols: List[str], feat_scaler) -> Tuple[np.ndarray, pd.Timestamp]:
+    X_all = feat_scaler.transform(_clean_feature_frame(df, feature_cols)).astype(np.float32)
+    X_all_seq = build_sequences(X_all, y=None, seq_len=SEQUENCE_LEN)
+    if len(X_all_seq) == 0:
+        raise ValueError("Not enough feature rows for live prediction sequence.")
+    feature_date = pd.Timestamp(df["date"].max()).normalize()
+    return X_all_seq[-1:, :, :], feature_date
+
+
 def main(model_type: str = "lstm", mode: str = "train") -> int:
+    set_random_seeds(RANDOM_SEED)
     torch, _, DataLoader, TensorDataset = _try_import_torch()
+
+    model_type = str(model_type).lower().strip()
+    if model_type not in {"lstm", "transformer"}:
+        raise ValueError("model_type must be 'lstm' or 'transformer'.")
+
+    mode = str(mode).lower().strip()
+    if mode not in {"train", "predict"}:
+        raise ValueError("mode must be 'train' or 'predict'.")
+
     print(f"[Part 2] model={model_type.upper()}  mode={mode}  root={PROJECT_DIR}")
 
     df = load_data()
@@ -666,7 +852,7 @@ def main(model_type: str = "lstm", mode: str = "train") -> int:
     print(f"[Part 2] {len(df)} feature rows, {len(feature_cols)} features")
 
     df_train, df_val, df_test = _build_labeled_splits(df, splits)
-    print(f"[Part 2] Labeled — Train:{len(df_train)} Val:{len(df_val)} Test:{len(df_test)}")
+    print(f"[Part 2] Fully labeled — Train:{len(df_train)} Val:{len(df_val)} Test:{len(df_test)}")
     print(f"[Part 2] Live feature date: {df['date'].max().date()}")
 
     if len(df_train) < SEQUENCE_LEN or len(df_val) < SEQUENCE_LEN:
@@ -674,188 +860,221 @@ def main(model_type: str = "lstm", mode: str = "train") -> int:
 
     input_size = len(feature_cols)
 
-    # -------------------------------------------------------------------
-    # Training branch
-    # -------------------------------------------------------------------
     if mode == "train":
         from sklearn.preprocessing import MinMaxScaler
 
-        feat_sc = MinMaxScaler()
-        tgt_sc = MinMaxScaler()
+        feat_scaler = MinMaxScaler()
+        tgt_scaler = MinMaxScaler()
 
-        X_tr = feat_sc.fit_transform(_clean_feature_frame(df_train, feature_cols)).astype(np.float32)
-        y_tr = tgt_sc.fit_transform(df_train[target_cols].values.astype(np.float32)).astype(np.float32)
-        X_va = feat_sc.transform(_clean_feature_frame(df_val, feature_cols)).astype(np.float32)
-        y_va = tgt_sc.transform(df_val[target_cols].values.astype(np.float32)).astype(np.float32)
-        X_te = feat_sc.transform(_clean_feature_frame(df_test, feature_cols)).astype(np.float32)
-        y_te = tgt_sc.transform(df_test[target_cols].values.astype(np.float32)).astype(np.float32)
+        X_train = feat_scaler.fit_transform(_clean_feature_frame(df_train, feature_cols)).astype(np.float32)
+        y_train = tgt_scaler.fit_transform(df_train[target_cols].values.astype(np.float32)).astype(np.float32)
+        X_val = feat_scaler.transform(_clean_feature_frame(df_val, feature_cols)).astype(np.float32)
+        y_val = tgt_scaler.transform(df_val[target_cols].values.astype(np.float32)).astype(np.float32)
+        X_test = feat_scaler.transform(_clean_feature_frame(df_test, feature_cols)).astype(np.float32)
+        y_test = tgt_scaler.transform(df_test[target_cols].values.astype(np.float32)).astype(np.float32)
 
-        Xtr_seq, ytr_seq = build_sequences(X_tr, y_tr, SEQUENCE_LEN)
-        Xva_seq, yva_seq = build_sequences(X_va, y_va, SEQUENCE_LEN)
-        Xte_seq, yte_seq = build_sequences(X_te, y_te, SEQUENCE_LEN)
-        print(f"[Part 2] Seqs — Tr:{Xtr_seq.shape} Va:{Xva_seq.shape} Te:{Xte_seq.shape}")
-
-        # Derive the heat-event threshold in scaled space from the fitted target scaler.
-        # Using a fixed scaled value (e.g. 0.70) is fragile — MinMax scaling depends on
-        # the observed target range, which shifts slightly with each retrain as new data
-        # arrives.  Transform the Fahrenheit threshold per-horizon instead.
+        warm_thresh_f = np.full((1, len(HORIZONS)), WARM_EVENT_F, dtype=np.float32)
         heat_thresh_f = np.full((1, len(HORIZONS)), HEAT_EVENT_F, dtype=np.float32)
-        heat_threshold_scaled = tgt_sc.transform(heat_thresh_f)[0]  # shape (n_horizons,)
+        warm_threshold_scaled = tgt_scaler.transform(warm_thresh_f)[0].astype(np.float32)
+        heat_threshold_scaled = tgt_scaler.transform(heat_thresh_f)[0].astype(np.float32)
 
-        heat_weights = _make_sample_weights(ytr_seq, heat_threshold_scaled)
-        n_heat = int((heat_weights > 1.0).sum())
-        print(f"[Part 2] Heat-weighted training rows: {n_heat}/{len(ytr_seq)} "
-              f"(weight={HEAT_WEIGHT}x at ≥{HEAT_EVENT_F}°F per horizon)")
+        print("[Part 2] Heat-branch thresholds:")
+        for i, h in enumerate(HORIZONS):
+            print(
+                f"  H={h}: warm={WARM_EVENT_F:.1f}°F "
+                f"(scaled={warm_threshold_scaled[i]:.4f}), "
+                f"heat={HEAT_EVENT_F:.1f}°F "
+                f"(scaled={heat_threshold_scaled[i]:.4f})"
+            )
 
-        tr_ds = TensorDataset(
-            torch.tensor(Xtr_seq),
-            torch.tensor(ytr_seq),
-            torch.tensor(heat_weights),   # 3rd element — sample weights
+        X_train_seq, y_train_seq = build_sequences(X_train, y_train, SEQUENCE_LEN)
+        X_val_seq, y_val_seq = build_sequences(X_val, y_val, SEQUENCE_LEN)
+        X_test_seq, y_test_seq = build_sequences(X_test, y_test, SEQUENCE_LEN)
+
+        print(
+            f"[Part 2] Sequences — Train:{X_train_seq.shape} "
+            f"Val:{X_val_seq.shape} Test:{X_test_seq.shape}"
         )
-        va_ds = TensorDataset(torch.tensor(Xva_seq), torch.tensor(yva_seq))
-        tr_ldr = DataLoader(tr_ds, batch_size=BATCH_SIZE, shuffle=True, drop_last=True)
-        va_ldr = DataLoader(va_ds, batch_size=BATCH_SIZE, shuffle=False)
+
+        train_sample_weights = _make_sample_weights(
+            y_train_seq,
+            warm_threshold_scaled=warm_threshold_scaled,
+            heat_threshold_scaled=heat_threshold_scaled,
+        )
+        n_warm = int((train_sample_weights >= WARM_WEIGHT).sum())
+        n_heat = int((train_sample_weights >= HEAT_WEIGHT).sum())
+        print(
+            f"[Part 2] Weighted training sequences: warm_or_hot={n_warm}/{len(train_sample_weights)}, "
+            f"heat={n_heat}/{len(train_sample_weights)}"
+        )
+
+        train_ds = TensorDataset(
+            torch.tensor(X_train_seq, dtype=torch.float32),
+            torch.tensor(y_train_seq, dtype=torch.float32),
+            torch.tensor(train_sample_weights, dtype=torch.float32),
+        )
+        val_ds = TensorDataset(
+            torch.tensor(X_val_seq, dtype=torch.float32),
+            torch.tensor(y_val_seq, dtype=torch.float32),
+        )
+
+        train_loader = DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=True, drop_last=False)
+        val_loader = DataLoader(val_ds, batch_size=BATCH_SIZE, shuffle=False)
 
         model = build_model(model_type, input_size)
-        n_p = sum(p.numel() for p in model.parameters() if p.requires_grad)
-        print(f"[Part 2] Parameters: {n_p:,}")
-        print("[Part 2] Training...")
+        model, history = train_model(
+            model,
+            train_loader,
+            val_loader,
+            warm_threshold_scaled=warm_threshold_scaled,
+            heat_threshold_scaled=heat_threshold_scaled,
+        )
 
-        history, model, best_scaled_mae = train_model(model, tr_ldr, va_ldr, heat_threshold_scaled=heat_threshold_scaled)
+        val_pred_scaled = predict_scaled(model, X_val_seq)
+        test_pred_scaled = predict_scaled(model, X_test_seq)
 
-        # Metrics in °F — clipping applied consistently with inference
-        vp_f, _ = predict_fahrenheit(model, Xva_seq, tgt_sc)
-        vt_f = tgt_sc.inverse_transform(np.clip(yva_seq, CLIP_MIN, CLIP_MAX))
-        val_metrics = metrics_fahrenheit(vp_f, vt_f)
-        val_mae_f = average_horizon_mae(val_metrics)
-        val_heat_event_diagnostics = heat_event_diagnostics(vp_f, vt_f)
+        val_pred_f, val_clipped = inverse_clip_predictions(val_pred_scaled, tgt_scaler)
+        test_pred_f, test_clipped = inverse_clip_predictions(test_pred_scaled, tgt_scaler)
 
-        print("\n=== VALIDATION METRICS ===")
-        for h in HORIZONS:
-            print(f"  H={h}: MAE={val_metrics.get(f'h{h}_mae_f', float('nan')):.2f}°F  "
-                  f"RMSE={val_metrics.get(f'h{h}_rmse_f', float('nan')):.2f}°F  "
-                  f"Bias={val_metrics.get(f'h{h}_bias_f', float('nan')):+.2f}°F")
+        val_true_f = tgt_scaler.inverse_transform(y_val_seq)
+        test_true_f = tgt_scaler.inverse_transform(y_test_seq)
 
-        test_metrics: Dict = {}
-        test_heat_event_diagnostics: Dict = {}
-        if len(Xte_seq) > 0:
-            tp_f, _ = predict_fahrenheit(model, Xte_seq, tgt_sc)
-            tt_f = tgt_sc.inverse_transform(np.clip(yte_seq, CLIP_MIN, CLIP_MAX))
-            test_metrics = metrics_fahrenheit(tp_f, tt_f)
-            test_heat_event_diagnostics = heat_event_diagnostics(tp_f, tt_f)
-            print("\n=== TEST METRICS ===")
-            for h in HORIZONS:
-                print(f"  H={h}: MAE={test_metrics.get(f'h{h}_mae_f', float('nan')):.2f}°F  "
-                      f"RMSE={test_metrics.get(f'h{h}_rmse_f', float('nan')):.2f}°F  "
-                      f"Bias={test_metrics.get(f'h{h}_bias_f', float('nan')):+.2f}°F")
+        val_metrics = evaluate_predictions(val_pred_f, val_true_f, prefix="val_")
+        test_metrics = evaluate_predictions(test_pred_f, test_true_f, prefix="test_")
+        val_mae_f = float(val_metrics.get("val_avg_mae_f", np.nan))
+        test_mae_f = float(test_metrics.get("test_avg_mae_f", np.nan))
 
         val_dates = sequence_dates(df_val["date"], SEQUENCE_LEN)
-        val_df = pd.DataFrame({"date": val_dates})
-        for i, h in enumerate(HORIZONS):
-            val_df[f"pred_h{h}"] = vp_f[:, i]
-            val_df[f"true_h{h}"] = vt_f[:, i]
-            val_df[f"target_date_h{h}"] = val_dates + pd.Timedelta(days=h)
-        val_df.to_parquet(ARTIFACTS_DIR / "val_predictions.parquet", index=False)
+        test_dates = sequence_dates(df_test["date"], SEQUENCE_LEN)
+        val_df = make_prediction_frame(val_dates, val_pred_f, val_true_f, split="val")
+        test_df = make_prediction_frame(test_dates, test_pred_f, test_true_f, split="test")
+        all_pred_df = pd.concat([val_df, test_df], ignore_index=True)
+        all_pred_df.to_parquet(ARTIFACTS_DIR / "val_predictions.parquet", index=False)
+        print(f"[Part 2] Saved val_predictions.parquet ({len(all_pred_df)} rows, val+test).")
 
-        meta = {
+        meta: Dict = {
             "schema_version": SCHEMA_VERSION,
             "model_type": model_type,
             "trained_at": pd.Timestamp.now().isoformat(),
+            "n_features": int(input_size),
             "feature_cols": feature_cols,
-            "n_features": len(feature_cols),
-            "sequence_len": SEQUENCE_LEN,
+            "target_cols": target_cols,
             "horizons": HORIZONS,
-            "target_clock": "target_date_h = feature_date + h calendar days",
-            "output_clipping": {"clip_min": CLIP_MIN, "clip_max": CLIP_MAX},
-            "model_file": _model_path(model_type).name,
-            "hyperparameters": {
-                "hidden_size": HIDDEN_SIZE, "num_layers": NUM_LAYERS,
-                "dropout": DROPOUT, "batch_size": BATCH_SIZE,
-                "max_epochs": MAX_EPOCHS, "patience": PATIENCE,
-                "lr": LR, "horizon_weights": HORIZON_WEIGHTS,
-                "heat_event_f": HEAT_EVENT_F,
-                "heat_weight": HEAT_WEIGHT,
-                "heat_underprediction_penalty": HEAT_UNDERPREDICTION_PENALTY,
-            },
-            "best_val_mae_scaled_01": best_scaled_mae,
+            "sequence_len": int(SEQUENCE_LEN),
             "val_mae_f": val_mae_f,
+            "test_mae_f": test_mae_f,
             "val_metrics": val_metrics,
             "test_metrics": test_metrics,
-            "val_heat_event_diagnostics": val_heat_event_diagnostics,
-            "test_heat_event_diagnostics": test_heat_event_diagnostics,
-            "split_summary": {
-                "n_train": len(df_train), "n_val": len(df_val), "n_test": len(df_test),
-                "train_end": splits.get("train_end"),
-                "val_end": splits.get("val_end"),
-                "test_end": splits.get("test_end"),
+            "val_output_clipped": bool(val_clipped),
+            "test_output_clipped": bool(test_clipped),
+            "hyperparameters": {
+                "hidden_size": HIDDEN_SIZE,
+                "num_layers": NUM_LAYERS,
+                "dropout": DROPOUT,
+                "batch_size": BATCH_SIZE,
+                "max_epochs": MAX_EPOCHS,
+                "patience": PATIENCE,
+                "lr": LR,
+                "horizon_weights": HORIZON_WEIGHTS,
+                "random_seed": RANDOM_SEED,
+                "heat_branch_experiment": bool(HEAT_BRANCH_EXPERIMENT),
+                "warm_event_f": float(WARM_EVENT_F),
+                "heat_event_f": float(HEAT_EVENT_F),
+                "warm_weight": float(WARM_WEIGHT),
+                "heat_weight": float(HEAT_WEIGHT),
+                "warm_underpred_penalty": float(WARM_UNDERPRED_PENALTY),
+                "heat_underpred_penalty": float(HEAT_UNDERPRED_PENALTY),
+            },
+            "heat_experiment": {
+                "enabled": bool(HEAT_BRANCH_EXPERIMENT),
+                "warm_event_f": float(WARM_EVENT_F),
+                "heat_event_f": float(HEAT_EVENT_F),
+                "warm_weight": float(WARM_WEIGHT),
+                "heat_weight": float(HEAT_WEIGHT),
+                "warm_underpred_penalty": float(WARM_UNDERPRED_PENALTY),
+                "heat_underpred_penalty": float(HEAT_UNDERPRED_PENALTY),
+                "patience": int(PATIENCE),
+                "loss": "asymmetric_warm_heat_mse",
+                "validation_loss": "unweighted_horizon_weighted_mse",
+                "warm_threshold_scaled_by_horizon": {
+                    f"h{h}": float(warm_threshold_scaled[i])
+                    for i, h in enumerate(HORIZONS)
+                },
+                "heat_threshold_scaled_by_horizon": {
+                    f"h{h}": float(heat_threshold_scaled[i])
+                    for i, h in enumerate(HORIZONS)
+                },
+                "n_warm_or_hot_train_sequences": int(n_warm),
+                "n_heat_train_sequences": int(n_heat),
             },
         }
-        save_training_artifacts(model, model_type, feat_sc, tgt_sc, history, meta)
-        feat_scaler, tgt_scaler = feat_sc, tgt_sc
 
-    # -------------------------------------------------------------------
-    # Predict-only branch
-    # -------------------------------------------------------------------
+        save_training_artifacts(model, model_type, feat_scaler, tgt_scaler, history, meta)
+
     else:
-        model, feat_scaler, tgt_scaler, _ = load_training_artifacts(model_type, input_size)
+        model, feat_scaler, tgt_scaler, meta = load_training_artifacts(model_type, input_size)
+        saved_cols = meta.get("feature_cols", feature_cols)
+        if saved_cols != feature_cols:
+            raise ValueError(
+                "Current feature_cols differ from saved feature_cols. "
+                "Run Part 2 with --mode=train after feature-schema changes."
+            )
 
-    # -------------------------------------------------------------------
-    # Live prediction
-    # -------------------------------------------------------------------
-    all_X = feat_scaler.transform(_clean_feature_frame(df, feature_cols)).astype(np.float32)
-    if len(all_X) < SEQUENCE_LEN:
-        raise ValueError("Not enough rows for live sequence.")
+    # -----------------------------------------------------------------------
+    # Live prediction branch — runs after training or after loading.
+    # -----------------------------------------------------------------------
+    if mode == "train":
+        # Model/scalers already defined in local scope.
+        pass
+    else:
+        # Variables supplied by load_training_artifacts().
+        pass
 
-    live_seq = all_X[-SEQUENCE_LEN:][np.newaxis, :, :]
-    live_f, was_clipped = predict_fahrenheit(model, live_seq, tgt_scaler)
-    live_f = live_f[0]
+    X_live_seq, feature_date = _build_live_sequence(df, feature_cols, feat_scaler)
+    live_scaled = predict_scaled(model, X_live_seq)
+    live_f, live_clipped = inverse_clip_predictions(live_scaled, tgt_scaler)
 
-    decision_date = pd.Timestamp.today().normalize()
-    feature_date = pd.Timestamp(df["date"].max()).normalize()
-
-    print("\n=== LIVE PREDICTIONS ===")
-    print(f"  Feature date: {feature_date.date()}  Decision date: {decision_date.date()}")
-    if was_clipped:
-        print("  ⚠️  Raw LSTM output exceeded [0,1] and was clipped before inverse-scaling.")
+    live_pred = live_f[0]
+    print("\n=== LIVE PART 2 PRELIMINARY FORECAST ===")
     for i, h in enumerate(HORIZONS):
-        print(f"  H={h} ({(feature_date + pd.Timedelta(days=h)).date()}): {live_f[i]:.1f}°F")
+        target_date = feature_date + pd.Timedelta(days=h)
+        print(f"  H={h} ({target_date.date()}): {live_pred[i]:.1f}°F")
 
-    write_prediction_row(live_f, was_clipped, decision_date, feature_date, model_type)
+    write_prediction_row(
+        preds_f=live_pred,
+        was_clipped=bool(live_clipped),
+        decision_date=pd.Timestamp.today().normalize(),
+        feature_date=feature_date,
+        model_type=model_type,
+    )
 
-    # Patch meta with live info
-    meta_path = ARTIFACTS_DIR / "part2_meta.json"
-    meta: Dict = {}
-    if meta_path.exists():
-        with open(meta_path) as f:
-            meta = json.load(f)
-    meta.update({
-        "last_prediction_at": pd.Timestamp.now().isoformat(),
-        "decision_date": decision_date.isoformat(),
-        "feature_date": feature_date.isoformat(),
-        "lstm_output_clipped": bool(was_clipped),
-        "live_predictions": {f"h{h}": float(live_f[i]) for i, h in enumerate(HORIZONS)},
-    })
-    with open(meta_path, "w") as f:
-        json.dump(meta, f, indent=2)
-
-    print(f"\n[Part 2] ✅  Complete (clipped={was_clipped}).")
-    if meta.get("val_mae_f"):
-        print(f"[Part 2] Val avg MAE = {meta['val_mae_f']:.2f}°F")
+    print("\n[Part 2] ✅ Complete.")
     return 0
 
 
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
+def _parse_args():
+    parser = argparse.ArgumentParser(description="Part 2 — Deep Learning Forecaster")
+    parser.add_argument(
+        "--model",
+        default="lstm",
+        choices=["lstm", "transformer"],
+        help="Model backbone to train/load.",
+    )
+    parser.add_argument(
+        "--mode",
+        default="train",
+        choices=["train", "predict"],
+        help="train = retrain model and write live prediction; predict = load existing model.",
+    )
+    return parser.parse_args()
+
+
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--model", choices=["lstm", "transformer"], default="lstm")
-    parser.add_argument("--mode", choices=["train", "predict"], default="train")
-    parser.add_argument("--predict-only", action="store_true")
-    args = parser.parse_args()
-    raise SystemExit(main(model_type=args.model, mode="predict" if args.predict_only else args.mode))
-
-
-
-
-
+    args = _parse_args()
+    raise SystemExit(main(model_type=args.model, mode=args.mode))
 
 
 
