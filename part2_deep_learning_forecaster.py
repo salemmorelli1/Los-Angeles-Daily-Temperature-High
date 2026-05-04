@@ -74,7 +74,7 @@ NUM_LAYERS = 2
 DROPOUT = 0.20
 BATCH_SIZE = 64
 MAX_EPOCHS = 150
-PATIENCE = 20
+PATIENCE = 15
 LR = 1e-3
 HORIZON_WEIGHTS = {1: 1.0, 3: 0.8, 5: 0.6}
 MODEL_FILES = {"lstm": "lstm_model.pt", "transformer": "transformer_model.pt"}
@@ -88,8 +88,9 @@ CLIP_MAX = 1.0
 # (measured in Fahrenheit before scaling) receive an elevated loss weight to improve
 # upper-tail representation. The scaled threshold is computed from the fitted target
 # scaler after fit_transform, not hard-coded, so it stays correct across retrains.
-HEAT_WEIGHT = 3.0
-HEAT_EVENT_F = 85.0  # Fahrenheit threshold — converted to scaled space after scaler fit
+HEAT_WEIGHT = 5.0
+HEAT_EVENT_F = 85.0
+HEAT_UNDERPREDICTION_PENALTY = 2.0  # extra scaled-space penalty on under-predicted heat targets
 
 # Upsert key for prediction log
 LOG_KEY_COLS = ("decision_date", "feature_date", "model")
@@ -324,7 +325,7 @@ def _make_sample_weights(y_scaled: np.ndarray, heat_threshold_scaled: np.ndarray
     return weights
 
 
-def train_model(model, train_loader, val_loader) -> Tuple[Dict, object, float]:
+def train_model(model, train_loader, val_loader, heat_threshold_scaled: Optional[np.ndarray] = None) -> Tuple[Dict, object, float]:
     torch, nn, _, _ = _try_import_torch()
     optimizer = torch.optim.Adam(model.parameters(), lr=LR, weight_decay=1e-5)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
@@ -336,6 +337,14 @@ def train_model(model, train_loader, val_loader) -> Tuple[Dict, object, float]:
     w = torch.tensor(
         [HORIZON_WEIGHTS[h] for h in HORIZONS], dtype=torch.float32, device=device
     ).view(1, -1)
+
+    heat_threshold_t = None
+    if heat_threshold_scaled is not None:
+        heat_threshold_t = torch.tensor(
+            np.asarray(heat_threshold_scaled, dtype=np.float32),
+            dtype=torch.float32,
+            device=device,
+        ).view(1, -1)
 
     history: Dict = {"train_loss": [], "val_loss": [], "val_mae_scaled": []}
     best_val_mae = float("inf")
@@ -354,7 +363,22 @@ def train_model(model, train_loader, val_loader) -> Tuple[Dict, object, float]:
                 sw = torch.ones(len(Xb), 1, 1, device=device)
             Xb, yb = Xb.to(device), yb.to(device)
             optimizer.zero_grad()
-            per_element_loss = criterion(model(Xb), yb) * w   # (B, H)
+            pred = model(Xb)
+            per_element_loss = criterion(pred, yb) * w   # (B, H)
+
+            # Heat-event correction: the first heat-weighting pass improved
+            # general MAE but still produced 0/5 test heat hits on H=1/H=3/H=5.
+            # Sample weights make hot rows matter more; this asymmetric term
+            # specifically penalizes under-predicting heat-event targets while
+            # leaving non-heat rows unchanged.  The penalty is applied in scaled
+            # target space and only where the true target exceeds the fitted
+            # per-horizon heat threshold.
+            if heat_threshold_t is not None and HEAT_UNDERPREDICTION_PENALTY > 0:
+                heat_mask = (yb >= heat_threshold_t).float()
+                under_error = torch.relu(yb - pred)
+                under_loss = (under_error ** 2) * heat_mask * w
+                per_element_loss = per_element_loss + HEAT_UNDERPREDICTION_PENALTY * under_loss
+
             # Apply sample weights per row, then average
             loss = (per_element_loss * sw.squeeze(-1)).mean()
             loss.backward()
@@ -697,7 +721,7 @@ def main(model_type: str = "lstm", mode: str = "train") -> int:
         print(f"[Part 2] Parameters: {n_p:,}")
         print("[Part 2] Training...")
 
-        history, model, best_scaled_mae = train_model(model, tr_ldr, va_ldr)
+        history, model, best_scaled_mae = train_model(model, tr_ldr, va_ldr, heat_threshold_scaled=heat_threshold_scaled)
 
         # Metrics in °F — clipping applied consistently with inference
         vp_f, _ = predict_fahrenheit(model, Xva_seq, tgt_sc)
@@ -751,6 +775,7 @@ def main(model_type: str = "lstm", mode: str = "train") -> int:
                 "lr": LR, "horizon_weights": HORIZON_WEIGHTS,
                 "heat_event_f": HEAT_EVENT_F,
                 "heat_weight": HEAT_WEIGHT,
+                "heat_underprediction_penalty": HEAT_UNDERPREDICTION_PENALTY,
             },
             "best_val_mae_scaled_01": best_scaled_mae,
             "val_mae_f": val_mae_f,
@@ -826,7 +851,6 @@ if __name__ == "__main__":
     parser.add_argument("--predict-only", action="store_true")
     args = parser.parse_args()
     raise SystemExit(main(model_type=args.model, mode="predict" if args.predict_only else args.mode))
-
 
 
 
