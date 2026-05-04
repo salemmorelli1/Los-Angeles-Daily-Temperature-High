@@ -23,6 +23,19 @@ Artifacts Written
   artifacts_part2a/
       alpha_features.parquet         — alpha feature matrix aligned to feature dates
       alpha_meta.json                — feature descriptions and schema version
+
+Fix (Audit 4, Issue 1)
+----------------------
+  compute_pressure_alphas: removed alpha_pressure_tend_1d entirely.
+  It equals p.diff(1).shift(1), which is mathematically identical to
+  pressure_tendency_lag1 already built by Part 1. Its presence was
+  non-deterministic (appeared in some runs, not others) because the
+  drop_duplicate_alpha_features_against_part1 guard could only catch it
+  after the fact. Removing the source is the correct deterministic fix.
+
+  alpha_pressure_accel previously referenced alpha_pressure_tend_1d
+  directly. It is now computed as p.diff(1).diff(1) instead, which is
+  equivalent and has no dependency on the removed column.
 """
 
 from __future__ import annotations
@@ -113,7 +126,20 @@ def streak_when_true(flag: pd.Series, *, shift: bool = True) -> pd.Series:
 # Alpha 1: Pressure gradient / tendency signals
 # ---------------------------------------------------------------------------
 def compute_pressure_alphas(df: pd.DataFrame) -> pd.DataFrame:
-    """Pressure tendency, anomaly vs 30-day mean, acceleration."""
+    """Pressure tendency, anomaly vs 30-day mean, acceleration.
+
+    Fix (Audit 4, Issue 1): alpha_pressure_tend_1d removed.
+    --------------------------------------------------------
+    alpha_pressure_tend_1d = p.diff(1).shift(1) which is mathematically
+    identical to pressure_tendency_lag1 already built by Part 1's
+    add_derived_features().  Including it caused non-deterministic feature
+    counts (128/129/130 between runs) depending on whether the runtime
+    drop_duplicate_alpha_features_against_part1 guard fired.
+
+    alpha_pressure_accel previously used alpha_pressure_tend_1d as its
+    source.  It is now computed directly as p.diff(1).diff(1) so there is
+    no remaining dependency on the removed column.
+    """
     alpha = df[["date"]].copy()
 
     if "pressure_mean_hpa" not in df.columns:
@@ -121,13 +147,14 @@ def compute_pressure_alphas(df: pd.DataFrame) -> pd.DataFrame:
 
     p = df["pressure_mean_hpa"].copy()
 
-    # Tendency (rate of change)
-    alpha["alpha_pressure_tend_1d"] = p.diff(1)
+    # Tendency (rate of change) — 1d intentionally omitted; it duplicates
+    # pressure_tendency_lag1 from Part 1 (p.diff(1).shift(1)).
     alpha["alpha_pressure_tend_2d"] = p.diff(2)
     alpha["alpha_pressure_tend_3d"] = p.diff(3)
 
-    # Acceleration (2nd derivative)
-    alpha["alpha_pressure_accel"] = alpha["alpha_pressure_tend_1d"].diff(1)
+    # Acceleration (2nd derivative) — computed directly from p, not from
+    # the removed alpha_pressure_tend_1d column.
+    alpha["alpha_pressure_accel"] = p.diff(1).diff(1)
 
     # Anomaly vs 30-day rolling mean (shifted to avoid leakage)
     p_roll30 = p.shift(1).rolling(30, min_periods=10).mean()
@@ -419,7 +446,6 @@ def build_alpha_features(df: pd.DataFrame, enso_df: Optional[pd.DataFrame] = Non
     return alpha_all
 
 
-
 def drop_duplicate_alpha_features_against_part1(alpha_df: pd.DataFrame) -> pd.DataFrame:
     """Drop alpha columns that exactly duplicate an existing Part 1 feature.
 
@@ -429,6 +455,10 @@ def drop_duplicate_alpha_features_against_part1(alpha_df: pd.DataFrame) -> pd.Da
     feature, keeping both only adds redundant capacity and feature-importance
     ambiguity.  The check is strict by design: it only drops a column when the
     maximum absolute aligned difference is effectively zero.
+
+    Note: with the alpha_pressure_tend_1d source removal above, this function
+    should find zero duplicates on every run. It is kept as a second-line safety
+    net in case future alpha additions inadvertently re-introduce a duplicate.
     """
     feat_path = PART1_DIR / "feature_matrix.parquet"
     if not feat_path.exists() or alpha_df.empty:
@@ -599,5 +629,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
 
