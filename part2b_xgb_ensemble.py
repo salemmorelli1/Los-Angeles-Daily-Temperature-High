@@ -12,7 +12,7 @@ Part 2B owns the canonical forecast_h1 / forecast_h3 / forecast_h5 columns
 and forecast_source / forecast_reason in the prediction log.
 
 Fallback chain (evaluated in order):
-  1. blend_h*     — 0.40 * XGB + 0.60 * LSTM  (if both present and pass sanity)
+  1. blend_h*     — validation-tuned XGB/LSTM blend (if both present and pass sanity)
   2. xgb_h*       — XGB alone                  (if LSTM is implausible)
   3. nws_h*       — NWS official forecast       (if XGB not available)
   4. persistence  — last observed temp          (last resort)
@@ -69,7 +69,7 @@ PART2_DIR = PROJECT_DIR / "artifacts_part2"
 ARTIFACTS_DIR = PROJECT_DIR / "artifacts_part2b"
 ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
 
-SCHEMA_VERSION = "1.1.0"
+SCHEMA_VERSION = "1.2.0"
 HORIZONS = [1, 3, 5]
 
 XGB_PARAMS = {
@@ -86,7 +86,10 @@ BNN_RECOMMENDATION_THRESHOLD_F = 0.3  # XGB must beat LSTM by this much
 # A forecast is "plausible" if it deviates by less than this from last observed
 FORECAST_SANITY_THRESHOLD_F = 15.0
 
-BLEND_WEIGHT_XGB = 0.40           # blend = 0.40 * XGB + 0.60 * LSTM
+DEFAULT_BLEND_WEIGHT_XGB = 0.40     # fallback blend = 0.40 * XGB + 0.60 * LSTM
+BLEND_WEIGHT_GRID_STEP = 0.05       # coarse grid to avoid overfitting the validation set
+MIN_BLEND_TUNE_ROWS = 50            # common LSTM/XGB validation rows required per horizon
+MIN_BLEND_IMPROVEMENT_F = 0.05      # keep default unless tuned blend improves MAE by at least this
 
 # NWS anchoring / heat-event safety overlay.
 # These do not replace the model stack in normal conditions. They only keep the
@@ -259,6 +262,151 @@ def top_features(model, feature_cols: List[str], n: int = 20) -> List[Tuple[str,
 
 
 # ---------------------------------------------------------------------------
+# Validation-tuned XGB/LSTM blend weights
+# ---------------------------------------------------------------------------
+def _load_lstm_val_predictions() -> pd.DataFrame:
+    """Load Part 2 validation predictions used to tune blend weights.
+
+    Part 2 sequence models cannot predict the first SEQUENCE_LEN - 1 validation
+    rows, so this table is usually shorter than the XGB validation table.
+    The tuner therefore merges on date and uses only common rows.
+    """
+    path = PART2_DIR / "val_predictions.parquet"
+    if not path.exists():
+        print("[Part 2B] val_predictions.parquet not found — using default blend weights.")
+        return pd.DataFrame()
+    df = pd.read_parquet(path)
+    if "date" not in df.columns:
+        print("[Part 2B] val_predictions.parquet has no date column — using default blend weights.")
+        return pd.DataFrame()
+    df["date"] = pd.to_datetime(df["date"]).dt.normalize()
+    return df.sort_values("date").reset_index(drop=True)
+
+
+def _blend_weight_for_h(blend_weights_xgb: Optional[Dict[str, float]], h: int) -> float:
+    if not blend_weights_xgb:
+        return float(DEFAULT_BLEND_WEIGHT_XGB)
+    val = blend_weights_xgb.get(f"h{h}", DEFAULT_BLEND_WEIGHT_XGB)
+    try:
+        val = float(val)
+    except Exception:
+        val = DEFAULT_BLEND_WEIGHT_XGB
+    if not np.isfinite(val):
+        val = DEFAULT_BLEND_WEIGHT_XGB
+    return float(np.clip(val, 0.0, 1.0))
+
+
+def tune_blend_weights(df_val: pd.DataFrame, val_preds: Dict[str, np.ndarray]) -> Tuple[Dict[str, float], Dict[str, Dict[str, object]]]:
+    """Tune horizon-specific XGB blend weights using validation MAE only.
+
+    The old production rule used a fixed 0.40 XGB / 0.60 LSTM blend for every
+    horizon. Current artifacts show XGB materially outperforming LSTM on H=1
+    and H=3, so the fixed rule can degrade the published canonical forecast.
+    This tuner selects a coarse-grid XGB weight per horizon on validation rows
+    where both XGB and LSTM predictions are available. Test rows are never used.
+    """
+    defaults = {f"h{h}": float(DEFAULT_BLEND_WEIGHT_XGB) for h in HORIZONS}
+    diagnostics: Dict[str, Dict[str, object]] = {}
+
+    lstm_val = _load_lstm_val_predictions()
+    if lstm_val.empty:
+        for h in HORIZONS:
+            diagnostics[f"h{h}"] = {
+                "chosen_weight_xgb": float(DEFAULT_BLEND_WEIGHT_XGB),
+                "reason": "lstm_val_predictions_missing",
+            }
+        return defaults, diagnostics
+
+    xgb_val = df_val[["date"]].copy().reset_index(drop=True)
+    for h in HORIZONS:
+        xgb_val[f"xgb_pred_h{h}"] = np.asarray(val_preds.get(f"h{h}", np.nan), dtype=float)
+        xgb_val[f"true_h{h}"] = pd.to_numeric(df_val[f"target_h{h}"].values, errors="coerce")
+
+    merged = xgb_val.merge(lstm_val, on="date", how="inner", suffixes=("_xgb", "_lstm"))
+    if merged.empty:
+        print("[Part 2B] No common XGB/LSTM validation dates — using default blend weights.")
+        for h in HORIZONS:
+            diagnostics[f"h{h}"] = {
+                "chosen_weight_xgb": float(DEFAULT_BLEND_WEIGHT_XGB),
+                "reason": "no_common_validation_dates",
+            }
+        return defaults, diagnostics
+
+    weights = defaults.copy()
+    grid = np.round(np.arange(0.0, 1.0 + 1e-9, BLEND_WEIGHT_GRID_STEP), 4)
+
+    for h in HORIZONS:
+        x_col = f"xgb_pred_h{h}"
+        l_col = f"pred_h{h}"
+        y_col = f"true_h{h}_xgb" if f"true_h{h}_xgb" in merged.columns else f"true_h{h}"
+        if x_col not in merged.columns or l_col not in merged.columns or y_col not in merged.columns:
+            diagnostics[f"h{h}"] = {
+                "chosen_weight_xgb": float(DEFAULT_BLEND_WEIGHT_XGB),
+                "reason": "required_columns_missing",
+            }
+            continue
+
+        x = pd.to_numeric(merged[x_col], errors="coerce").to_numpy(dtype=float)
+        l = pd.to_numeric(merged[l_col], errors="coerce").to_numpy(dtype=float)
+        y = pd.to_numeric(merged[y_col], errors="coerce").to_numpy(dtype=float)
+        mask = np.isfinite(x) & np.isfinite(l) & np.isfinite(y)
+        n = int(mask.sum())
+        if n < MIN_BLEND_TUNE_ROWS:
+            diagnostics[f"h{h}"] = {
+                "chosen_weight_xgb": float(DEFAULT_BLEND_WEIGHT_XGB),
+                "reason": f"insufficient_common_rows:{n}",
+                "n_common_rows": n,
+            }
+            continue
+
+        x = x[mask]
+        l = l[mask]
+        y = y[mask]
+        mae_by_weight = {}
+        for w in grid:
+            pred = float(w) * x + (1.0 - float(w)) * l
+            mae_by_weight[float(w)] = float(np.mean(np.abs(pred - y)))
+
+        default_w = float(DEFAULT_BLEND_WEIGHT_XGB)
+        default_mae = mae_by_weight.get(default_w)
+        if default_mae is None:
+            default_pred = default_w * x + (1.0 - default_w) * l
+            default_mae = float(np.mean(np.abs(default_pred - y)))
+
+        best_w = min(mae_by_weight, key=mae_by_weight.get)
+        best_mae = mae_by_weight[best_w]
+        improvement = float(default_mae - best_mae)
+
+        if improvement >= MIN_BLEND_IMPROVEMENT_F:
+            chosen_w = float(best_w)
+            reason = "validation_mae_tuned"
+        else:
+            chosen_w = default_w
+            reason = "default_retained_small_improvement"
+
+        weights[f"h{h}"] = chosen_w
+        diagnostics[f"h{h}"] = {
+            "chosen_weight_xgb": chosen_w,
+            "best_weight_xgb": float(best_w),
+            "default_weight_xgb": default_w,
+            "best_mae_f": float(best_mae),
+            "default_mae_f": float(default_mae),
+            "improvement_vs_default_f": improvement,
+            "xgb_only_mae_f": float(mae_by_weight.get(1.0, np.nan)),
+            "lstm_only_mae_f": float(mae_by_weight.get(0.0, np.nan)),
+            "n_common_rows": n,
+            "reason": reason,
+        }
+
+    print("[Part 2B] Validation-tuned blend weights:")
+    for h in HORIZONS:
+        d = diagnostics.get(f"h{h}", {})
+        print(f"  H={h}: wxgb={weights[f'h{h}']:.2f} ({d.get('reason', 'unknown')})")
+
+    return weights, diagnostics
+
+
+# ---------------------------------------------------------------------------
 # Training
 # ---------------------------------------------------------------------------
 def train_xgb_horizon(
@@ -335,6 +483,7 @@ def compute_canonical_forecast(
     lstm_preds: Dict[str, float],
     nws_preds: Dict[int, Optional[float]],
     last_obs: Optional[float],
+    blend_weights_xgb: Optional[Dict[str, float]] = None,
 ) -> Tuple[Dict[str, float], str, str]:
     """Apply the fallback chain and return (forecast, source, reason).
 
@@ -364,9 +513,10 @@ def compute_canonical_forecast(
             lstm_ok = _is_plausible(lstm_val, last_obs) if np.isfinite(last_obs) else True
             xgb_ok = _is_plausible(xgb_val, last_obs) if np.isfinite(last_obs) else True
             if lstm_ok and xgb_ok:
-                selected_val = BLEND_WEIGHT_XGB * xgb_val + (1 - BLEND_WEIGHT_XGB) * lstm_val
+                w_xgb = _blend_weight_for_h(blend_weights_xgb, h)
+                selected_val = w_xgb * xgb_val + (1.0 - w_xgb) * lstm_val
                 selected_source = "blend"
-                selected_reason = f"H{h}:blend(xgb={xgb_val:.1f},lstm={lstm_val:.1f})"
+                selected_reason = f"H{h}:blend(wxgb={w_xgb:.2f},xgb={xgb_val:.1f},lstm={lstm_val:.1f})"
             elif xgb_ok:
                 selected_val = xgb_val
                 selected_source = "xgb"
@@ -423,6 +573,7 @@ def build_anchor_audit_fields(
     lstm_preds: Dict[str, float],
     nws_preds: Dict[int, Optional[float]],
     reason: str,
+    blend_weights_xgb: Optional[Dict[str, float]] = None,
 ) -> Tuple[Dict[str, object], Dict[str, Dict[str, object]]]:
     """Create transparent NWS-anchor audit columns.
 
@@ -442,7 +593,8 @@ def build_anchor_audit_fields(
         nws_val = nws_preds.get(h, np.nan)
 
         if np.isfinite(xgb_val) and np.isfinite(lstm_val):
-            pre_anchor = BLEND_WEIGHT_XGB * float(xgb_val) + (1.0 - BLEND_WEIGHT_XGB) * float(lstm_val)
+            w_xgb = _blend_weight_for_h(blend_weights_xgb, h)
+            pre_anchor = w_xgb * float(xgb_val) + (1.0 - w_xgb) * float(lstm_val)
             pre_source = "blend"
         elif np.isfinite(xgb_val):
             pre_anchor = float(xgb_val)
@@ -453,7 +605,11 @@ def build_anchor_audit_fields(
 
         final_val = float(forecast.get(key, np.nan))
         h_reason = next((part for part in str(reason).split(" | ") if part.startswith(f"H{h}:")), "")
-        anchor_applied = bool("nws_anchor" in h_reason or "heat_guard" in h_reason or "nws_" in h_reason and "anchor" in h_reason)
+        anchor_applied = bool(
+            ("nws_anchor" in h_reason)
+            or ("heat_guard" in h_reason)
+            or (("nws_" in h_reason) and ("anchor" in h_reason))
+        )
         if np.isfinite(pre_anchor) and np.isfinite(final_val) and abs(final_val - pre_anchor) > 1e-6:
             anchor_applied = anchor_applied or bool(np.isfinite(nws_val))
         any_anchor = any_anchor or anchor_applied
@@ -461,6 +617,7 @@ def build_anchor_audit_fields(
         delta = final_val - pre_anchor if np.isfinite(final_val) and np.isfinite(pre_anchor) else float("nan")
         details[key] = {
             "pre_anchor_source": pre_source,
+            "blend_weight_xgb": _blend_weight_for_h(blend_weights_xgb, h) if pre_source == "blend" else None,
             "pre_anchor_f": float(pre_anchor) if np.isfinite(pre_anchor) else None,
             "nws_f": float(nws_val) if np.isfinite(nws_val) else None,
             "final_f": float(final_val) if np.isfinite(final_val) else None,
@@ -628,6 +785,11 @@ def main() -> int:
             print(f"  LSTM val MAE={lstm_val_mae:.2f}°F  XGB avg={xgb_avg:.2f}°F  "
                   f"BNN recommended={bnn_rec}")
 
+    # Tune horizon-specific XGB/LSTM blend weights using validation rows only.
+    # This prevents the canonical forecast from using a stale fixed 40/60 blend
+    # when one sleeve is materially stronger on recent validation data.
+    blend_weights_xgb, blend_weight_diagnostics = tune_blend_weights(df_val, val_preds)
+
     # Save val + test predictions parquet (Issue 5 fix: include test split)
     val_df = df_val[["date"]].copy().reset_index(drop=True)
     for h in HORIZONS:
@@ -680,10 +842,10 @@ def main() -> int:
     last_obs = load_last_observed_temp()
     nws_preds = load_nws_forecast_for_horizons(feature_date)
     forecast, source, reason = compute_canonical_forecast(
-        xgb_live, lstm_live, nws_preds, last_obs
+        xgb_live, lstm_live, nws_preds, last_obs, blend_weights_xgb
     )
     anchor_log_fields, anchor_details = build_anchor_audit_fields(
-        forecast, xgb_live, lstm_live, nws_preds, reason
+        forecast, xgb_live, lstm_live, nws_preds, reason, blend_weights_xgb
     )
 
     print("\n=== CANONICAL FORECAST ===")
@@ -708,9 +870,11 @@ def main() -> int:
         # overwritten on every daily run and loses historical NWS data).
         updates[f"nws_h{h}"] = nws_preds.get(h, np.nan)
         if f"h{h}" in lstm_live:
-            blend = BLEND_WEIGHT_XGB * xgb_live.get(f"h{h}", 0) + \
-                    (1 - BLEND_WEIGHT_XGB) * lstm_live[f"h{h}"]
+            w_xgb = _blend_weight_for_h(blend_weights_xgb, h)
+            blend = w_xgb * xgb_live.get(f"h{h}", 0) + \
+                    (1.0 - w_xgb) * lstm_live[f"h{h}"]
             updates[f"blend_h{h}"] = blend
+            updates[f"blend_weight_xgb_h{h}"] = w_xgb
 
     upsert_log_columns(updates, dd_str, fd_str, model_key)
 
@@ -729,6 +893,15 @@ def main() -> int:
         "canonical_forecast": forecast,
         "forecast_source": source,
         "forecast_reason": reason,
+        "blend_weights_xgb": blend_weights_xgb,
+        "blend_weight_diagnostics": blend_weight_diagnostics,
+        "blend_weight_policy": {
+            "default_weight_xgb": DEFAULT_BLEND_WEIGHT_XGB,
+            "grid_step": BLEND_WEIGHT_GRID_STEP,
+            "min_tune_rows": MIN_BLEND_TUNE_ROWS,
+            "min_improvement_f": MIN_BLEND_IMPROVEMENT_F,
+            "tuning_split": "validation_only_common_xgb_lstm_dates",
+        },
         "nws_anchor_used": bool(anchor_log_fields.get("nws_anchor_used", False)),
         "nws_anchor_details": anchor_details,
         "feature_importances": feat_importances,
@@ -751,14 +924,6 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
-
-
-
-
-
-
-
 
 
 
