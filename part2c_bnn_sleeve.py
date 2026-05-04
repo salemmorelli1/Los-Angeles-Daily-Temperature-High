@@ -80,6 +80,12 @@ HIDDEN_SIZE = 128
 NUM_LAYERS = 2
 DROPOUT = 0.20
 
+# When the canonical forecast center is shifted more than this many degrees
+# from the BNN diagnostic mean (e.g. due to an NWS hard anchor), the conformal
+# radius that was calibrated against the BNN mean is no longer valid for that
+# horizon.  Suppress per-horizon displayability above this threshold.
+LARGE_ANCHOR_THRESHOLD_F = 15.0
+
 
 # ---------------------------------------------------------------------------
 # Torch
@@ -499,6 +505,69 @@ def update_prediction_log_with_bnn(
     print("[Part 2C] Updated prediction_log.csv with BNN uncertainty columns")
 
 
+
+# ---------------------------------------------------------------------------
+# Per-horizon display flag computation
+# ---------------------------------------------------------------------------
+def _compute_display_flags(
+    cal_pass: bool,
+    interval_label: str,
+    live_center_f: np.ndarray,
+    live_mean_f: np.ndarray,
+) -> tuple:
+    """Compute per-horizon and aggregate BNN display flags.
+
+    A horizon's interval is suppressed (not displayable) when the canonical
+    center was shifted more than LARGE_ANCHOR_THRESHOLD_F from the BNN
+    diagnostic mean — i.e. an NWS hard anchor moved the center outside the
+    calibration distribution.  The conformal radius is no longer valid for
+    that horizon in that case.
+
+    intervals_publishable is True only when all of the following hold:
+      - calibration passed
+      - interval_label is "conformal_calibrated" (center = BNN mean, no anchor)
+
+    intervals_displayable is True when calibration passed AND no horizon is
+    suppressed due to a large anchor delta.
+
+    Returns
+    -------
+    intervals_publishable : bool
+    intervals_displayable : bool
+    horizon_display_flags : dict  {h: {displayable, anchor_delta_f, suppressed}}
+    suppressed_horizons   : list[int]
+    """
+    intervals_publishable = bool(cal_pass and interval_label == "conformal_calibrated")
+
+    horizon_display_flags: Dict[int, Dict] = {}
+    suppressed_horizons: List[int] = []
+
+    for i, h in enumerate(HORIZONS):
+        center = float(live_center_f[i])
+        mean = float(live_mean_f[i])
+        anchor_delta = abs(center - mean)
+        suppressed = cal_pass and (anchor_delta > LARGE_ANCHOR_THRESHOLD_F)
+        displayable = cal_pass and not suppressed
+        horizon_display_flags[h] = {
+            "displayable": displayable,
+            "anchor_delta_f": round(anchor_delta, 3),
+            "suppressed": suppressed,
+        }
+        if suppressed:
+            suppressed_horizons.append(h)
+
+    intervals_displayable = cal_pass and len(suppressed_horizons) == 0
+
+    if suppressed_horizons:
+        print(
+            f"[Part 2C] \u26a0\ufe0f  BNN display suppressed for H={suppressed_horizons}: "
+            f"NWS anchor delta > {LARGE_ANCHOR_THRESHOLD_F}\u00b0F. "
+            f"Conformal radius calibrated at a different center — setting "
+            f"intervals_displayable=False for these horizons."
+        )
+
+    return intervals_publishable, intervals_displayable, horizon_display_flags, suppressed_horizons
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -641,25 +710,37 @@ def main() -> int:
 
     live_lo_f = live_center_f - q_live_f
     live_hi_f = live_center_f + q_live_f
-    # Strict publishability is reserved for intervals centered on the same
-    # diagnostic BNN/LSTM mean used during conformal calibration.  Canonical
-    # display intervals may still be shown as calibrated risk bands, but they
-    # are not labeled as strict split-conformal predictive intervals because
-    # the live center may include XGB blending or NWS anchoring.
-    intervals_publishable = bool(cal_pass and interval_label == "conformal_calibrated")
-    intervals_displayable = bool(cal_pass)
+    # Compute per-horizon display flags.  Suppresses displayability for any
+    # horizon where the NWS anchor shifted the center more than
+    # LARGE_ANCHOR_THRESHOLD_F from the BNN diagnostic mean.
+    (
+        intervals_publishable,
+        intervals_displayable,
+        horizon_display_flags,
+        suppressed_horizons,
+    ) = _compute_display_flags(
+        cal_pass=cal_pass,
+        interval_label=interval_label,
+        live_center_f=live_center_f,
+        live_mean_f=live_mean_f,
+    )
 
     print("\n=== LIVE PREDICTIONS WITH UNCERTAINTY ===")
     print(f"  Interval label: {interval_label}")
     print(f"  Interval status: {interval_status}")
     print(f"  Intervals publishable: {intervals_publishable}")
     print(f"  Intervals displayable: {intervals_displayable}")
+    if suppressed_horizons:
+        print(f"  Suppressed horizons (anchor delta > {LARGE_ANCHOR_THRESHOLD_F}°F): {suppressed_horizons}")
     for i, h in enumerate(HORIZONS):
         target_date = feature_date + pd.Timedelta(days=h)
+        flag = horizon_display_flags.get(h, {})
         print(
             f"  H={h} ({target_date.date()}): center={live_center_f[i]:.1f}°F "
-            f"[90% interval: {live_lo_f[i]:.1f}°F – {live_hi_f[i]:.1f}°F] "
-            f"diagnostic_mean={live_mean_f[i]:.1f}°F std={live_std_f[i]:.2f}°F"
+            f"[90%: {live_lo_f[i]:.1f}–{live_hi_f[i]:.1f}°F] "
+            f"diag_mean={live_mean_f[i]:.1f}°F std={live_std_f[i]:.2f}°F "
+            f"anchor_delta={flag.get('anchor_delta_f', 0):.1f}°F "
+            f"display={flag.get('displayable', cal_pass)}"
         )
 
     # -------------------------------------------------------------------
@@ -759,6 +840,9 @@ def main() -> int:
         "interval_center_details": center_details,
         "intervals_publishable": bool(intervals_publishable),
         "intervals_displayable": bool(intervals_displayable),
+        "large_anchor_threshold_f": LARGE_ANCHOR_THRESHOLD_F,
+        "horizon_display_flags": {str(h): horizon_display_flags.get(h, {}) for h in HORIZONS},
+        "suppressed_horizons_due_to_anchor": suppressed_horizons,
         "statistical_note": (
             "half_split_calibration_results are evaluated on the validation evaluation half using only "
             "the first validation half to fit q_eval_f. calibration_results use the deployed full-validation "
@@ -830,5 +914,6 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
 
 
