@@ -69,7 +69,7 @@ PART2_DIR = PROJECT_DIR / "artifacts_part2"
 ARTIFACTS_DIR = PROJECT_DIR / "artifacts_part2b"
 ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
 
-SCHEMA_VERSION = "1.2.0"
+SCHEMA_VERSION = "1.2.1-nws-warm-anchor"
 HORIZONS = [1, 3, 5]
 
 XGB_PARAMS = {
@@ -96,11 +96,20 @@ MIN_BLEND_IMPROVEMENT_F = 0.05      # keep default unless tuned blend improves M
 # published canonical forecast from materially diverging from the official NWS
 # benchmark, especially on warm/heat-event days where the learned models have
 # shown a systematic lower-tail bias.
-NWS_SOFT_DEVIATION_F = 8.0          # begin partial NWS anchoring
-NWS_STRONG_DEVIATION_F = 12.0       # stronger NWS anchoring
-NWS_HARD_DEVIATION_F = 20.0         # use NWS directly if exceeded
-NWS_SOFT_ANCHOR_WEIGHT = 0.50       # adjusted = 0.50*NWS + 0.50*model
-NWS_STRONG_ANCHOR_WEIGHT = 0.70     # adjusted = 0.70*NWS + 0.30*model
+# NWS anchoring thresholds were tightened after the heat-branch audit showed
+# persistent cold live forecasts even after the first anchoring layer.  These
+# values keep the model stack active but prevent 4–6°F cold gaps against the
+# official NWS benchmark on warm forecast days.
+NWS_SOFT_DEVIATION_F = 3.0          # begin partial NWS anchoring sooner
+NWS_STRONG_DEVIATION_F = 8.0        # stronger NWS anchoring
+NWS_HARD_DEVIATION_F = 18.0         # use NWS directly if exceeded
+NWS_SOFT_ANCHOR_WEIGHT = 0.60       # adjusted = 0.60*NWS + 0.40*model
+NWS_STRONG_ANCHOR_WEIGHT = 0.80     # adjusted = 0.80*NWS + 0.20*model
+
+# Warm/heat guards: when the official forecast says LA is warm/hot, do not
+# publish a canonical forecast that remains materially colder than NWS.
+WARM_EVENT_THRESHOLD_F = 78.0
+MAX_WARM_NWS_COLD_GAP_F = 3.0
 HEAT_EVENT_THRESHOLD_F = 85.0
 HEAT_EVENT_MIN_MODEL_F = 83.0       # if NWS says heat, do not publish a very low model value
 LOG_KEY_COLS = ("decision_date", "feature_date", "model")
@@ -457,6 +466,21 @@ def _apply_nws_anchor(value: float, nws_value: Optional[float]) -> Tuple[float, 
     elif dev > NWS_SOFT_DEVIATION_F:
         adjusted = NWS_SOFT_ANCHOR_WEIGHT * nws_value + (1.0 - NWS_SOFT_ANCHOR_WEIGHT) * float(value)
         tag = f"nws_soft_anchor(dev={dev:.1f})"
+
+    # Warm-day guard: if NWS is warm but the model stack remains too cold,
+    # cap the cold gap against NWS.  This is intentionally expressed as
+    # NWS-minus-gap instead of an absolute floor so May marine-layer days do
+    # not get forced to an unrealistic fixed temperature.
+    if nws_value >= WARM_EVENT_THRESHOLD_F:
+        min_warm_adjusted = nws_value - MAX_WARM_NWS_COLD_GAP_F
+        if adjusted < min_warm_adjusted:
+            before = adjusted
+            adjusted = min_warm_adjusted
+            warm_tag = (
+                f"warm_gap_guard(nws={nws_value:.1f},"
+                f"max_cold_gap={MAX_WARM_NWS_COLD_GAP_F:.1f},before={before:.1f})"
+            )
+            tag = f"{tag}+{warm_tag}" if tag else warm_tag
 
     # Heat-event guard: if NWS indicates a heat day but the model is capped well
     # below the threshold, lift the forecast to at least a near-threshold value.
@@ -912,6 +936,8 @@ def main() -> int:
             "hard_deviation_f": NWS_HARD_DEVIATION_F,
             "soft_anchor_weight": NWS_SOFT_ANCHOR_WEIGHT,
             "strong_anchor_weight": NWS_STRONG_ANCHOR_WEIGHT,
+            "warm_event_threshold_f": WARM_EVENT_THRESHOLD_F,
+            "max_warm_nws_cold_gap_f": MAX_WARM_NWS_COLD_GAP_F,
             "heat_event_threshold_f": HEAT_EVENT_THRESHOLD_F,
             "heat_event_min_model_f": HEAT_EVENT_MIN_MODEL_F,
         },
@@ -924,6 +950,9 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+
+
 
 
 
