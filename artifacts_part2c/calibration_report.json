@@ -1,0 +1,114 @@
+{
+  "schema_version": "1.2.0",
+  "n_mc_samples": 200,
+  "ci_lower_pct": 5.0,
+  "ci_upper_pct": 95.0,
+  "ci_target_coverage": 0.9,
+  "interval_method": "split_conformal_full_validation_with_half_split_diagnostic",
+  "conformal_alpha": 0.1,
+  "min_validation_coverage": 0.85,
+  "min_test_coverage": 0.8,
+  "validation_split": {
+    "n_val_sequences": 443,
+    "n_val_cal": 221,
+    "n_val_eval": 222
+  },
+  "conformal_quantile_eval_f_by_horizon": {
+    "h1": 5.837131500244141,
+    "h3": 7.237678527832031,
+    "h5": 6.774387359619141
+  },
+  "conformal_quantile_live_f_by_horizon": {
+    "h1": 7.246692657470703,
+    "h3": 8.228309631347656,
+    "h5": 8.133781433105469
+  },
+  "raw_mc_dropout_calibration_results": {
+    "h1_coverage_90pct": 0.7855530474040632,
+    "h1_mean_ci_width_f": 10.024352467625189,
+    "h1_calibration_error": 0.11444695259593685,
+    "h1_n": 443,
+    "h3_coverage_90pct": 0.7020316027088036,
+    "h3_mean_ci_width_f": 9.95039805117364,
+    "h3_calibration_error": 0.19796839729119642,
+    "h3_n": 443,
+    "h5_coverage_90pct": 0.5801354401805869,
+    "h5_mean_ci_width_f": 6.908416971934299,
+    "h5_calibration_error": 0.3198645598194131,
+    "h5_n": 443
+  },
+  "half_split_calibration_results": {
+    "h1_coverage_90pct": 0.7432432432432432,
+    "h1_mean_ci_width_f": 11.674263000488281,
+    "h1_calibration_error": 0.15675675675675682,
+    "h1_n": 222,
+    "h3_coverage_90pct": 0.8153153153153153,
+    "h3_mean_ci_width_f": 14.475357055664062,
+    "h3_calibration_error": 0.08468468468468471,
+    "h3_n": 222,
+    "h5_coverage_90pct": 0.7882882882882883,
+    "h5_mean_ci_width_f": 13.548774719238281,
+    "h5_calibration_error": 0.11171171171171168,
+    "h5_n": 222
+  },
+  "half_split_validation_pass": false,
+  "calibration_results": {
+    "h1_coverage_90pct": 0.8603603603603603,
+    "h1_mean_ci_width_f": 14.493385314941406,
+    "h1_calibration_error": 0.03963963963963968,
+    "h1_n": 222,
+    "h3_coverage_90pct": 0.8738738738738738,
+    "h3_mean_ci_width_f": 16.456619262695312,
+    "h3_calibration_error": 0.026126126126126192,
+    "h3_n": 222,
+    "h5_coverage_90pct": 0.8648648648648649,
+    "h5_mean_ci_width_f": 16.267562866210938,
+    "h5_calibration_error": 0.03513513513513511,
+    "h5_n": 222
+  },
+  "test_coverage_results": {
+    "h1_coverage_90pct": 0.9209932279909706,
+    "h1_mean_ci_width_f": 14.493385314941406,
+    "h1_calibration_error": 0.020993227990970587,
+    "h1_n": 443,
+    "h3_coverage_90pct": 0.8939051918735892,
+    "h3_mean_ci_width_f": 16.456619262695312,
+    "h3_calibration_error": 0.006094808126410833,
+    "h3_n": 443,
+    "h5_coverage_90pct": 0.8645598194130926,
+    "h5_mean_ci_width_f": 16.267562866210938,
+    "h5_calibration_error": 0.035440180586907455,
+    "h5_n": 443
+  },
+  "validation_calibration_pass": true,
+  "test_calibration_pass": true,
+  "calibration_pass": true,
+  "interval_status": "CONFORMAL_CALIBRATED",
+  "interval_label": "canonical_display_interval",
+  "interval_center_source": "canonical_forecast",
+  "interval_center_details": {
+    "forecast_source": "blend+nws_anchor"
+  },
+  "intervals_publishable": false,
+  "intervals_displayable": true,
+  "large_anchor_threshold_f": 15.0,
+  "horizon_display_flags": {
+    "1": {
+      "displayable": true,
+      "anchor_delta_f": 0.608,
+      "suppressed": false
+    },
+    "3": {
+      "displayable": true,
+      "anchor_delta_f": 4.302,
+      "suppressed": false
+    },
+    "5": {
+      "displayable": true,
+      "anchor_delta_f": 10.937,
+      "suppressed": false
+    }
+  },
+  "suppressed_horizons_due_to_anchor": [],
+  "statistical_note": "half_split_calibration_results are evaluated on the validation evaluation half using only the first validation half to fit q_eval_f. calibration_results use the deployed full-validation conformal radius and are therefore a production-width diagnostic; test_coverage_results are the independent deployability gate used for calibration_pass. If interval_label is canonical_display_interval, live bounds are centered on the canonical forecast and should be treated as calibrated display/risk bands rather than strict split-conformal predictive intervals."
+}
