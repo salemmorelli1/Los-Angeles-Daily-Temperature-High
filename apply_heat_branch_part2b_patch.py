@@ -5,7 +5,9 @@ Apply the optional Part 2B heat-branch anchor threshold tweak.
 
 This is intentionally a small patcher instead of a full Part 2B replacement,
 because your current Part 2B contains several audit-specific production fixes
-and blend-tuning logic. This script only changes:
+and blend-tuning logic.
+
+This script only changes:
 
     HEAT_EVENT_MIN_MODEL_F = <old value>
 
@@ -16,6 +18,8 @@ to:
 Run from the repository root:
 
     python apply_heat_branch_part2b_patch.py
+
+Keep this script in the heat experiment branch for reproducibility.
 """
 
 from __future__ import annotations
@@ -49,7 +53,7 @@ def main() -> int:
     new_text = re.sub(pattern, replacement, text, count=1)
 
     if new_text == text:
-        print("No change needed.")
+        print("No change needed. HEAT_EVENT_MIN_MODEL_F is already patched.")
         return 0
 
     if not BACKUP.exists():
