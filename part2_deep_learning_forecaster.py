@@ -1062,7 +1062,7 @@ def main(model_type: str = "lstm", mode: str = "train") -> int:
                 "warm_underpred_penalty": float(WARM_UNDERPRED_PENALTY),
                 "heat_underpred_penalty": float(HEAT_UNDERPRED_PENALTY),
                 "patience": int(PATIENCE),
-                "loss": "asymmetric_warm_heat_mse",
+                "loss": "asymmetric_warm_heat_mse" if HEAT_BRANCH_EXPERIMENT else "horizon_weighted_mse",
                 "validation_loss": "unweighted_horizon_weighted_mse",
                 "warm_threshold_scaled_by_horizon": {
                     f"h{h}": float(warm_threshold_scaled[i])
@@ -1135,4 +1135,5 @@ def _parse_args():
 if __name__ == "__main__":
     args = _parse_args()
     raise SystemExit(main(model_type=args.model, mode=args.mode))
+
 
