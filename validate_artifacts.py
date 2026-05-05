@@ -23,7 +23,7 @@ Checks
   14. part2_meta.json records heat_event_f and heat_weight
   15. No redundant physical/regime probability duplicate features remain
   16. alpha_meta feature descriptions match retained alpha_feature_cols
-  16. No exact duplicate numeric feature columns remain in feature_matrix
+  17. No exact duplicate numeric feature columns remain in feature_matrix
 
 Exit codes
 ----------
@@ -937,24 +937,6 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
