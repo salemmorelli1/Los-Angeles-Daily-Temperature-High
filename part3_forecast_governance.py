@@ -80,9 +80,9 @@ LA_TEMP_MIN_F = 32.0
 LA_TEMP_MAX_F = 125.0
 MAX_SPREAD_F = 35.0
 MAX_PERSISTENCE_DEVIATION_F = 15.0   # Lowered from 25°F — CRITICAL level
-NWS_SOFT_WARN_DEVIATION_F = 8.0      # Informational tier for material divergence
-NWS_STRONG_WARN_DEVIATION_F = 12.0    # WARN-level CAUTION tier
-MAX_NWS_DEVIATION_F = 20.0           # Hard WARN failure if forecast diverges from NWS
+NWS_SOFT_WARN_DEVIATION_F = 3.0      # align with Part 2B soft NWS anchor trigger
+NWS_STRONG_WARN_DEVIATION_F = 8.0    # align with Part 2B strong NWS anchor trigger
+MAX_NWS_DEVIATION_F = 18.0           # align with Part 2B hard NWS anchor trigger
 MIN_BNN_COVERAGE = 0.75              # BNN must achieve this coverage to pass
 
 REQUIRED_LOG_COLS = [
