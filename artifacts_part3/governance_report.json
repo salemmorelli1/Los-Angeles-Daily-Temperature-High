@@ -1,12 +1,12 @@
 {
   "schema_version": "1.1.0",
-  "run_at": "2026-05-06T12:47:55.513350",
+  "run_at": "2026-05-06T15:54:33.741331",
   "decision_date": "2026-05-06",
   "publish_mode": "CAUTION",
   "forecast_source": "blend+nws_anchor",
   "bnn_available": true,
   "bnn_calibrated": false,
-  "bnn_interval_status": "CONFORMAL_CALIBRATED",
+  "bnn_interval_status": "UNCALIBRATED",
   "bnn_intervals_displayable": false,
   "checks_passed": 8,
   "checks_total": 9,
@@ -17,7 +17,7 @@
       "level": "CRITICAL",
       "message": "OK",
       "details": {
-        "fetched_at": "2026-05-06 12:47:29.031456",
+        "fetched_at": "2026-05-06 15:54:12.720751",
         "age_hours": 0.0,
         "historical_end": "2026-05-05",
         "staleness_days": 1
@@ -162,20 +162,20 @@
       "level": "WARN",
       "message": "BNN calibration FAILED \u2014 intervals are not displayable. Failures: calibration_pass=false or intervals_displayable=false",
       "details": {
-        "calibration_pass": true,
+        "calibration_pass": false,
         "validation_calibration_pass": true,
-        "test_calibration_pass": true,
-        "interval_status": "CONFORMAL_CALIBRATED",
+        "test_calibration_pass": false,
+        "interval_status": "UNCALIBRATED",
         "interval_label": "canonical_display_interval",
         "intervals_publishable": false,
         "intervals_displayable": false,
         "coverage_by_horizon": {
-          "h1": 0.8919,
-          "h3": 0.8266,
-          "h5": 0.8063
+          "h1": 0.8964,
+          "h3": 0.8243,
+          "h5": 0.7995
         },
         "val_diagnostic_coverage_by_horizon": {
-          "h1": 0.8649,
+          "h1": 0.8604,
           "h3": 0.8739,
           "h5": 0.8649
         },
@@ -185,8 +185,8 @@
         "bnn_available": true,
         "half_split_validation_pass": false,
         "half_split_notes": [
-          "H=1: half-split=80.6% < 85%",
-          "H=3: half-split=81.5% < 85%",
+          "H=1: half-split=82.0% < 85%",
+          "H=3: half-split=80.6% < 85%",
           "H=5: half-split=77.0% < 85%"
         ]
       }

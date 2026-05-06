@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0.0",
-  "built_at": "2026-05-06T12:47:31.385097",
+  "built_at": "2026-05-06T15:54:15.050875",
   "n_rows": 3047,
   "feature_cols": [
     "temp_high_f",
@@ -163,6 +163,6 @@
     "live_feature_end": "2026-05-05"
   },
   "alpha_features_merged": true,
-  "alpha_merge_date": "2026-05-06T12:47:33.136928",
+  "alpha_merge_date": "2026-05-06T15:54:16.839119",
   "post_alpha_n_features": 129
 }
