@@ -1,9 +1,9 @@
 {
   "schema_version": "1.0.0",
-  "fetched_at": "2026-05-09T14:37:40.350267",
-  "historical_rows": 3050,
+  "fetched_at": "2026-05-12T16:05:57.372588",
+  "historical_rows": 3053,
   "historical_start": "2018-01-01",
-  "historical_end": "2026-05-08",
+  "historical_end": "2026-05-11",
   "historical_columns": [
     "temp_high_f",
     "temp_low_f",
