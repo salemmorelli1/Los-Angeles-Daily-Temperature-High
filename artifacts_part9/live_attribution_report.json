@@ -1,8 +1,8 @@
 {
   "schema_version": "1.2.0",
-  "generated_at": "2026-05-13T16:42:04.825247",
+  "generated_at": "2026-05-14T16:00:22.651485",
   "target_clock": "target_date_h = feature_date + h calendar days",
-  "n_prediction_rows": 5,
+  "n_prediction_rows": 6,
   "skill_min_samples": 30,
   "promote_min_samples": 60,
   "realized_samples_by_horizon": {
@@ -81,15 +81,15 @@
   },
   "forecast_source_summary": {
     "forecast_source_counts": {
-      "blend+nws_anchor": 5
+      "blend+nws_anchor": 6
     },
-    "nws_anchor_rows": 5,
+    "nws_anchor_rows": 6,
     "nws_anchor_rows_by_horizon": {
-      "h1": 4,
-      "h3": 5,
-      "h5": 5
+      "h1": 5,
+      "h3": 6,
+      "h5": 6
     },
-    "n_prediction_rows": 5,
+    "n_prediction_rows": 6,
     "nws_independence_warning": "NWS anchoring active on ['H=1', 'H=3', 'H=5']. Realized-error metrics are valid but skill comparisons against NWS are not independent for anchored rows. Use model_only_metrics for unbiased model-vs-NWS comparisons."
   },
   "summary": {
