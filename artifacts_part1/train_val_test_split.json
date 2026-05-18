@@ -4,11 +4,11 @@
   "val_start": "2023-11-08",
   "val_end": "2025-02-07",
   "test_start": "2025-02-08",
-  "test_end": "2026-05-11",
+  "test_end": "2026-05-12",
   "n_train": 2137,
   "n_val": 458,
-  "n_test": 458,
-  "n_labeled": 3053,
-  "n_feature_rows": 3058,
-  "live_feature_end": "2026-05-16"
+  "n_test": 459,
+  "n_labeled": 3054,
+  "n_feature_rows": 3059,
+  "live_feature_end": "2026-05-17"
 }
