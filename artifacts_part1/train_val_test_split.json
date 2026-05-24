@@ -1,14 +1,14 @@
 {
   "train_start": "2018-01-01",
-  "train_end": "2023-11-10",
-  "val_start": "2023-11-11",
-  "val_end": "2025-02-11",
-  "test_start": "2025-02-12",
-  "test_end": "2026-05-16",
-  "n_train": 2140,
+  "train_end": "2023-11-12",
+  "val_start": "2023-11-13",
+  "val_end": "2025-02-13",
+  "test_start": "2025-02-14",
+  "test_end": "2026-05-18",
+  "n_train": 2142,
   "n_val": 459,
   "n_test": 459,
-  "n_labeled": 3058,
-  "n_feature_rows": 3063,
-  "live_feature_end": "2026-05-21"
+  "n_labeled": 3060,
+  "n_feature_rows": 3065,
+  "live_feature_end": "2026-05-23"
 }
