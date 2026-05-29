@@ -14,73 +14,73 @@
     "n_val_eval": 224
   },
   "conformal_quantile_eval_f_by_horizon": {
-    "h1": 4.7887420654296875,
-    "h3": 6.349948883056641,
-    "h5": 6.095726013183594
+    "h1": 4.582180023193359,
+    "h3": 6.1868896484375,
+    "h5": 5.201686859130859
   },
   "conformal_quantile_live_f_by_horizon": {
-    "h1": 6.127662658691406,
-    "h3": 7.399570465087891,
-    "h5": 7.579322814941406
+    "h1": 6.144683837890625,
+    "h3": 7.746734619140625,
+    "h5": 8.074352264404297
   },
   "raw_mc_dropout_calibration_results": {
-    "h1_coverage_90pct": 0.5548098434004475,
-    "h1_mean_ci_width_f": 4.641075535375267,
-    "h1_calibration_error": 0.34519015659955254,
+    "h1_coverage_90pct": 0.6129753914988815,
+    "h1_mean_ci_width_f": 5.5417418170562,
+    "h1_calibration_error": 0.28702460850111855,
     "h1_n": 447,
-    "h3_coverage_90pct": 0.4742729306487696,
-    "h3_mean_ci_width_f": 4.985976310917729,
-    "h3_calibration_error": 0.42572706935123045,
+    "h3_coverage_90pct": 0.4899328859060403,
+    "h3_mean_ci_width_f": 5.627861193629186,
+    "h3_calibration_error": 0.41006711409395974,
     "h3_n": 447,
-    "h5_coverage_90pct": 0.3243847874720358,
-    "h5_mean_ci_width_f": 3.3798502296942727,
-    "h5_calibration_error": 0.5756152125279642,
+    "h5_coverage_90pct": 0.35570469798657717,
+    "h5_mean_ci_width_f": 3.9162584428552547,
+    "h5_calibration_error": 0.5442953020134229,
     "h5_n": 447
   },
   "half_split_calibration_results": {
-    "h1_coverage_90pct": 0.7589285714285714,
-    "h1_mean_ci_width_f": 9.577484130859375,
-    "h1_calibration_error": 0.14107142857142863,
+    "h1_coverage_90pct": 0.75,
+    "h1_mean_ci_width_f": 9.164360046386719,
+    "h1_calibration_error": 0.15000000000000002,
     "h1_n": 224,
-    "h3_coverage_90pct": 0.7946428571428571,
-    "h3_mean_ci_width_f": 12.699897766113281,
-    "h3_calibration_error": 0.10535714285714293,
+    "h3_coverage_90pct": 0.75,
+    "h3_mean_ci_width_f": 12.373779296875,
+    "h3_calibration_error": 0.15000000000000002,
     "h3_n": 224,
-    "h5_coverage_90pct": 0.7366071428571429,
-    "h5_mean_ci_width_f": 12.191452026367188,
-    "h5_calibration_error": 0.16339285714285712,
+    "h5_coverage_90pct": 0.6651785714285714,
+    "h5_mean_ci_width_f": 10.403373718261719,
+    "h5_calibration_error": 0.23482142857142863,
     "h5_n": 224
   },
   "half_split_validation_pass": false,
   "calibration_results": {
-    "h1_coverage_90pct": 0.8482142857142857,
-    "h1_mean_ci_width_f": 12.255325317382812,
-    "h1_calibration_error": 0.051785714285714324,
+    "h1_coverage_90pct": 0.8660714285714286,
+    "h1_mean_ci_width_f": 12.28936767578125,
+    "h1_calibration_error": 0.03392857142857142,
     "h1_n": 224,
     "h3_coverage_90pct": 0.8616071428571429,
-    "h3_mean_ci_width_f": 14.799140930175781,
+    "h3_mean_ci_width_f": 15.49346923828125,
     "h3_calibration_error": 0.03839285714285712,
     "h3_n": 224,
-    "h5_coverage_90pct": 0.8616071428571429,
-    "h5_mean_ci_width_f": 15.158645629882812,
-    "h5_calibration_error": 0.03839285714285712,
+    "h5_coverage_90pct": 0.8526785714285714,
+    "h5_mean_ci_width_f": 16.148704528808594,
+    "h5_calibration_error": 0.047321428571428625,
     "h5_n": 224
   },
   "test_coverage_results": {
-    "h1_coverage_90pct": 0.9082774049217002,
-    "h1_mean_ci_width_f": 12.255325317382812,
-    "h1_calibration_error": 0.008277404921700149,
+    "h1_coverage_90pct": 0.901565995525727,
+    "h1_mean_ci_width_f": 12.28936767578125,
+    "h1_calibration_error": 0.0015659955257270042,
     "h1_n": 447,
-    "h3_coverage_90pct": 0.8456375838926175,
-    "h3_mean_ci_width_f": 14.799140930175781,
-    "h3_calibration_error": 0.05436241610738257,
+    "h3_coverage_90pct": 0.8590604026845637,
+    "h3_mean_ci_width_f": 15.49346923828125,
+    "h3_calibration_error": 0.04093959731543628,
     "h3_n": 447,
-    "h5_coverage_90pct": 0.8478747203579419,
-    "h5_mean_ci_width_f": 15.158645629882812,
-    "h5_calibration_error": 0.05212527964205815,
+    "h5_coverage_90pct": 0.8456375838926175,
+    "h5_mean_ci_width_f": 16.148704528808594,
+    "h5_calibration_error": 0.05436241610738257,
     "h5_n": 447
   },
-  "validation_calibration_pass": false,
+  "validation_calibration_pass": true,
   "test_calibration_pass": true,
   "calibration_pass": true,
   "interval_status": "CONFORMAL_CALIBRATED",
@@ -90,25 +90,27 @@
     "forecast_source": "blend+nws_anchor"
   },
   "intervals_publishable": false,
-  "intervals_displayable": true,
+  "intervals_displayable": false,
   "large_anchor_threshold_f": 15.0,
   "horizon_display_flags": {
     "1": {
       "displayable": true,
-      "anchor_delta_f": 0.367,
+      "anchor_delta_f": 3.474,
       "suppressed": false
     },
     "3": {
-      "displayable": true,
-      "anchor_delta_f": 9.059,
-      "suppressed": false
+      "displayable": false,
+      "anchor_delta_f": 15.174,
+      "suppressed": true
     },
     "5": {
       "displayable": true,
-      "anchor_delta_f": 10.643,
+      "anchor_delta_f": 9.608,
       "suppressed": false
     }
   },
-  "suppressed_horizons_due_to_anchor": [],
+  "suppressed_horizons_due_to_anchor": [
+    3
+  ],
   "statistical_note": "half_split_calibration_results are evaluated on the validation evaluation half using only the first validation half to fit q_eval_f. calibration_results use the deployed full-validation conformal radius and are therefore a production-width diagnostic; test_coverage_results are the independent deployability gate used for calibration_pass. If interval_label is canonical_display_interval, live bounds are centered on the canonical forecast and should be treated as calibrated display/risk bands rather than strict split-conformal predictive intervals."
 }
