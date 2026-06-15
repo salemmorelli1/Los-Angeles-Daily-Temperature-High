@@ -1,10 +1,10 @@
 {
   "schema_version": "1.1.0",
-  "fit_date": "2026-06-09T16:20:19.819209",
+  "fit_date": "2026-06-15T18:17:22.047007",
   "backend": "hmm",
   "hmm_error": null,
   "n_regimes": 3,
-  "n_rows_fit": 3081,
+  "n_rows_fit": 3087,
   "feature_cols": [
     "temp_high_f",
     "temp_low_f",
@@ -27,9 +27,9 @@
   },
   "physical_label_suggestions": {
     "0": {
-      "suggested_label": "DRY_CLEAR",
-      "validated": true,
-      "score": 5
+      "suggested_label": "UNVALIDATED",
+      "validated": false,
+      "score": 2
     },
     "1": {
       "suggested_label": "MARINE_LAYER",
@@ -37,90 +37,90 @@
       "score": 4
     },
     "2": {
-      "suggested_label": "UNVALIDATED",
-      "validated": false,
-      "score": 2
+      "suggested_label": "DRY_CLEAR",
+      "validated": true,
+      "score": 5
     }
   },
   "state_stats": {
     "REGIME_0": {
       "state_index": 0,
-      "count": 1108,
-      "pct": 0.3596234988640052,
+      "count": 1374,
+      "pct": 0.44509232264334303,
       "means": {
-        "temp_high_f": 68.08368587844606,
-        "temp_low_f": 49.56100902240488,
-        "diurnal_range_f": 18.522676856041183,
-        "humidity_mean_pct": 63.899388501726044,
-        "cloud_cover_mean_pct": 32.95520853813407,
-        "dew_point_mean_f": 43.23764578068642,
-        "pressure_mean_hpa": 1012.6872164319683,
-        "wind_speed_max_mph": 11.539094416695047,
-        "wind_sin": -0.13770466410539128,
-        "wind_cos": 0.6018773512480887,
-        "log_precip": 1.0651202142497596e-14,
-        "season_sin": 0.09481767770863292,
-        "season_cos": 0.6192273152174977
+        "temp_high_f": 72.77345582953429,
+        "temp_low_f": 61.07325121099558,
+        "diurnal_range_f": 11.7002046185387,
+        "humidity_mean_pct": 79.22094309030153,
+        "cloud_cover_mean_pct": 34.85607801371764,
+        "dew_point_mean_f": 59.07079332532766,
+        "pressure_mean_hpa": 1008.0170585528208,
+        "wind_speed_max_mph": 13.923429525448329,
+        "wind_sin": -0.8368386091320761,
+        "wind_cos": -0.47219338234638963,
+        "log_precip": -2.7755575615628914e-17,
+        "season_sin": -0.1270366807251916,
+        "season_cos": -0.5978850221288807
       }
     },
     "REGIME_1": {
       "state_index": 1,
       "count": 605,
-      "pct": 0.19636481661798116,
+      "pct": 0.19598315516682863,
       "means": {
-        "temp_high_f": 63.06083687802047,
-        "temp_low_f": 53.811095372507495,
-        "diurnal_range_f": 9.249741505512972,
-        "humidity_mean_pct": 79.78546706002322,
-        "cloud_cover_mean_pct": 63.173649979717354,
-        "dew_point_mean_f": 51.513523992531695,
-        "pressure_mean_hpa": 1009.2702815555459,
-        "wind_speed_max_mph": 14.596645879684445,
-        "wind_sin": -0.2989018427784197,
-        "wind_cos": -0.29716366943386135,
-        "log_precip": 0.15991434528304527,
-        "season_sin": 0.2975802054687098,
-        "season_cos": 0.2432882038535474
+        "temp_high_f": 63.06906619279739,
+        "temp_low_f": 53.81390189591991,
+        "diurnal_range_f": 9.255164296877473,
+        "humidity_mean_pct": 79.78615447356243,
+        "cloud_cover_mean_pct": 63.154791477407485,
+        "dew_point_mean_f": 51.51804961737639,
+        "pressure_mean_hpa": 1009.2699782677653,
+        "wind_speed_max_mph": 14.592661304139218,
+        "wind_sin": -0.29858072984061457,
+        "wind_cos": -0.29765047167648295,
+        "log_precip": 0.15966674858236668,
+        "season_sin": 0.2976117956463632,
+        "season_cos": 0.24329872663702365
       }
     },
     "REGIME_2": {
       "state_index": 2,
-      "count": 1368,
-      "pct": 0.44401168451801365,
+      "count": 1108,
+      "pct": 0.3589245221898283,
       "means": {
-        "temp_high_f": 72.77726412367814,
-        "temp_low_f": 61.07562337535326,
-        "diurnal_range_f": 11.70164074832488,
-        "humidity_mean_pct": 79.2228703156326,
-        "cloud_cover_mean_pct": 34.919790721464096,
-        "dew_point_mean_f": 59.07221053423141,
-        "pressure_mean_hpa": 1008.0199471024422,
-        "wind_speed_max_mph": 13.949072079378492,
-        "wind_sin": -0.8366900887103743,
-        "wind_cos": -0.47235359381005765,
-        "log_precip": -9.020562075079397e-17,
-        "season_sin": -0.129486648710764,
-        "season_cos": -0.5977238773188512
+        "temp_high_f": 68.07929724637056,
+        "temp_low_f": 49.54397244146015,
+        "diurnal_range_f": 18.535324804910413,
+        "humidity_mean_pct": 63.85082416005308,
+        "cloud_cover_mean_pct": 32.9143635750267,
+        "dew_point_mean_f": 43.203836705996494,
+        "pressure_mean_hpa": 1012.6953080896088,
+        "wind_speed_max_mph": 11.540429474214559,
+        "wind_sin": -0.1361841957059275,
+        "wind_cos": 0.6048710174738048,
+        "log_precip": 1.206673649889467e-14,
+        "season_sin": 0.09461252139996687,
+        "season_cos": 0.6204706094023036
       }
     }
   },
   "transition_matrix": [
     [
-      0.8302202428653577,
-      0.13817294081968498,
-      0.0316068163149575
+      0.8906776975875179,
+      0.08941590746798642,
+      0.01990639494449559
     ],
     [
-      0.2601052612334203,
-      0.5529913452995837,
-      0.186903393466996
+      0.18731219309368954,
+      0.5531940733459018,
+      0.2594937335604087
     ],
     [
-      0.019902929514047978,
-      0.08963586646076419,
-      0.8904612040251878
+      0.03187214448505414,
+      0.13845357757649276,
+      0.829674277938453
     ]
   ],
   "hmm_converged": true,
-  "hmm_log_likelihood": -30920.880848001794
+  "hmm_log_likelihood": -30943.48885400484
 }
