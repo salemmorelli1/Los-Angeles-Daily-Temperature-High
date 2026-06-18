@@ -1,13 +1,13 @@
 {
   "schema_version": "1.2.0",
-  "generated_at": "2026-06-17T17:31:29.894378",
+  "generated_at": "2026-06-18T17:43:48.613522",
   "target_clock": "target_date_h = feature_date + h calendar days",
   "n_prediction_rows": 23,
   "skill_min_samples": 30,
   "promote_min_samples": 60,
   "realized_samples_by_horizon": {
     "h1": 23,
-    "h3": 22,
+    "h3": 23,
     "h5": 22
   },
   "metrics_by_horizon": {
@@ -22,14 +22,14 @@
       "bnn_n_samples": 23
     },
     "h3": {
-      "n_samples": 22,
+      "n_samples": 23,
       "pred_col_used": "forecast_h3",
-      "mae_f": 7.57,
-      "rmse_f": 8.719,
-      "bias_f": -7.57,
-      "note": "Skill scores withheld: n=22 < SKILL_MIN_SAMPLES=30. Need 8 more realized samples.",
-      "bnn_coverage_90pct": 0.5455,
-      "bnn_n_samples": 22
+      "mae_f": 7.577,
+      "rmse_f": 8.678,
+      "bias_f": -7.577,
+      "note": "Skill scores withheld: n=23 < SKILL_MIN_SAMPLES=30. Need 7 more realized samples.",
+      "bnn_coverage_90pct": 0.5652,
+      "bnn_n_samples": 23
     },
     "h5": {
       "n_samples": 22,
@@ -51,11 +51,11 @@
       "bias_f": -0.283
     },
     "h3": {
-      "n_samples": 22,
+      "n_samples": 23,
       "pred_col_used": "forecast_pre_anchor_h3",
-      "mae_f": 3.562,
-      "rmse_f": 4.465,
-      "bias_f": 1.689
+      "mae_f": 3.582,
+      "rmse_f": 4.446,
+      "bias_f": 1.441
     },
     "h5": {
       "n_samples": 22,
@@ -70,10 +70,10 @@
     "nws_h1_rmse_f": 9.795251733454284,
     "nws_h1_bias_f": -8.939130434782609,
     "nws_h1_n_days": 23,
-    "nws_h3_mae_f": 9.763636363636362,
-    "nws_h3_rmse_f": 10.642538999864474,
-    "nws_h3_bias_f": -9.763636363636362,
-    "nws_h3_n_days": 22,
+    "nws_h3_mae_f": 9.782608695652172,
+    "nws_h3_rmse_f": 10.62368150386918,
+    "nws_h3_bias_f": -9.782608695652172,
+    "nws_h3_n_days": 23,
     "nws_h5_mae_f": 9.904545454545456,
     "nws_h5_rmse_f": 10.52458161552364,
     "nws_h5_bias_f": -9.904545454545456,
