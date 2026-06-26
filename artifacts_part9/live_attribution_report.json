@@ -1,25 +1,25 @@
 {
   "schema_version": "1.2.0",
-  "generated_at": "2026-06-26T15:58:34.138738",
+  "generated_at": "2026-06-26T16:33:22.390579",
   "target_clock": "target_date_h = feature_date + h calendar days",
   "n_prediction_rows": 27,
   "skill_min_samples": 30,
   "promote_min_samples": 60,
   "realized_samples_by_horizon": {
-    "h1": 25,
+    "h1": 26,
     "h3": 24,
     "h5": 24
   },
   "metrics_by_horizon": {
     "h1": {
-      "n_samples": 25,
+      "n_samples": 26,
       "pred_col_used": "forecast_h1",
-      "mae_f": 7.563,
-      "rmse_f": 9.018,
-      "bias_f": -7.551,
-      "note": "Skill scores withheld: n=25 < SKILL_MIN_SAMPLES=30. Need 5 more realized samples.",
-      "bnn_coverage_90pct": 0.56,
-      "bnn_n_samples": 25
+      "mae_f": 7.773,
+      "rmse_f": 9.204,
+      "bias_f": -7.76,
+      "note": "Skill scores withheld: n=26 < SKILL_MIN_SAMPLES=30. Need 4 more realized samples.",
+      "bnn_coverage_90pct": 0.5385,
+      "bnn_n_samples": 26
     },
     "h3": {
       "n_samples": 24,
@@ -44,11 +44,11 @@
   },
   "model_only_metrics": {
     "h1": {
-      "n_samples": 25,
+      "n_samples": 26,
       "pred_col_used": "forecast_pre_anchor_h1",
-      "mae_f": 2.071,
-      "rmse_f": 2.645,
-      "bias_f": -0.358
+      "mae_f": 2.062,
+      "rmse_f": 2.619,
+      "bias_f": -0.416
     },
     "h3": {
       "n_samples": 24,
@@ -66,10 +66,10 @@
     }
   },
   "nws_baseline_metrics": {
-    "nws_h1_mae_f": 9.524000000000001,
-    "nws_h1_rmse_f": 10.637198879404297,
-    "nws_h1_bias_f": -9.524000000000001,
-    "nws_h1_n_days": 25,
+    "nws_h1_mae_f": 9.765384615384617,
+    "nws_h1_rmse_f": 10.881158733545586,
+    "nws_h1_bias_f": -9.765384615384617,
+    "nws_h1_n_days": 26,
     "nws_h3_mae_f": 9.879166666666665,
     "nws_h3_rmse_f": 10.689266423224122,
     "nws_h3_bias_f": -9.879166666666665,
@@ -93,7 +93,7 @@
     "nws_independence_warning": "NWS anchoring active on ['H=1', 'H=3', 'H=5']. Realized-error metrics are valid but skill comparisons against NWS are not independent for anchored rows. Use model_only_metrics for unbiased model-vs-NWS comparisons."
   },
   "summary": {
-    "best_horizon": 1,
+    "best_horizon": 3,
     "overall_skill": null,
     "skill_trustworthy": false,
     "nws_independence_warning": "NWS anchoring active on ['H=1', 'H=3', 'H=5']. Realized-error metrics are valid but skill comparisons against NWS are not independent for anchored rows. Use model_only_metrics for unbiased model-vs-NWS comparisons."
