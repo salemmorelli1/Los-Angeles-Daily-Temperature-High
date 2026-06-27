@@ -1,6 +1,6 @@
 {
   "schema_version": "1.2.1-nws-warm-anchor",
-  "built_at": "2026-06-26T15:57:57.787586",
+  "built_at": "2026-06-27T15:05:19.337781",
   "gate_validation_passed": true,
   "bnn_sleeve_recommended": false,
   "val_metrics": {
@@ -12,12 +12,12 @@
     "h5_rmse_f": 4.648752950913476
   },
   "test_metrics": {
-    "h1_mae_f": 2.4519924262474326,
-    "h1_rmse_f": 3.357986900122422,
-    "h3_mae_f": 3.9412025500988137,
-    "h3_rmse_f": 5.410634669911138,
-    "h5_mae_f": 4.4681752155567045,
-    "h5_rmse_f": 6.050967850368541
+    "h1_mae_f": 2.447176641648815,
+    "h1_rmse_f": 3.354388714098071,
+    "h3_mae_f": 3.938373700213689,
+    "h3_rmse_f": 5.406185166179367,
+    "h5_mae_f": 4.459234456708355,
+    "h5_rmse_f": 6.044475106774429
   },
   "val_heat_event_diagnostics": {
     "h1": {
@@ -89,17 +89,17 @@
     "h5": 4.525431034482759
   },
   "xgb_live_predictions": {
-    "h1": 69.28292846679688,
-    "h3": 70.93873596191406,
-    "h5": 72.0586166381836
+    "h1": 71.05846405029297,
+    "h3": 71.6694564819336,
+    "h5": 71.86833953857422
   },
   "canonical_forecast": {
-    "h1": 78.72179824829101,
-    "h3": 71.21780586242676,
-    "h5": 71.96542510986328
+    "h1": 74.09721878051758,
+    "h3": 74.35617141723634,
+    "h5": 71.98920288085938
   },
   "forecast_source": "blend+nws_anchor",
-  "forecast_reason": "H1:blend(wxgb=0.85,xgb=69.3,lstm=71.5),nws_strong_anchor(dev=11.4) | H3:blend(wxgb=0.75,xgb=70.9,lstm=72.1) | H5:blend(wxgb=0.40,xgb=72.1,lstm=71.9)",
+  "forecast_reason": "H1:blend(wxgb=0.85,xgb=71.1,lstm=72.3),nws_soft_anchor(dev=4.8) | H3:blend(wxgb=0.75,xgb=71.7,lstm=72.6),nws_soft_anchor(dev=4.1) | H5:blend(wxgb=0.40,xgb=71.9,lstm=72.1)",
   "blend_weights_xgb": {
     "h1": 0.85,
     "h3": 0.75,
@@ -155,32 +155,32 @@
     "h1": {
       "pre_anchor_source": "blend",
       "blend_weight_xgb": 0.85,
-      "pre_anchor_f": 69.60899124145509,
-      "nws_f": 81.0,
-      "final_f": 78.72179824829101,
+      "pre_anchor_f": 71.24304695129395,
+      "nws_f": 76.0,
+      "final_f": 74.09721878051758,
       "anchor_applied": true,
-      "anchor_delta_f": 9.112807006835922,
-      "reason": "H1:blend(wxgb=0.85,xgb=69.3,lstm=71.5),nws_strong_anchor(dev=11.4)"
+      "anchor_delta_f": 2.854171829223631,
+      "reason": "H1:blend(wxgb=0.85,xgb=71.1,lstm=72.3),nws_soft_anchor(dev=4.8)"
     },
     "h3": {
       "pre_anchor_source": "blend",
       "blend_weight_xgb": 0.75,
-      "pre_anchor_f": 71.21780586242676,
-      "nws_f": 74.0,
-      "final_f": 71.21780586242676,
-      "anchor_applied": false,
-      "anchor_delta_f": 0.0,
-      "reason": "H3:blend(wxgb=0.75,xgb=70.9,lstm=72.1)"
+      "pre_anchor_f": 71.89042854309082,
+      "nws_f": 76.0,
+      "final_f": 74.35617141723634,
+      "anchor_applied": true,
+      "anchor_delta_f": 2.465742874145519,
+      "reason": "H3:blend(wxgb=0.75,xgb=71.7,lstm=72.6),nws_soft_anchor(dev=4.1)"
     },
     "h5": {
       "pre_anchor_source": "blend",
       "blend_weight_xgb": 0.4,
-      "pre_anchor_f": 71.96542510986328,
-      "nws_f": 73.0,
-      "final_f": 71.96542510986328,
+      "pre_anchor_f": 71.98920288085938,
+      "nws_f": 74.0,
+      "final_f": 71.98920288085938,
       "anchor_applied": false,
       "anchor_delta_f": 0.0,
-      "reason": "H5:blend(wxgb=0.40,xgb=72.1,lstm=71.9)"
+      "reason": "H5:blend(wxgb=0.40,xgb=71.9,lstm=72.1)"
     }
   },
   "feature_importances": {
@@ -219,7 +219,7 @@
       },
       {
         "feature": "month_sin",
-        "importance": 0.008595356717705727
+        "importance": 0.008595339953899384
       },
       {
         "feature": "precip_in",
@@ -227,7 +227,7 @@
       },
       {
         "feature": "cloud_cover_mean_pct",
-        "importance": 0.006527890916913748
+        "importance": 0.006527891382575035
       },
       {
         "feature": "prob_regime_1_lag1",
@@ -239,7 +239,7 @@
       },
       {
         "feature": "wind_dir_dominant_deg",
-        "importance": 0.005183880683034658
+        "importance": 0.005183881148695946
       },
       {
         "feature": "pressure_min_hpa",
@@ -259,7 +259,7 @@
       },
       {
         "feature": "feels_like_max_f_lag1",
-        "importance": 0.004942669998854399
+        "importance": 0.004942675586789846
       },
       {
         "feature": "dew_point_mean_f",
@@ -419,11 +419,11 @@
       },
       {
         "feature": "alpha_nino34_anom",
-        "importance": 0.007494674529880285
+        "importance": 0.007494675926864147
       },
       {
         "feature": "temp_high_f_roll30_mean",
-        "importance": 0.007406919728964567
+        "importance": 0.007406922057271004
       },
       {
         "feature": "solar_radiation_mj",
