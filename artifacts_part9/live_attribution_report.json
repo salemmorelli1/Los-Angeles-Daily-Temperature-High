@@ -1,25 +1,29 @@
 {
   "schema_version": "1.2.0",
-  "generated_at": "2026-07-04T14:53:19.613826",
+  "generated_at": "2026-07-04T15:43:18.704072",
   "target_clock": "target_date_h = feature_date + h calendar days",
   "n_prediction_rows": 31,
   "skill_min_samples": 30,
   "promote_min_samples": 60,
   "realized_samples_by_horizon": {
-    "h1": 29,
+    "h1": 30,
     "h3": 29,
-    "h5": 28
+    "h5": 29
   },
   "metrics_by_horizon": {
     "h1": {
-      "n_samples": 29,
+      "n_samples": 30,
       "pred_col_used": "forecast_h1",
-      "mae_f": 7.554,
-      "rmse_f": 8.931,
-      "bias_f": -7.543,
-      "note": "Skill scores withheld: n=29 < SKILL_MIN_SAMPLES=30. Need 1 more realized samples.",
-      "bnn_coverage_90pct": 0.5517,
-      "bnn_n_samples": 29
+      "mae_f": 7.598,
+      "rmse_f": 8.929,
+      "bias_f": -7.588,
+      "persistence_mae_f": 2.03,
+      "skill_vs_persistence": -2.7431,
+      "hit_rate": 0.1333,
+      "clim_mae_f": 2.148,
+      "skill_vs_climatology": -2.5378,
+      "bnn_coverage_90pct": 0.5333,
+      "bnn_n_samples": 30
     },
     "h3": {
       "n_samples": 29,
@@ -32,23 +36,23 @@
       "bnn_n_samples": 29
     },
     "h5": {
-      "n_samples": 28,
+      "n_samples": 29,
       "pred_col_used": "forecast_h5",
-      "mae_f": 7.547,
-      "rmse_f": 8.384,
-      "bias_f": -7.472,
-      "note": "Skill scores withheld: n=28 < SKILL_MIN_SAMPLES=30. Need 2 more realized samples.",
-      "bnn_coverage_90pct": 0.6071,
-      "bnn_n_samples": 28
+      "mae_f": 7.498,
+      "rmse_f": 8.317,
+      "bias_f": -7.426,
+      "note": "Skill scores withheld: n=29 < SKILL_MIN_SAMPLES=30. Need 1 more realized samples.",
+      "bnn_coverage_90pct": 0.6207,
+      "bnn_n_samples": 29
     }
   },
   "model_only_metrics": {
     "h1": {
-      "n_samples": 29,
+      "n_samples": 30,
       "pred_col_used": "forecast_pre_anchor_h1",
-      "mae_f": 1.964,
-      "rmse_f": 2.516,
-      "bias_f": -0.461
+      "mae_f": 1.925,
+      "rmse_f": 2.478,
+      "bias_f": -0.472
     },
     "h3": {
       "n_samples": 29,
@@ -58,26 +62,26 @@
       "bias_f": 0.7
     },
     "h5": {
-      "n_samples": 28,
+      "n_samples": 29,
       "pred_col_used": "forecast_pre_anchor_h5",
-      "mae_f": 3.113,
-      "rmse_f": 3.661,
-      "bias_f": 0.091
+      "mae_f": 3.075,
+      "rmse_f": 3.617,
+      "bias_f": 0.018
     }
   },
   "nws_baseline_metrics": {
-    "nws_h1_mae_f": 9.541379310344826,
-    "nws_h1_rmse_f": 10.617470963236604,
-    "nws_h1_bias_f": -9.541379310344826,
-    "nws_h1_n_days": 29,
+    "nws_h1_mae_f": 9.586666666666668,
+    "nws_h1_rmse_f": 10.627009613872255,
+    "nws_h1_bias_f": -9.586666666666668,
+    "nws_h1_n_days": 30,
     "nws_h3_mae_f": 9.282758620689652,
     "nws_h3_rmse_f": 10.159452876932924,
     "nws_h3_bias_f": -9.282758620689652,
     "nws_h3_n_days": 29,
-    "nws_h5_mae_f": 9.350000000000003,
-    "nws_h5_rmse_f": 10.084039723387505,
-    "nws_h5_bias_f": -9.350000000000003,
-    "nws_h5_n_days": 28
+    "nws_h5_mae_f": 9.334482758620691,
+    "nws_h5_rmse_f": 10.045534262581045,
+    "nws_h5_bias_f": -9.334482758620691,
+    "nws_h5_n_days": 29
   },
   "forecast_source_summary": {
     "forecast_source_counts": {
@@ -94,7 +98,7 @@
   },
   "summary": {
     "best_horizon": 3,
-    "overall_skill": null,
+    "overall_skill": -2.7431,
     "skill_trustworthy": false,
     "nws_independence_warning": "NWS anchoring active on ['H=1', 'H=3', 'H=5']. Realized-error metrics are valid but skill comparisons against NWS are not independent for anchored rows. Use model_only_metrics for unbiased model-vs-NWS comparisons."
   }
