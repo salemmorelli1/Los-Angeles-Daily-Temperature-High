@@ -1,8 +1,8 @@
 {
   "schema_version": "1.2.0",
-  "generated_at": "2026-07-07T16:56:52.178316",
+  "generated_at": "2026-07-08T15:54:34.716464",
   "target_clock": "target_date_h = feature_date + h calendar days",
-  "n_prediction_rows": 33,
+  "n_prediction_rows": 34,
   "skill_min_samples": 30,
   "promote_min_samples": 60,
   "realized_samples_by_horizon": {
@@ -20,8 +20,8 @@
       "persistence_mae_f": 2.045,
       "skill_vs_persistence": -2.9386,
       "hit_rate": 0.1212,
-      "clim_mae_f": 2.239,
-      "skill_vs_climatology": -2.5985,
+      "clim_mae_f": 2.22,
+      "skill_vs_climatology": -2.6297,
       "bnn_coverage_90pct": 0.4848,
       "bnn_n_samples": 33
     },
@@ -34,8 +34,8 @@
       "persistence_mae_f": 3.51,
       "skill_vs_persistence": -1.0891,
       "hit_rate": 0.129,
-      "clim_mae_f": 2.245,
-      "skill_vs_climatology": -2.2662,
+      "clim_mae_f": 2.224,
+      "skill_vs_climatology": -2.2962,
       "bnn_coverage_90pct": 0.6129,
       "bnn_n_samples": 31
     },
@@ -89,15 +89,15 @@
   },
   "forecast_source_summary": {
     "forecast_source_counts": {
-      "blend+nws_anchor": 33
+      "blend+nws_anchor": 34
     },
-    "nws_anchor_rows": 33,
+    "nws_anchor_rows": 34,
     "nws_anchor_rows_by_horizon": {
-      "h1": 30,
-      "h3": 29,
-      "h5": 27
+      "h1": 31,
+      "h3": 30,
+      "h5": 28
     },
-    "n_prediction_rows": 33,
+    "n_prediction_rows": 34,
     "nws_independence_warning": "NWS anchoring active on ['H=1', 'H=3', 'H=5']. Realized-error metrics are valid but skill comparisons against NWS are not independent for anchored rows. Use model_only_metrics for unbiased model-vs-NWS comparisons."
   },
   "summary": {
