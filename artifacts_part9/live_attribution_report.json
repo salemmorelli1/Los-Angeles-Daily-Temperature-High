@@ -1,8 +1,8 @@
 {
   "schema_version": "1.2.0",
-  "generated_at": "2026-07-11T15:32:39.867349",
+  "generated_at": "2026-07-12T14:44:52.788771",
   "target_clock": "target_date_h = feature_date + h calendar days",
-  "n_prediction_rows": 34,
+  "n_prediction_rows": 35,
   "skill_min_samples": 30,
   "promote_min_samples": 60,
   "realized_samples_by_horizon": {
@@ -20,8 +20,8 @@
       "persistence_mae_f": 2.003,
       "skill_vs_persistence": -3.1726,
       "hit_rate": 0.1176,
-      "clim_mae_f": 2.238,
-      "skill_vs_climatology": -2.7342,
+      "clim_mae_f": 2.229,
+      "skill_vs_climatology": -2.7498,
       "bnn_coverage_90pct": 0.4706,
       "bnn_n_samples": 34
     },
@@ -34,8 +34,8 @@
       "persistence_mae_f": 3.409,
       "skill_vs_persistence": -1.2752,
       "hit_rate": 0.1176,
-      "clim_mae_f": 2.217,
-      "skill_vs_climatology": -2.498,
+      "clim_mae_f": 2.208,
+      "skill_vs_climatology": -2.5128,
       "bnn_coverage_90pct": 0.5588,
       "bnn_n_samples": 34
     },
@@ -48,8 +48,8 @@
       "persistence_mae_f": 3.53,
       "skill_vs_persistence": -1.1947,
       "hit_rate": 0.1515,
-      "clim_mae_f": 1.992,
-      "skill_vs_climatology": -2.8901,
+      "clim_mae_f": 1.981,
+      "skill_vs_climatology": -2.9116,
       "bnn_coverage_90pct": 0.5758,
       "bnn_n_samples": 33
     }
@@ -93,15 +93,15 @@
   },
   "forecast_source_summary": {
     "forecast_source_counts": {
-      "blend+nws_anchor": 34
+      "blend+nws_anchor": 35
     },
-    "nws_anchor_rows": 34,
+    "nws_anchor_rows": 35,
     "nws_anchor_rows_by_horizon": {
-      "h1": 31,
-      "h3": 30,
-      "h5": 28
+      "h1": 32,
+      "h3": 31,
+      "h5": 29
     },
-    "n_prediction_rows": 34,
+    "n_prediction_rows": 35,
     "nws_independence_warning": "NWS anchoring active on ['H=1', 'H=3', 'H=5']. Realized-error metrics are valid but skill comparisons against NWS are not independent for anchored rows. Use model_only_metrics for unbiased model-vs-NWS comparisons."
   },
   "summary": {
