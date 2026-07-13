@@ -1,7 +1,7 @@
 {
   "schema_version": "1.1.0",
-  "run_at": "2026-07-12T14:44:31.793355",
-  "decision_date": "2026-07-12",
+  "run_at": "2026-07-13T16:09:56.458318",
+  "decision_date": "2026-07-13",
   "publish_mode": "CAUTION",
   "forecast_source": "blend+nws_anchor",
   "bnn_available": true,
@@ -17,9 +17,9 @@
       "level": "CRITICAL",
       "message": "OK",
       "details": {
-        "fetched_at": "2026-07-12 14:43:51.069877",
+        "fetched_at": "2026-07-13 16:09:39.388314",
         "age_hours": 0.0,
-        "historical_end": "2026-07-11",
+        "historical_end": "2026-07-12",
         "staleness_days": 1
       }
     },
@@ -30,7 +30,7 @@
       "message": "OK",
       "details": {
         "trained_at": "2026-07-12 14:44:11.666333",
-        "age_days": 0
+        "age_days": 1
       }
     },
     {
@@ -62,9 +62,9 @@
       "details": {
         "forecast_source": "blend+nws_anchor",
         "forecast_values": {
-          "h1": 88.0,
-          "h3": 98.0,
-          "h5": 92.0
+          "h1": 86.37,
+          "h3": 100.0,
+          "h5": 83.0
         }
       }
     },
@@ -75,9 +75,9 @@
       "message": "OK",
       "details": {
         "forecast_values": {
-          "h1": 88.0,
-          "h3": 98.0,
-          "h5": 92.0
+          "h1": 86.37,
+          "h3": 100.0,
+          "h5": 83.0
         },
         "bounds": {
           "min_f": 32.0,
@@ -91,7 +91,7 @@
       "level": "WARN",
       "message": "OK",
       "details": {
-        "spread_f": 10.0,
+        "spread_f": 17.0,
         "max_spread_f": 35.0
       }
     },
@@ -101,16 +101,16 @@
       "level": "CRITICAL",
       "message": "OK",
       "details": {
-        "last_observed_f": 75.7,
+        "last_observed_f": 77.6,
         "check_deviations_f": {
-          "h1": 1.9,
-          "h3": 2.5,
-          "h5": 3.4
+          "h1": 1.8,
+          "h3": 3.9,
+          "h5": 5.8
         },
         "canonical_deviations_f": {
-          "h1": 12.3,
-          "h3": 22.3,
-          "h5": 16.3
+          "h1": 8.8,
+          "h3": 22.4,
+          "h5": 5.4
         },
         "threshold_f": 15.0,
         "forecast_source": "blend+nws_anchor",
@@ -129,23 +129,23 @@
       "details": {
         "comparisons": {
           "h1": {
-            "forecast_f": 88.0,
-            "nws_f": 91.0,
-            "deviation_f": 3.0,
+            "forecast_f": 86.4,
+            "nws_f": 89.0,
+            "deviation_f": 2.6,
             "direction": "cold",
             "tier": "OK"
           },
           "h3": {
-            "forecast_f": 98.0,
-            "nws_f": 98.0,
+            "forecast_f": 100.0,
+            "nws_f": 100.0,
             "deviation_f": 0.0,
             "direction": "cold",
             "tier": "OK"
           },
           "h5": {
-            "forecast_f": 92.0,
-            "nws_f": 92.0,
-            "deviation_f": 0.0,
+            "forecast_f": 83.0,
+            "nws_f": 85.0,
+            "deviation_f": 2.0,
             "direction": "cold",
             "tier": "OK"
           }
@@ -170,13 +170,13 @@
         "intervals_publishable": false,
         "intervals_displayable": false,
         "coverage_by_horizon": {
-          "h1": 0.8238,
+          "h1": 0.8216,
           "h3": 0.837,
-          "h5": 0.8458
+          "h5": 0.8502
         },
         "val_diagnostic_coverage_by_horizon": {
-          "h1": 0.8502,
-          "h3": 0.8414,
+          "h1": 0.8458,
+          "h3": 0.837,
           "h5": 0.837
         },
         "min_coverage_threshold": 0.75,
@@ -185,9 +185,9 @@
         "bnn_available": true,
         "half_split_validation_pass": false,
         "half_split_notes": [
-          "H=1: half-split=71.4% < 85%",
-          "H=3: half-split=66.5% < 85%",
-          "H=5: half-split=72.7% < 85%"
+          "H=1: half-split=71.8% < 85%",
+          "H=3: half-split=68.7% < 85%",
+          "H=5: half-split=73.1% < 85%"
         ]
       }
     }
