@@ -2,13 +2,13 @@
   "train_start": "2018-01-01",
   "train_end": "2023-12-21",
   "val_start": "2023-12-22",
-  "val_end": "2025-04-01",
-  "test_start": "2025-04-02",
-  "test_end": "2026-07-13",
+  "val_end": "2025-04-02",
+  "test_start": "2025-04-03",
+  "test_end": "2026-07-14",
   "n_train": 2181,
-  "n_val": 467,
+  "n_val": 468,
   "n_test": 468,
-  "n_labeled": 3116,
-  "n_feature_rows": 3121,
-  "live_feature_end": "2026-07-18"
+  "n_labeled": 3117,
+  "n_feature_rows": 3122,
+  "live_feature_end": "2026-07-19"
 }
