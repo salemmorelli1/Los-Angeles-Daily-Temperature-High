@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0.0",
-  "built_at": "2026-07-28T15:54:15.286827",
-  "n_rows": 3130,
+  "built_at": "2026-07-29T15:35:06.584038",
+  "n_rows": 3131,
   "feature_cols": [
     "temp_high_f",
     "temp_low_f",
@@ -146,23 +146,23 @@
   "target_variable": "temp_high_f",
   "date_range": {
     "start": "2018-01-01",
-    "end": "2026-07-27"
+    "end": "2026-07-28"
   },
   "splits": {
     "train_start": "2018-01-01",
-    "train_end": "2023-12-27",
-    "val_start": "2023-12-28",
-    "val_end": "2025-04-09",
-    "test_start": "2025-04-10",
-    "test_end": "2026-07-22",
-    "n_train": 2187,
+    "train_end": "2023-12-28",
+    "val_start": "2023-12-29",
+    "val_end": "2025-04-10",
+    "test_start": "2025-04-11",
+    "test_end": "2026-07-23",
+    "n_train": 2188,
     "n_val": 469,
     "n_test": 469,
-    "n_labeled": 3125,
-    "n_feature_rows": 3130,
-    "live_feature_end": "2026-07-27"
+    "n_labeled": 3126,
+    "n_feature_rows": 3131,
+    "live_feature_end": "2026-07-28"
   },
   "alpha_features_merged": true,
-  "alpha_merge_date": "2026-07-28T15:54:16.651463",
+  "alpha_merge_date": "2026-07-29T15:35:08.334480",
   "post_alpha_n_features": 129
 }
