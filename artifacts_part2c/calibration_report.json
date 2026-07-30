@@ -14,71 +14,71 @@
     "n_val_eval": 228
   },
   "conformal_quantile_eval_f_by_horizon": {
-    "h1": 4.893138885498047,
-    "h3": 6.071174621582031,
-    "h5": 5.5122833251953125
+    "h1": 5.093605041503906,
+    "h3": 6.001354217529297,
+    "h5": 5.405662536621094
   },
   "conformal_quantile_live_f_by_horizon": {
-    "h1": 6.736114501953125,
-    "h3": 8.75436019897461,
-    "h5": 8.269378662109375
+    "h1": 6.025569915771484,
+    "h3": 8.518028259277344,
+    "h5": 8.108478546142578
   },
   "raw_mc_dropout_calibration_results": {
-    "h1_coverage_90pct": 0.5942982456140351,
-    "h1_mean_ci_width_f": 6.349611550046687,
-    "h1_calibration_error": 0.3057017543859649,
+    "h1_coverage_90pct": 0.5986842105263158,
+    "h1_mean_ci_width_f": 5.927768389383952,
+    "h1_calibration_error": 0.3013157894736842,
     "h1_n": 456,
-    "h3_coverage_90pct": 0.5131578947368421,
-    "h3_mean_ci_width_f": 6.3487499638607625,
-    "h3_calibration_error": 0.3868421052631579,
+    "h3_coverage_90pct": 0.47149122807017546,
+    "h3_mean_ci_width_f": 5.830270307105884,
+    "h3_calibration_error": 0.42850877192982456,
     "h3_n": 456,
-    "h5_coverage_90pct": 0.3530701754385965,
-    "h5_mean_ci_width_f": 3.97212507013689,
-    "h5_calibration_error": 0.5469298245614036,
+    "h5_coverage_90pct": 0.36622807017543857,
+    "h5_mean_ci_width_f": 3.736415929961623,
+    "h5_calibration_error": 0.5337719298245615,
     "h5_n": 456
   },
   "half_split_calibration_results": {
-    "h1_coverage_90pct": 0.6754385964912281,
-    "h1_mean_ci_width_f": 9.786277770996094,
-    "h1_calibration_error": 0.22456140350877196,
+    "h1_coverage_90pct": 0.7631578947368421,
+    "h1_mean_ci_width_f": 10.187210083007812,
+    "h1_calibration_error": 0.13684210526315788,
     "h1_n": 228,
-    "h3_coverage_90pct": 0.6359649122807017,
-    "h3_mean_ci_width_f": 12.142349243164062,
-    "h3_calibration_error": 0.2640350877192983,
+    "h3_coverage_90pct": 0.6710526315789473,
+    "h3_mean_ci_width_f": 12.002708435058594,
+    "h3_calibration_error": 0.22894736842105268,
     "h3_n": 228,
-    "h5_coverage_90pct": 0.6622807017543859,
-    "h5_mean_ci_width_f": 11.024566650390625,
-    "h5_calibration_error": 0.2377192982456141,
+    "h5_coverage_90pct": 0.6710526315789473,
+    "h5_mean_ci_width_f": 10.811325073242188,
+    "h5_calibration_error": 0.22894736842105268,
     "h5_n": 228
   },
   "half_split_validation_pass": false,
   "calibration_results": {
-    "h1_coverage_90pct": 0.8377192982456141,
-    "h1_mean_ci_width_f": 13.47222900390625,
-    "h1_calibration_error": 0.062280701754385936,
+    "h1_coverage_90pct": 0.8508771929824561,
+    "h1_mean_ci_width_f": 12.051139831542969,
+    "h1_calibration_error": 0.0491228070175439,
     "h1_n": 228,
     "h3_coverage_90pct": 0.8377192982456141,
-    "h3_mean_ci_width_f": 17.50872039794922,
+    "h3_mean_ci_width_f": 17.036056518554688,
     "h3_calibration_error": 0.062280701754385936,
     "h3_n": 228,
     "h5_coverage_90pct": 0.8377192982456141,
-    "h5_mean_ci_width_f": 16.53875732421875,
+    "h5_mean_ci_width_f": 16.216957092285156,
     "h5_calibration_error": 0.062280701754385936,
     "h5_n": 228
   },
   "test_coverage_results": {
-    "h1_coverage_90pct": 0.9298245614035088,
-    "h1_mean_ci_width_f": 13.47222900390625,
-    "h1_calibration_error": 0.029824561403508754,
-    "h1_n": 456,
-    "h3_coverage_90pct": 0.8991228070175439,
-    "h3_mean_ci_width_f": 17.50872039794922,
-    "h3_calibration_error": 0.0008771929824561431,
-    "h3_n": 456,
-    "h5_coverage_90pct": 0.8771929824561403,
-    "h5_mean_ci_width_f": 16.53875732421875,
-    "h5_calibration_error": 0.02280701754385972,
-    "h5_n": 456
+    "h1_coverage_90pct": 0.8468271334792122,
+    "h1_mean_ci_width_f": 12.051139831542969,
+    "h1_calibration_error": 0.05317286652078779,
+    "h1_n": 457,
+    "h3_coverage_90pct": 0.8818380743982495,
+    "h3_mean_ci_width_f": 17.036056518554688,
+    "h3_calibration_error": 0.01816192560175056,
+    "h3_n": 457,
+    "h5_coverage_90pct": 0.8665207877461707,
+    "h5_mean_ci_width_f": 16.216957092285156,
+    "h5_calibration_error": 0.03347921225382933,
+    "h5_n": 457
   },
   "validation_calibration_pass": false,
   "test_calibration_pass": true,
@@ -95,17 +95,17 @@
   "horizon_display_flags": {
     "1": {
       "displayable": true,
-      "anchor_delta_f": 6.936,
+      "anchor_delta_f": 6.6,
       "suppressed": false
     },
     "3": {
       "displayable": false,
-      "anchor_delta_f": 19.191,
+      "anchor_delta_f": 17.326,
       "suppressed": true
     },
     "5": {
       "displayable": true,
-      "anchor_delta_f": 13.816,
+      "anchor_delta_f": 13.057,
       "suppressed": false
     }
   },
