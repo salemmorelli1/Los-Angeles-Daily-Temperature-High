@@ -14,70 +14,70 @@
     "n_val_eval": 229
   },
   "conformal_quantile_eval_f_by_horizon": {
-    "h1": 5.1582794189453125,
-    "h3": 6.089088439941406,
-    "h5": 5.3743438720703125
+    "h1": 5.025657653808594,
+    "h3": 6.083003997802734,
+    "h5": 5.440330505371094
   },
   "conformal_quantile_live_f_by_horizon": {
-    "h1": 5.960044860839844,
-    "h3": 8.637229919433594,
-    "h5": 8.188507080078125
+    "h1": 6.034832000732422,
+    "h3": 8.572929382324219,
+    "h5": 8.16385269165039
   },
   "raw_mc_dropout_calibration_results": {
-    "h1_coverage_90pct": 0.6017505470459519,
-    "h1_mean_ci_width_f": 5.908927967564021,
-    "h1_calibration_error": 0.29824945295404814,
+    "h1_coverage_90pct": 0.5973741794310722,
+    "h1_mean_ci_width_f": 5.927672521812389,
+    "h1_calibration_error": 0.30262582056892784,
     "h1_n": 457,
-    "h3_coverage_90pct": 0.4551422319474836,
-    "h3_mean_ci_width_f": 5.87256183248641,
-    "h3_calibration_error": 0.4448577680525164,
+    "h3_coverage_90pct": 0.45951859956236324,
+    "h3_mean_ci_width_f": 5.859442796435867,
+    "h3_calibration_error": 0.4404814004376368,
     "h3_n": 457,
-    "h5_coverage_90pct": 0.36323851203501095,
-    "h5_mean_ci_width_f": 3.7335982458335826,
-    "h5_calibration_error": 0.5367614879649891,
+    "h5_coverage_90pct": 0.3741794310722101,
+    "h5_mean_ci_width_f": 3.7171597303394677,
+    "h5_calibration_error": 0.5258205689277899,
     "h5_n": 457
   },
   "half_split_calibration_results": {
-    "h1_coverage_90pct": 0.777292576419214,
-    "h1_mean_ci_width_f": 10.316558837890625,
-    "h1_calibration_error": 0.12270742358078601,
+    "h1_coverage_90pct": 0.7379912663755459,
+    "h1_mean_ci_width_f": 10.051315307617188,
+    "h1_calibration_error": 0.16200873362445412,
     "h1_n": 229,
-    "h3_coverage_90pct": 0.6724890829694323,
-    "h3_mean_ci_width_f": 12.178176879882812,
-    "h3_calibration_error": 0.2275109170305677,
+    "h3_coverage_90pct": 0.6768558951965066,
+    "h3_mean_ci_width_f": 12.166007995605469,
+    "h3_calibration_error": 0.22314410480349345,
     "h3_n": 229,
-    "h5_coverage_90pct": 0.6724890829694323,
-    "h5_mean_ci_width_f": 10.748687744140625,
-    "h5_calibration_error": 0.2275109170305677,
+    "h5_coverage_90pct": 0.6855895196506551,
+    "h5_mean_ci_width_f": 10.880661010742188,
+    "h5_calibration_error": 0.21441048034934496,
     "h5_n": 229
   },
   "half_split_validation_pass": false,
   "calibration_results": {
     "h1_coverage_90pct": 0.8558951965065502,
-    "h1_mean_ci_width_f": 11.920089721679688,
+    "h1_mean_ci_width_f": 12.069664001464844,
     "h1_calibration_error": 0.04410480349344981,
     "h1_n": 229,
     "h3_coverage_90pct": 0.8384279475982532,
-    "h3_mean_ci_width_f": 17.274459838867188,
+    "h3_mean_ci_width_f": 17.145858764648438,
     "h3_calibration_error": 0.06157205240174679,
     "h3_n": 229,
-    "h5_coverage_90pct": 0.8384279475982532,
-    "h5_mean_ci_width_f": 16.37701416015625,
-    "h5_calibration_error": 0.06157205240174679,
+    "h5_coverage_90pct": 0.8427947598253275,
+    "h5_mean_ci_width_f": 16.32770538330078,
+    "h5_calibration_error": 0.057205240174672545,
     "h5_n": 229
   },
   "test_coverage_results": {
     "h1_coverage_90pct": 0.8468271334792122,
-    "h1_mean_ci_width_f": 11.920089721679688,
+    "h1_mean_ci_width_f": 12.069664001464844,
     "h1_calibration_error": 0.05317286652078779,
     "h1_n": 457,
-    "h3_coverage_90pct": 0.888402625820569,
-    "h3_mean_ci_width_f": 17.274459838867188,
-    "h3_calibration_error": 0.011597374179431075,
+    "h3_coverage_90pct": 0.8862144420131292,
+    "h3_mean_ci_width_f": 17.145858764648438,
+    "h3_calibration_error": 0.013785557986870867,
     "h3_n": 457,
-    "h5_coverage_90pct": 0.8665207877461707,
-    "h5_mean_ci_width_f": 16.37701416015625,
-    "h5_calibration_error": 0.03347921225382933,
+    "h5_coverage_90pct": 0.8687089715536105,
+    "h5_mean_ci_width_f": 16.32770538330078,
+    "h5_calibration_error": 0.031291028446389535,
     "h5_n": 457
   },
   "validation_calibration_pass": false,
@@ -95,17 +95,17 @@
   "horizon_display_flags": {
     "1": {
       "displayable": true,
-      "anchor_delta_f": 7.755,
+      "anchor_delta_f": 8.066,
       "suppressed": false
     },
     "3": {
       "displayable": true,
-      "anchor_delta_f": 7.697,
+      "anchor_delta_f": 10.933,
       "suppressed": false
     },
     "5": {
       "displayable": true,
-      "anchor_delta_f": 11.885,
+      "anchor_delta_f": 10.807,
       "suppressed": false
     }
   },
