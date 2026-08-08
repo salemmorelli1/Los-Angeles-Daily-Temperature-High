@@ -471,6 +471,7 @@ def update_prediction_log_with_bnn(
     interval_label: str,
     intervals_publishable: bool,
     intervals_displayable: bool,
+    horizon_display_flags: Optional[Dict[int, Dict]] = None,
 ) -> None:
     log_path = _prediction_log_path()
     if not log_path.exists():
@@ -500,6 +501,19 @@ def update_prediction_log_with_bnn(
         df_log.loc[idx, f"bnn_lo90_h{h}"] = float(live_lo_f[i])
         df_log.loc[idx, f"bnn_hi90_h{h}"] = float(live_hi_f[i])
         df_log.loc[idx, f"bnn_std_h{h}"] = float(live_std_f[i])
+        # FIX: per-horizon displayability, not just the aggregate flag above.
+        # _compute_display_flags() already suppresses individual horizons
+        # whose NWS-anchor delta exceeds LARGE_ANCHOR_THRESHOLD_F, but that
+        # richer per-horizon result was previously discarded when writing to
+        # the CSV -- only the all-or-nothing intervals_displayable made it
+        # here, so a single suppressed horizon hid all three from any
+        # consumer (e.g. the dashboard) reading only the log. Default to the
+        # aggregate flag if a per-horizon flag was not supplied, so callers
+        # that do not pass horizon_display_flags keep the previous behavior.
+        h_flag = (horizon_display_flags or {}).get(h, {})
+        df_log.loc[idx, f"bnn_displayable_h{h}"] = bool(
+            h_flag.get("displayable", intervals_displayable)
+        )
 
     df_log.to_csv(log_path, index=False)
     print("[Part 2C] Updated prediction_log.csv with BNN uncertainty columns")
@@ -800,6 +814,7 @@ def main() -> int:
         interval_label=interval_label,
         intervals_publishable=intervals_publishable,
         intervals_displayable=intervals_displayable,
+        horizon_display_flags=horizon_display_flags,
     )
 
     # -------------------------------------------------------------------

@@ -326,10 +326,30 @@
       if (Number.isFinite(toNumber(row?.[`xgb_h${h}`]))) return "xgb";
       return row?.model || "model";
     }
-    function isTrue(v) { return [true, "true", "TRUE", "1", 1, "yes", "YES"].includes(v); }
+    // FIX: pandas serializes Python booleans to CSV as "True"/"False"
+    // (title case), which this whitelist previously never matched (only
+    // "true" lowercase or "TRUE" all-caps). That silently broke
+    // isTrue(row?.bnn_calibrated) below -- unnoticed only because it is
+    // OR'd against a separate status-string check -- and would have
+    // equally broken the new per-horizon bnn_displayable_h{h} read further
+    // down, which has no such fallback.
+    function isTrue(v) { return [true, "true", "True", "TRUE", "1", 1, "yes", "YES"].includes(v); }
     function bnnCalibrated(row) {
       const status = String(row?.bnn_interval_status || "").toUpperCase();
       return isTrue(row?.bnn_calibrated) || (status.includes("CALIBRATED") && !status.includes("UNCALIBRATED"));
+    }
+    // Per-horizon BNN displayability. Part 2C can suppress a single horizon
+    // (e.g. H=5) when an NWS anchor shifted its center too far from the
+    // conformal calibration's center, while H=1/H=3 remain perfectly valid.
+    // Prefer the per-horizon bnn_displayable_h{h} column; fall back to the
+    // row-level bnnCalibrated() check for log rows written before this
+    // column existed, so older history still renders as it did before.
+    function bnnDisplayableForHorizon(row, h) {
+      const col = row?.[`bnn_displayable_h${h}`];
+      if (col === undefined || col === null || String(col).trim() === "") {
+        return bnnCalibrated(row);
+      }
+      return isTrue(col);
     }
     function realizedFor(row, h) { return toNumber(row?.[`realized_h${h}`]); }
     function targetDateFor(row, h) { return fmtDate(row?.[`target_date_h${h}`]); }
@@ -395,7 +415,7 @@
       Plotly.newPlot("errorChart", errTraces, chartLayout("Realized − Forecast", "Decision date", "Error (°F)", { shapes:[{ type:"line", xref:"paper", x0:0, x1:1, y0:0, y1:0, line:{ color:"rgba(203,213,225,.45)", dash:"dot" }}]}), PLOTLY_CONFIG);
 
       const ciTraces = HORIZONS.map(h => ({ x, y: rows.map(r => {
-        if (!bnnCalibrated(r)) return null;
+        if (!bnnDisplayableForHorizon(r, h)) return null;
         const lo = toNumber(r[`bnn_lo90_h${h}`]), hi = toNumber(r[`bnn_hi90_h${h}`]);
         return Number.isFinite(lo) && Number.isFinite(hi) ? hi-lo : null;
       }), mode:"lines+markers", name:`CI width H=${h}` }));

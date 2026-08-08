@@ -403,6 +403,19 @@ def fetch_klax_observations(station: str = NWS_STATION, days_back: int = 30) -> 
 # ---------------------------------------------------------------------------
 # Merge and build master historical DataFrame
 # ---------------------------------------------------------------------------
+# Columns that are direct daily observations, not supplementary
+# hourly-aggregated data. These must NEVER be forward-filled: temp_high_f in
+# particular is TARGET_COL in Part 1, and silently duplicating a prior day's
+# high into a real gap would corrupt the label that target_h1/h3/h5 are
+# built from, rather than correctly leaving it absent.
+_CORE_OBSERVATION_COLS = {
+    "temp_high_f", "temp_low_f", "temp_mean_f", "feels_like_max_f",
+    "precip_in", "wind_speed_max_mph", "wind_gust_max_mph",
+    "wind_dir_dominant_deg", "solar_radiation_mj", "et0_in",
+    "precip_hours", "sunshine_seconds",
+}
+
+
 def build_master_historical(
     df_daily: pd.DataFrame,
     df_hourly_agg: pd.DataFrame,
@@ -417,13 +430,69 @@ def build_master_historical(
     df["date"] = pd.to_datetime(df["date"]).dt.normalize()
     df = df.sort_values("date").reset_index(drop=True)
 
-    # Forward-fill small gaps (up to 2 days) for numeric columns
+    # Forward-fill small gaps (up to 2 days) for SUPPLEMENTARY numeric columns
+    # only (hourly-aggregated pressure/humidity/dew point/cloud/wind). Core
+    # daily observations -- especially temp_high_f, the model target -- are
+    # excluded so a real gap stays a real gap instead of a fabricated repeat.
     numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
-    df[numeric_cols] = df[numeric_cols].ffill(limit=2)
+    fillable_cols = [c for c in numeric_cols if c not in _CORE_OBSERVATION_COLS]
+    if fillable_cols:
+        pre_fill_na = df[fillable_cols].isna()
+        df[fillable_cols] = df[fillable_cols].ffill(limit=2)
+        filled_mask = pre_fill_na & df[fillable_cols].notna()
+        n_filled = int(filled_mask.to_numpy().sum())
+        if n_filled:
+            filled_dates = df.loc[filled_mask.any(axis=1), "date"].dt.strftime("%Y-%m-%d").tolist()
+            print(f"[Part 0] Forward-filled {n_filled} supplementary value(s) "
+                  f"across {len(filled_dates)} date(s): {filled_dates}")
+    skipped_gaps = int(df[list(_CORE_OBSERVATION_COLS & set(df.columns))].isna().to_numpy().sum())
+    if skipped_gaps:
+        print(f"[Part 0] WARNING: {skipped_gaps} missing value(s) remain in core "
+              f"observation columns (temp_high_f and peers) -- these are left as "
+              f"real gaps, not forward-filled. Rows with a missing temp_high_f "
+              f"will correctly fail to produce a labeled target in Part 1.")
 
     print(f"[Part 0] Master historical record: {len(df)} rows, {len(df.columns)} columns")
     print(f"  Date range: {df['date'].min().date()} → {df['date'].max().date()}")
     return df
+
+
+# ---------------------------------------------------------------------------
+# Calendar continuity check
+# ---------------------------------------------------------------------------
+def _check_calendar_continuity(df_historical: pd.DataFrame) -> Dict[str, Any]:
+    """Verify historical_daily.parquet has one row per continuous calendar day.
+
+    Part 1's add_target_columns() builds target_h{h} as
+    TARGET_COL.shift(-h) -- a positional shift. That is only equivalent to
+    the documented contract "target_date_h = feature_date + h calendar days"
+    if there is no missing calendar day anywhere in the row order. A missing
+    day would silently misalign every downstream target_date_h{h} computed
+    elsewhere as feature_date + h days (Part 2's write_prediction_row, Part
+    9's target_date_for_row, ...) from the value Part 1's shift actually
+    captured. This has not been an observed failure -- Open-Meteo's archive
+    API returns one row per requested day with nulls for unavailable fields
+    rather than omitting days -- but nothing previously verified the
+    assumption, so a gap would have failed silently rather than loudly.
+    """
+    result: Dict[str, Any] = {"continuous": True, "n_gap_days": 0, "gap_ranges": []}
+    if df_historical.empty or len(df_historical) < 2:
+        return result
+
+    dates = pd.to_datetime(df_historical["date"]).sort_values().reset_index(drop=True)
+    full_range = pd.date_range(dates.iloc[0], dates.iloc[-1], freq="D")
+    missing = full_range.difference(dates)
+
+    if len(missing):
+        result["continuous"] = False
+        result["n_gap_days"] = int(len(missing))
+        result["gap_ranges"] = [d.strftime("%Y-%m-%d") for d in missing[:20]]
+        print(
+            f"[Part 0] WARNING: historical_daily.parquet has {len(missing)} missing "
+            f"calendar day(s) — target_h*/target_date_h* alignment downstream "
+            f"assumes no gaps. First gap dates: {result['gap_ranges']}"
+        )
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -455,6 +524,8 @@ def save_artifacts(
         df_om_forecast.to_parquet(fc_path, index=False)
         print("[Part 0] Saved openmeteo_forecast.parquet")
 
+    calendar_continuity = _check_calendar_continuity(df_historical)
+
     meta = {
         "schema_version": SCHEMA_VERSION,
         "fetched_at": pd.Timestamp.now().isoformat(),
@@ -468,6 +539,7 @@ def save_artifacts(
         "lat": LAT,
         "lon": LON,
         "station": NWS_STATION,
+        "calendar_continuity": calendar_continuity,
     }
     with open(ARTIFACTS_DIR / "data_meta.json", "w") as f:
         json.dump(meta, f, indent=2)
@@ -497,27 +569,6 @@ def load_om_forecast() -> pd.DataFrame:
     if not path.exists():
         return pd.DataFrame()
     return pd.read_parquet(path)
-
-
-# ---------------------------------------------------------------------------
-# Incremental update: only fetch new dates
-# ---------------------------------------------------------------------------
-def incremental_update() -> pd.DataFrame:
-    """Fetch only missing dates since the last cached record."""
-    df_existing = load_historical()
-    if df_existing.empty:
-        print("[Part 0] No cache found — running full fetch.")
-        return pd.DataFrame()
-
-    last_date = pd.Timestamp(df_existing["date"].max()).date()
-    today = date.today()
-    if last_date >= today - timedelta(days=1):
-        print(f"[Part 0] Cache is up-to-date (last: {last_date}). Skipping historical refetch.")
-        return df_existing
-
-    start = (last_date + timedelta(days=1)).strftime("%Y-%m-%d")
-    print(f"[Part 0] Incremental fetch from {start}...")
-    return pd.DataFrame()  # Signal to caller to fetch from `start`
 
 
 # ---------------------------------------------------------------------------

@@ -980,7 +980,14 @@ def main(model_type: str = "lstm", mode: str = "train") -> int:
             torch.tensor(y_val_seq, dtype=torch.float32),
         )
 
-        train_loader = DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=True, drop_last=False)
+        # drop_last=True is required, not optional: TemperatureLSTM.forward()
+        # applies BatchNorm1d in .train() mode, which raises ValueError on a
+        # batch of size 1. With BATCH_SIZE fixed and the labeled training set
+        # growing by one row per day, len(train_ds) % BATCH_SIZE will
+        # eventually equal 1 on some future day, crashing that day's training
+        # run. drop_last=False previously reintroduced this crash; restored
+        # to drop_last=True here.
+        train_loader = DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=True, drop_last=True)
         val_loader = DataLoader(val_ds, batch_size=BATCH_SIZE, shuffle=False)
 
         model = build_model(model_type, input_size)

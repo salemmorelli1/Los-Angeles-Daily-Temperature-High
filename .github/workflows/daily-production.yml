@@ -1,11 +1,30 @@
 name: Daily LA Temperature Forecast
 
+# FIX (audit): the schedule trigger used
+#
+#     - cron: "35 6 * * *"
+#       timezone: "America/Los_Angeles"
+#
+# GitHub Actions schedule triggers on github.com do NOT support a `timezone`
+# key (this is the same root cause documented in both reference projects as
+# the "S60" finding). The field is silently ignored, so this cron fired at
+# 06:35 UTC every day regardless -- 11:35 PM PDT / 10:35 PM PST the PREVIOUS
+# day, hours before LA's day even starts, let alone before that day's high
+# is known or NWS/Open-Meteo data is fresh. Every scheduled run was anchored
+# to the wrong day.
+#
+# Fix: the proven dual-cron UTC pattern already used by the reference
+# projects. Target time: 6:35 AM Pacific.
+#   6:35 AM PDT (UTC-7, ~Mar-Nov) = 13:35 UTC  -> cron: "35 13 * * *"
+#   6:35 AM PST (UTC-8, ~Nov-Mar) = 14:35 UTC  -> cron: "35 14 * * *"
+# Both crons fire every day; a Python time gate passes the one landing in
+# the 6:00-9:00 AM Pacific window (180 minutes -- comfortable room for
+# GitHub scheduler drift) and suppresses the opposing-DST-season duplicate.
+# Manual workflow_dispatch runs bypass the gate entirely.
 on:
   schedule:
-    # Runs every morning at 6:35 AM Los Angeles time.
-    # GitHub Actions supports IANA timezones on scheduled workflows.
-    - cron: "35 6 * * *"
-      timezone: "America/Los_Angeles"
+    - cron: "35 13 * * *"   # 6:35 AM PDT (UTC-7, summer)
+    - cron: "35 14 * * *"   # 6:35 AM PST (UTC-8, winter)
   workflow_dispatch:
     inputs:
       retrain:
@@ -45,13 +64,86 @@ jobs:
         with:
           fetch-depth: 0
 
+      # ── Gate key consistency guard ─────────────────────────────────────
+      # REQUIRED: the gate step below writes exactly one output key ("run").
+      # Every downstream if: condition must reference that same key via
+      # steps.gate.outputs.<key>. A mismatch makes those conditions evaluate
+      # as empty-string (falsy), silently skipping the whole pipeline while
+      # the workflow still exits green -- this is exactly the failure mode
+      # the timezone-key bug above produced. This step greps the workflow
+      # file at runtime and fails loudly, before the gate runs, if they
+      # disagree. Derives the workflow file path from the GitHub-injected
+      # GITHUB_WORKFLOW_REF so it works regardless of this file's name/path.
+      - name: Verify gate output key is consistent throughout workflow
+        run: |
+          WORKFLOW_FILE="${GITHUB_WORKSPACE}/$(echo "${GITHUB_WORKFLOW_REF}" | sed 's|[^/]*/[^/]*/||; s|@.*||')"
+
+          WRITTEN_KEY=$(grep -oP '(?<=f\.write\(")[a-z_]+(?==)' "$WORKFLOW_FILE" | head -1)
+          if [ -z "$WRITTEN_KEY" ]; then
+            echo "ERROR: Could not extract gate output key from $WORKFLOW_FILE"
+            exit 1
+          fi
+          echo "Gate writes output key: '${WRITTEN_KEY}'"
+
+          CORRECT=$(grep -c "steps\.gate\.outputs\.${WRITTEN_KEY}" "$WORKFLOW_FILE" || true)
+          WRONG=$(grep -cP "steps\.gate\.outputs\.(?!${WRITTEN_KEY})[a-z_]+" "$WORKFLOW_FILE" || true)
+
+          echo "Downstream conditions using '${WRITTEN_KEY}': ${CORRECT}"
+          echo "Downstream conditions using a different key:  ${WRONG}"
+
+          if [ "$WRONG" -ne 0 ]; then
+            echo ""
+            echo "FATAL: gate output key mismatch — downstream steps will be silently skipped."
+            grep -nP "steps\.gate\.outputs\." "$WORKFLOW_FILE"
+            exit 1
+          fi
+          echo "OK: gate key '${WRITTEN_KEY}' is consistent throughout the workflow."
+
+      # ── Time gate ─────────────────────────────────────────────────────
+      # Both crons fire every day; the gate passes the one landing in the
+      # 6:00-9:00 AM Pacific window (typically the summer cron in PDT
+      # months, the winter cron in PST months) and suppresses the
+      # out-of-window duplicate. Manual dispatches always proceed.
+      - name: Check run window (6:00-9:00 AM Pacific)
+        id: gate
+        run: |
+          python - <<'PYEOF'
+          import sys, os
+          from datetime import datetime
+          from zoneinfo import ZoneInfo
+
+          event = os.environ.get("GITHUB_EVENT_NAME", "")
+          if event == "workflow_dispatch":
+              print("Manual dispatch — skipping time gate.")
+              with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+                  f.write("run=true\n")
+              sys.exit(0)
+
+          now = datetime.now(ZoneInfo("America/Los_Angeles"))
+          hour, minute = now.hour, now.minute
+
+          # 6:00-9:00 AM Pacific: covers the 6:35 AM nominal trigger with up
+          # to 180 minutes of GitHub scheduler drift. Suppresses the
+          # out-of-window duplicate cron (the one for the opposing DST season).
+          in_window = 6 <= hour < 9
+          print(f"Pacific time: {now.strftime('%Y-%m-%d %H:%M')} in_window={in_window}")
+
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"run={'true' if in_window else 'false'}\n")
+
+          if not in_window:
+              print("Outside 6:00-9:00 AM Pacific window — skipping run.")
+          PYEOF
+
       - name: Set up Python
+        if: steps.gate.outputs.run == 'true' || github.event_name == 'workflow_dispatch'
         uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: "pip"
 
       - name: Install dependencies
+        if: steps.gate.outputs.run == 'true' || github.event_name == 'workflow_dispatch'
         run: |
           python -m pip install --upgrade pip
           # Keep production CPU-only. requirements.txt pins xgboost<2.0 to avoid
@@ -60,11 +152,31 @@ jobs:
           pip install -r /tmp/requirements-no-torch.txt
           pip install torch --index-url https://download.pytorch.org/whl/cpu
 
+      # ── Restore accumulated artifacts from remote ────────────────────────
+      # actions/checkout resolves github.sha at trigger/queue time, not at
+      # step-execution time. Because this workflow shares the
+      # latemp-production concurrency group with daily-backfill.yml,
+      # a run queued while the other is still finishing can execute against
+      # a workspace snapshot that is behind what the other just pushed.
+      # Restoring every accumulating artifact from origin immediately before
+      # use guards against silently appending to (or overwriting with) a
+      # stale copy.
+      #
+      # FIX: added artifacts_part0/historical_daily.parquet. It was
+      # previously missing here even though daily-backfill.yml already
+      # restores it -- the same "Finding C" accumulating-artifact gap from
+      # both reference projects, just on a third artifact. Part 0's
+      # incremental fetch reads whatever is on disk to compute its start
+      # date, so a stale local copy here risks redundant refetching at best
+      # and, if origin has since moved further ahead, a concat-then-commit
+      # that rolls the historical archive back to the stale version at worst.
       - name: Restore accumulated artifacts from remote
+        if: steps.gate.outputs.run == 'true' || github.event_name == 'workflow_dispatch'
         run: |
           git fetch origin "${GITHUB_REF_NAME}" --quiet || true
 
           for path in \
+            artifacts_part0/historical_daily.parquet \
             artifacts_part2/prediction_log.csv \
             artifacts_part2/part2_meta.json \
             artifacts_part2/lstm_model.pt \
@@ -81,6 +193,7 @@ jobs:
 
       - name: Decide run arguments
         id: args
+        if: steps.gate.outputs.run == 'true' || github.event_name == 'workflow_dispatch'
         run: |
           MODEL="${{ github.event.inputs.model || 'lstm' }}"
           RETRAIN="${{ github.event.inputs.retrain || 'false' }}"
@@ -94,17 +207,19 @@ jobs:
           echo "Run arguments: ${ARGS}"
 
       - name: Run full daily pipeline
+        if: steps.gate.outputs.run == 'true' || github.event_name == 'workflow_dispatch'
         run: |
           python run_daily_forecast.py ${{ steps.args.outputs.args }}
 
       - name: Run artifact contract validator
+        if: steps.gate.outputs.run == 'true' || github.event_name == 'workflow_dispatch'
         run: |
           python validate_artifacts.py
           echo "✅ Artifact contract validation passed."
 
       - name: Verify required artifacts
         id: verify
-        if: always()
+        if: always() && (steps.gate.outputs.run == 'true' || github.event_name == 'workflow_dispatch')
         run: |
           missing=0
           for path in \
@@ -134,12 +249,20 @@ jobs:
           echo "missing=$missing" >> "$GITHUB_OUTPUT"
 
       - name: Fail if required artifacts are missing
-        if: steps.verify.outputs.missing != '0'
+        if: >
+          (steps.gate.outputs.run == 'true' || github.event_name == 'workflow_dispatch') &&
+          steps.verify.outputs.missing != '0'
         run: |
           echo "Required artifacts are missing. Aborting artifact commit."
           exit 1
 
+      # NOTE: no [skip ci] on this commit message -- this is what triggers
+      # pages.yml to redeploy the dashboard after a successful production
+      # run (mirrors the reference projects' S60 F1 fix). daily-backfill.yml
+      # keeps [skip ci] intentionally since it only patches realized-value
+      # columns, not a new decision.
       - name: Commit and push forecast artifacts
+        if: steps.gate.outputs.run == 'true' || github.event_name == 'workflow_dispatch'
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -169,4 +292,3 @@ jobs:
             --no-edit || true
 
           git push origin HEAD:"${GITHUB_REF_NAME}"
-

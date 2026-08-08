@@ -444,9 +444,11 @@ def _is_plausible(value: float, last_obs: float) -> bool:
 def _apply_nws_anchor(value: float, nws_value: Optional[float]) -> Tuple[float, str]:
     """Conservatively anchor model forecasts to NWS when divergence is large.
 
-    The learned stack remains authoritative when it is close to NWS. When it
-    deviates by more than 8°F, the published forecast is partially pulled
-    toward NWS. If the deviation exceeds 20°F, NWS becomes the horizon forecast.
+    Three-tier system (values are the module-level constants, not restated
+    here so this docstring cannot go stale again):
+      dev > NWS_SOFT_DEVIATION_F    -> soft partial anchor (NWS_SOFT_ANCHOR_WEIGHT)
+      dev > NWS_STRONG_DEVIATION_F  -> stronger partial anchor (NWS_STRONG_ANCHOR_WEIGHT)
+      dev > NWS_HARD_DEVIATION_F    -> NWS becomes the horizon forecast outright
     This directly guards the observed cold-bias / heat-event blind spot.
     """
     if nws_value is None or not np.isfinite(nws_value) or not np.isfinite(value):
@@ -838,13 +840,31 @@ def main() -> int:
     # -------------------------------------------------------------------
     feature_date = pd.Timestamp(df["date"].max()).normalize()
     decision_date = pd.Timestamp.today().normalize()
-    model_key = "LSTM"  # we're updating the LSTM row written by Part 2
+
+    # Determine which row Part 2 actually wrote. Part 2 keys its prediction_log
+    # row by model=model_type.upper() ("LSTM" or "TRANSFORMER" depending on the
+    # --model flag Part 2 was run with). This MUST match that value or
+    # upsert_log_columns' exact-match lookup finds no row and silently skips
+    # writing forecast_h*/forecast_source (upsert_log_columns never creates
+    # rows) -- which then makes Part 3's FORECAST_SOURCE_CHECK HOLD the whole
+    # pipeline. Read the live value from part2_meta.json rather than assuming
+    # LSTM, since --model transformer is a supported, documented run mode.
+    p2_meta_path_for_key = PART2_DIR / "part2_meta.json"
+    model_key = "LSTM"
+    if p2_meta_path_for_key.exists():
+        try:
+            with open(p2_meta_path_for_key) as _f:
+                model_key = str(json.load(_f).get("model_type", "lstm")).upper().strip() or "LSTM"
+        except Exception as exc:
+            print(f"[Part 2B] WARNING: could not read model_type from part2_meta.json "
+                  f"({exc}); defaulting model_key='LSTM'.")
 
     # Always define key strings before any conditional block (Issue 1 fix)
     dd_str = decision_date.strftime("%Y-%m-%d")
     fd_str = feature_date.strftime("%Y-%m-%d")
 
-    # Load LSTM live preds from log
+    # Load the base sequence-model's live preds from the log row Part 2 wrote
+    # for this decision_date/feature_date/model_key (LSTM or TRANSFORMER).
     log = load_prediction_log()
     lstm_live: Dict[str, float] = {}
     if not log.empty:

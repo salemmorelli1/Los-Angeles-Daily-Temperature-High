@@ -118,6 +118,50 @@ def run_part(label: str, extra_args: Optional[List[str]] = None) -> int:
 
 
 # ---------------------------------------------------------------------------
+# Feature-schema drift detection
+# ---------------------------------------------------------------------------
+def _feature_cols_changed(project_dir: Path) -> Tuple[bool, str]:
+    """Compare the just-rebuilt feature set against the saved model's feature set.
+
+    Part 2A's alpha-feature filters (NaN-coverage, sparse-flag thresholds,
+    exact-duplicate-vs-Part-1 dropping) are all data-dependent, so the live
+    feature count can organically change from one day to the next even when
+    no code changed (the project's own history includes a "feature count
+    non-determinism" incident). The age-based retrain heuristic in main() is
+    evaluated BEFORE Part 0/6/1/2A run, so it has no way to see this. Without
+    this check, a same-day feature-schema change with a <7-day-old model
+    would send Part 2 into --mode=predict, which hard-crashes on "Current
+    feature_cols differ from saved feature_cols" and halts the whole
+    pipeline (Part 2 is required, not optional). Called AFTER Part 2A has
+    run, right before Part 2, so both meta files reflect the current run.
+    Fails safe: any read error is treated as "changed" so Part 2 retrains
+    rather than risking the same crash.
+    """
+    feature_meta_path = project_dir / "artifacts_part1" / "feature_meta.json"
+    part2_meta_path = project_dir / "artifacts_part2" / "part2_meta.json"
+
+    if not part2_meta_path.exists():
+        return False, "no_saved_model_yet"  # already forces train via the "else" branch below
+    if not feature_meta_path.exists():
+        return True, "feature_meta_missing_after_part2a"
+
+    try:
+        with open(feature_meta_path) as f:
+            current_cols = json.load(f).get("feature_cols")
+        with open(part2_meta_path) as f:
+            saved_cols = json.load(f).get("feature_cols")
+    except Exception as exc:
+        return True, f"meta_read_error:{type(exc).__name__}"
+
+    if current_cols is None or saved_cols is None:
+        return True, "feature_cols_key_missing"
+    if list(current_cols) != list(saved_cols):
+        n_current, n_saved = len(current_cols), len(saved_cols)
+        return True, f"feature_cols_changed:{n_saved}->{n_current}"
+    return False, "feature_cols_unchanged"
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 def main() -> int:
@@ -185,6 +229,12 @@ def main() -> int:
     for label in PIPELINE_ORDER:
         extra = []
         if label == "PART2":
+            if not needs_retrain and not args.skip_train:
+                changed, reason = _feature_cols_changed(PROJECT_DIR)
+                if changed:
+                    print(f"\n[Runner] Feature set changed since last saved model "
+                          f"({reason}) — upgrading to --mode=train for this run.")
+                    needs_retrain = True
             part2_mode = "train" if needs_retrain else "predict"
             extra = [f"--model={args.model}", f"--mode={part2_mode}"]
             print(f"\n[Runner] Part 2 mode: {part2_mode}")

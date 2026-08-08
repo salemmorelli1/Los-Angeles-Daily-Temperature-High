@@ -24,13 +24,36 @@ than NWS on warm NWS days.
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Dict, Any
 
 
-P2_META = Path("artifacts_part2/part2_meta.json")
-P2B_SUMMARY = Path("artifacts_part2b/part2b_summary.json")
-P3_GOVERNANCE = Path("artifacts_part3/governance_report.json")
+# ---------------------------------------------------------------------------
+# Environment
+# ---------------------------------------------------------------------------
+# FIX: every other script in this project resolves its root via LATEMP_ROOT
+# (falling back to the script's own directory), so artifact paths stay
+# correct regardless of the working directory the script is invoked from.
+# This file previously used bare relative paths instead, silently assuming
+# cwd == project root. It is a manual tool ("run after a retrain"), so this
+# rarely bit anyone in practice, but it was the one file in the codebase
+# that didn't follow the convention.
+def _project_dir() -> Path:
+    env_root = os.environ.get("LATEMP_ROOT", "").strip()
+    if env_root:
+        return Path(env_root).expanduser().resolve()
+    try:
+        return Path(__file__).resolve().parent
+    except NameError:
+        return Path.cwd().resolve()
+
+
+PROJECT_DIR = _project_dir()
+
+P2_META = PROJECT_DIR / "artifacts_part2" / "part2_meta.json"
+P2B_SUMMARY = PROJECT_DIR / "artifacts_part2b" / "part2b_summary.json"
+P3_GOVERNANCE = PROJECT_DIR / "artifacts_part3" / "governance_report.json"
 
 MATERIAL_MAE_F = 4.50
 MAX_ALLOWED_WARM_NWS_COLD_GAP_F = 3.0
@@ -57,6 +80,7 @@ def _safe_float(x, default=None):
 
 
 def main() -> int:
+    print(f"[Heat Branch Validator] Project root: {PROJECT_DIR}")
     meta = _load_json(P2_META)
     if meta is None:
         return 1

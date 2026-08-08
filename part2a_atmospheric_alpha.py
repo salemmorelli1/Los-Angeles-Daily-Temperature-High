@@ -83,6 +83,14 @@ ENSO_URL = "https://psl.noaa.gov/data/correlation/nina34.anom.data"
 HEAT_WAVE_THRESHOLD_F = 95.0
 MARINE_LAYER_THRESHOLD_F = 10.0  # dew point depression < 10°F → marine layer likely
 
+# FIX (look-ahead leakage): NOAA's Nino 3.4 monthly anomaly for month M is not
+# published until well after M ends. merge_enso_features() joins each row to
+# (date - ENSO_PUBLICATION_LAG_DAYS)'s calendar month rather than the row's
+# own month, so training never sees a value that would not genuinely have
+# been available yet. 45 days is conservative -- comfortably past typical
+# NOAA PSL publication timing for the prior month's anomaly.
+ENSO_PUBLICATION_LAG_DAYS = 45
+
 
 # ---------------------------------------------------------------------------
 # Data loading
@@ -357,13 +365,27 @@ def compute_enso_proxy(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def merge_enso_features(df: pd.DataFrame, enso_df: Optional[pd.DataFrame]) -> pd.DataFrame:
-    """Merge monthly ENSO anomaly onto daily feature frame."""
+    """Merge monthly ENSO anomaly onto daily feature frame.
+
+    FIX (look-ahead leakage): every other alpha feature in this file is
+    explicitly .shift(1)'d so it only uses information known at decision
+    time. This join previously used each row's OWN calendar month, but
+    NOAA's Nino 3.4 monthly anomaly for month M is not published until well
+    after M ends -- so a same-month join let training see a value that would
+    not actually have existed yet at decision time for roughly the first
+    several weeks of every month, while the live row's current month is
+    normally just missing outright (and gets silently imputed to 0.0
+    downstream), an inconsistency between train-time and live-time
+    availability. Joining on (date - ENSO_PUBLICATION_LAG_DAYS)'s month
+    instead keeps this feature decision-time-safe like all the others.
+    """
     alpha = df[["date"]].copy()
 
     if enso_df is not None:
         daily_dates = pd.DataFrame({"date": df["date"]})
-        daily_dates["year"] = daily_dates["date"].dt.year
-        daily_dates["month"] = daily_dates["date"].dt.month
+        lagged_date = daily_dates["date"] - pd.Timedelta(days=ENSO_PUBLICATION_LAG_DAYS)
+        daily_dates["year"] = lagged_date.dt.year
+        daily_dates["month"] = lagged_date.dt.month
         enso_monthly = enso_df.copy()
         enso_monthly["year"] = enso_monthly["date"].dt.year
         enso_monthly["month"] = enso_monthly["date"].dt.month
@@ -371,7 +393,8 @@ def merge_enso_features(df: pd.DataFrame, enso_df: Optional[pd.DataFrame]) -> pd
         merged = daily_dates.merge(enso_monthly[["year", "month", "nino34_anom"]], on=["year", "month"], how="left")
         alpha["alpha_nino34_anom"] = merged["nino34_anom"].values
 
-        # El Niño / La Niña flags
+        # El Niño / La Niña flags (derived from the now-lagged anomaly above,
+        # so they inherit the same decision-time-safe alignment automatically).
         alpha["alpha_el_nino_flag"] = (alpha["alpha_nino34_anom"] > 0.5).astype(int)
         alpha["alpha_la_nina_flag"] = (alpha["alpha_nino34_anom"] < -0.5).astype(int)
 

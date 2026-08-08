@@ -335,9 +335,12 @@ def check_persistence_sanity(row: pd.Series, df_hist: pd.DataFrame) -> Governanc
 def check_nws_sanity(row: pd.Series) -> GovernanceCheck:
     """Compare canonical forecast_h* against NWS official forecast. WARN level.
 
-    A hard failure is still 20°F, but smaller divergences are now surfaced in
-    the report. Deviations over 12°F produce CAUTION; deviations over 8°F are
-    marked as material but do not by themselves change publish mode.
+    Three reporting tiers (values are the module-level constants, not
+    restated here so this docstring cannot go stale again): deviations above
+    NWS_SOFT_WARN_DEVIATION_F are SOFT_NOTE (informational only), above
+    NWS_STRONG_WARN_DEVIATION_F are STRONG_WARN, and above MAX_NWS_DEVIATION_F
+    are HARD_WARN. All three tiers stay at level="WARN" (CAUTION, not HOLD) --
+    NWS deviation alone never blocks publication.
     """
     chk = GovernanceCheck("NWS_SANITY", level="WARN")
     nws_path = PART0_DIR / "nws_official_forecast.json"
