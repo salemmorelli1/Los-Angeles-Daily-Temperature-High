@@ -45,10 +45,33 @@ SCHEMA_VERSION = "1.0.0"
 LAT = 33.9425
 LON = -118.4081
 
-# NWS grid point for KLAX  (office=LOX, gridX=155, gridY=49)
+# NWS grid point for KLAX (office=LOX, gridX=148, gridY=41)
+#
+# FIX (audit, confirmed via live api.weather.gov/points/33.9425,-118.4081
+# lookup): the grid point was previously (155, 49) -- 7 cells east and 8
+# cells north of the correct cell, i.e. well inland of LAX, past the marine
+# layer boundary. This produced a sustained ~9-11F WARM bias in every
+# nws_h1/h3/h5 value ever fetched (confirmed against live
+# artifacts_part9/live_attribution_report.json: nws_h1_bias_f=-10.82,
+# roughly uniform across H=1/H=3/H=5 -- a flat, location-shaped bias, not a
+# forecast-skill-degrades-with-horizon shape). Because Part 2B's NWS anchor
+# overlay pulls the published forecast toward this value whenever deviation
+# is large, every anchor firing ("nws_strong_anchor", "nws_hard_anchor",
+# "warm_gap_guard", "heat_guard") was dragging an accurate pre-anchor model
+# forecast (MAE ~1.8F) toward this inland, artificially-hot reference,
+# producing a published forecast MAE of ~8.8F -- worse than either the
+# model alone or a correctly-anchored forecast would have been.
+#
+# NWS_STATION ("KLAX") is unaffected -- it identifies an observation
+# station directly, not a grid cell, and was already correct.
+#
+# See NWS_GRID_CHECK below: Part 0 now verifies this pair against the live
+# /points/ endpoint on every run and warns loudly (without blocking the
+# pipeline) if it ever drifts again -- NWS's own API docs note grid
+# assignments "may occasionally change" for a given coordinate.
 NWS_OFFICE = "LOX"
-NWS_GRID_X = 155
-NWS_GRID_Y = 49
+NWS_GRID_X = 148
+NWS_GRID_Y = 41
 NWS_STATION = "KLAX"
 
 # Open-Meteo endpoints
@@ -292,6 +315,78 @@ def fetch_openmeteo_forecast(lat: float = LAT, lon: float = LON) -> pd.DataFrame
 
 
 # ---------------------------------------------------------------------------
+# NWS: grid point self-check
+# ---------------------------------------------------------------------------
+def verify_nws_grid_point(
+    lat: float = LAT,
+    lon: float = LON,
+    expected_office: str = NWS_OFFICE,
+    expected_grid_x: int = NWS_GRID_X,
+    expected_grid_y: int = NWS_GRID_Y,
+) -> Dict[str, Any]:
+    """Confirm the hardcoded NWS grid point still matches what NWS's own
+    /points/{lat},{lon} lookup returns for these coordinates.
+
+    Added after an audit found NWS_GRID_X/NWS_GRID_Y hardcoded to a cell
+    ~7-8 grid squares inland of the correct LAX cell, producing a sustained
+    ~9-11F warm bias in every NWS value fetched -- invisible in code review
+    alone since the values are still valid-looking temperatures for
+    somewhere, just the wrong somewhere. NWS's own API documentation notes
+    that grid assignments "may occasionally change" for a given coordinate,
+    so this checks fresh on every run rather than trusting the hardcoded
+    pair indefinitely.
+
+    Deliberately non-blocking: this hits the network for a diagnostic
+    purpose only, so any failure here is logged and swallowed rather than
+    raised -- a transient outage on this one check must never halt the
+    daily production pipeline. This does not change which coordinates get
+    used this run (that would require restarting with the corrected
+    values); it only surfaces drift so it gets caught immediately instead
+    of silently corrupting months of NWS-anchored forecasts again.
+    """
+    result: Dict[str, Any] = {
+        "checked": False,
+        "match": None,
+        "expected": {"office": expected_office, "grid_x": expected_grid_x, "grid_y": expected_grid_y},
+        "live": None,
+        "note": None,
+    }
+    try:
+        url = f"{NWS_BASE}/points/{lat},{lon}"
+        resp = _get(url, headers=NWS_HEADERS, timeout=15)
+        props = resp.json().get("properties", {})
+        live_office = props.get("gridId")
+        live_x = props.get("gridX")
+        live_y = props.get("gridY")
+
+        result["checked"] = True
+        result["live"] = {"office": live_office, "grid_x": live_x, "grid_y": live_y}
+        result["match"] = (
+            live_office == expected_office
+            and live_x == expected_grid_x
+            and live_y == expected_grid_y
+        )
+
+        if result["match"]:
+            print(f"[Part 0] NWS grid point check: OK "
+                  f"({expected_office}/{expected_grid_x},{expected_grid_y} confirmed live).")
+        else:
+            print(
+                f"[Part 0] WARNING: NWS grid point has DRIFTED. "
+                f"Hardcoded: {expected_office}/{expected_grid_x},{expected_grid_y} | "
+                f"Live lookup for ({lat},{lon}): {live_office}/{live_x},{live_y}. "
+                f"Update NWS_GRID_X/NWS_GRID_Y in this file's constants block to "
+                f"{live_x}/{live_y} -- every NWS value fetched until then is for the "
+                f"wrong location."
+            )
+    except Exception as exc:
+        result["note"] = f"grid check failed (non-blocking): {type(exc).__name__}: {exc}"
+        print(f"[Part 0] WARN: {result['note']}")
+
+    return result
+
+
+# ---------------------------------------------------------------------------
 # NWS: official point forecast (benchmark)
 # ---------------------------------------------------------------------------
 def fetch_nws_official_forecast(
@@ -503,6 +598,7 @@ def save_artifacts(
     df_obs: pd.DataFrame,
     nws_forecast: Dict[str, Any],
     df_om_forecast: pd.DataFrame,
+    nws_grid_check: Optional[Dict[str, Any]] = None,
 ) -> None:
     """Write all Part 0 artifacts to disk."""
     hist_path = ARTIFACTS_DIR / "historical_daily.parquet"
@@ -540,6 +636,7 @@ def save_artifacts(
         "lon": LON,
         "station": NWS_STATION,
         "calendar_continuity": calendar_continuity,
+        "nws_grid_check": nws_grid_check or {"checked": False, "note": "not run"},
     }
     with open(ARTIFACTS_DIR / "data_meta.json", "w") as f:
         json.dump(meta, f, indent=2)
@@ -612,9 +709,10 @@ def main() -> int:
     df_obs = fetch_klax_observations(days_back=30)
     nws_forecast = fetch_nws_official_forecast()
     df_om_forecast = fetch_openmeteo_forecast()
+    nws_grid_check = verify_nws_grid_point()
 
     # Save everything
-    save_artifacts(df_historical, df_obs, nws_forecast, df_om_forecast)
+    save_artifacts(df_historical, df_obs, nws_forecast, df_om_forecast, nws_grid_check)
 
     print(f"\n[Part 0] ✅ Complete. {len(df_historical)} historical rows ready.")
     return 0
