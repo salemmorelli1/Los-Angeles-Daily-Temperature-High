@@ -14,70 +14,70 @@
     "n_val_eval": 229
   },
   "conformal_quantile_eval_f_by_horizon": {
-    "h1": 4.61053466796875,
-    "h3": 5.496726989746094,
-    "h5": 5.348297119140625
+    "h1": 4.489448547363281,
+    "h3": 5.625377655029297,
+    "h5": 5.534954071044922
   },
   "conformal_quantile_live_f_by_horizon": {
-    "h1": 6.117786407470703,
-    "h3": 8.132869720458984,
-    "h5": 8.430130004882812
+    "h1": 6.243854522705078,
+    "h3": 8.195350646972656,
+    "h5": 8.453178405761719
   },
   "raw_mc_dropout_calibration_results": {
-    "h1_coverage_90pct": 0.6091703056768559,
-    "h1_mean_ci_width_f": 5.712415337041996,
-    "h1_calibration_error": 0.2908296943231441,
+    "h1_coverage_90pct": 0.5938864628820961,
+    "h1_mean_ci_width_f": 5.717266657466972,
+    "h1_calibration_error": 0.3061135371179039,
     "h1_n": 458,
-    "h3_coverage_90pct": 0.45633187772925765,
-    "h3_mean_ci_width_f": 5.4007579853441,
-    "h3_calibration_error": 0.44366812227074237,
+    "h3_coverage_90pct": 0.462882096069869,
+    "h3_mean_ci_width_f": 5.371260722131188,
+    "h3_calibration_error": 0.437117903930131,
     "h3_n": 458,
-    "h5_coverage_90pct": 0.3384279475982533,
-    "h5_mean_ci_width_f": 3.4404342018360654,
-    "h5_calibration_error": 0.5615720524017467,
+    "h5_coverage_90pct": 0.3296943231441048,
+    "h5_mean_ci_width_f": 3.423973291721927,
+    "h5_calibration_error": 0.5703056768558952,
     "h5_n": 458
   },
   "half_split_calibration_results": {
-    "h1_coverage_90pct": 0.6681222707423581,
-    "h1_mean_ci_width_f": 9.2210693359375,
-    "h1_calibration_error": 0.23187772925764194,
+    "h1_coverage_90pct": 0.6506550218340611,
+    "h1_mean_ci_width_f": 8.978897094726562,
+    "h1_calibration_error": 0.24934497816593892,
     "h1_n": 229,
-    "h3_coverage_90pct": 0.6157205240174672,
-    "h3_mean_ci_width_f": 10.993453979492188,
-    "h3_calibration_error": 0.2842794759825328,
+    "h3_coverage_90pct": 0.6200873362445415,
+    "h3_mean_ci_width_f": 11.250755310058594,
+    "h3_calibration_error": 0.27991266375545854,
     "h3_n": 229,
-    "h5_coverage_90pct": 0.6681222707423581,
-    "h5_mean_ci_width_f": 10.69659423828125,
-    "h5_calibration_error": 0.23187772925764194,
+    "h5_coverage_90pct": 0.6899563318777293,
+    "h5_mean_ci_width_f": 11.069908142089844,
+    "h5_calibration_error": 0.2100436681222707,
     "h5_n": 229
   },
   "half_split_validation_pass": false,
   "calibration_results": {
     "h1_coverage_90pct": 0.8427947598253275,
-    "h1_mean_ci_width_f": 12.235572814941406,
+    "h1_mean_ci_width_f": 12.487709045410156,
     "h1_calibration_error": 0.057205240174672545,
     "h1_n": 229,
     "h3_coverage_90pct": 0.8384279475982532,
-    "h3_mean_ci_width_f": 16.26573944091797,
+    "h3_mean_ci_width_f": 16.390701293945312,
     "h3_calibration_error": 0.06157205240174679,
     "h3_n": 229,
     "h5_coverage_90pct": 0.8558951965065502,
-    "h5_mean_ci_width_f": 16.860260009765625,
+    "h5_mean_ci_width_f": 16.906356811523438,
     "h5_calibration_error": 0.04410480349344981,
     "h5_n": 229
   },
   "test_coverage_results": {
-    "h1_coverage_90pct": 0.8646288209606987,
-    "h1_mean_ci_width_f": 12.235572814941406,
-    "h1_calibration_error": 0.035371179039301315,
+    "h1_coverage_90pct": 0.868995633187773,
+    "h1_mean_ci_width_f": 12.487709045410156,
+    "h1_calibration_error": 0.03100436681222707,
     "h1_n": 458,
-    "h3_coverage_90pct": 0.87117903930131,
-    "h3_mean_ci_width_f": 16.26573944091797,
-    "h3_calibration_error": 0.02882096069869,
+    "h3_coverage_90pct": 0.8755458515283843,
+    "h3_mean_ci_width_f": 16.390701293945312,
+    "h3_calibration_error": 0.024454148471615755,
     "h3_n": 458,
-    "h5_coverage_90pct": 0.868995633187773,
-    "h5_mean_ci_width_f": 16.860260009765625,
-    "h5_calibration_error": 0.03100436681222707,
+    "h5_coverage_90pct": 0.8733624454148472,
+    "h5_mean_ci_width_f": 16.906356811523438,
+    "h5_calibration_error": 0.026637554585152823,
     "h5_n": 458
   },
   "validation_calibration_pass": false,
@@ -95,17 +95,17 @@
   "horizon_display_flags": {
     "1": {
       "displayable": true,
-      "anchor_delta_f": 5.509,
+      "anchor_delta_f": 5.498,
       "suppressed": false
     },
     "3": {
       "displayable": true,
-      "anchor_delta_f": 5.247,
+      "anchor_delta_f": 5.413,
       "suppressed": false
     },
     "5": {
       "displayable": true,
-      "anchor_delta_f": 1.934,
+      "anchor_delta_f": 1.959,
       "suppressed": false
     }
   },
