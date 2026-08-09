@@ -1,6 +1,6 @@
 {
   "schema_version": "1.1.0",
-  "built_at": "2026-08-08T14:12:41.127593",
+  "built_at": "2026-08-09T15:02:44.597155",
   "n_alpha_features": 24,
   "alpha_feature_cols": [
     "alpha_pressure_tend_2d",
