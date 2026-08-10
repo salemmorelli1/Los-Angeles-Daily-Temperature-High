@@ -1,6 +1,6 @@
 {
   "schema_version": "1.2.1-nws-warm-anchor",
-  "built_at": "2026-08-10T14:42:04.138074",
+  "built_at": "2026-08-10T15:33:00.384670",
   "gate_validation_passed": true,
   "bnn_sleeve_recommended": true,
   "val_metrics": {
@@ -94,7 +94,7 @@
     "h5": 76.97894287109375
   },
   "canonical_forecast": {
-    "h1": 78.74002990722656,
+    "h1": 78.74003028869629,
     "h3": 75.33889892578125,
     "h5": 74.03179443359375
   },
@@ -155,9 +155,9 @@
     "h1": {
       "pre_anchor_source": "blend",
       "blend_weight_xgb": 0.95,
-      "pre_anchor_f": 78.74002990722656,
+      "pre_anchor_f": 78.74003028869629,
       "nws_f": 79.0,
-      "final_f": 78.74002990722656,
+      "final_f": 78.74003028869629,
       "anchor_applied": false,
       "anchor_delta_f": 0.0,
       "reason": "H1:blend(wxgb=0.95,xgb=78.6,lstm=81.2)"
