@@ -1,6 +1,6 @@
 {
   "schema_version": "1.2.1-nws-warm-anchor",
-  "built_at": "2026-08-12T14:41:17.317251",
+  "built_at": "2026-08-12T15:31:02.463636",
   "gate_validation_passed": true,
   "bnn_sleeve_recommended": true,
   "val_metrics": {
@@ -94,12 +94,12 @@
     "h5": 77.17676544189453
   },
   "canonical_forecast": {
-    "h1": 75.3730844116211,
+    "h1": 75.9730844116211,
     "h3": 73.60433898925781,
     "h5": 74.88974975585937
   },
   "forecast_source": "blend+nws_anchor",
-  "forecast_reason": "H1:blend(wxgb=0.90,xgb=78.8,lstm=80.1),nws_soft_anchor(dev=5.9) | H3:blend(wxgb=0.80,xgb=80.1,lstm=79.7),nws_strong_anchor(dev=8.0) | H5:blend(wxgb=0.40,xgb=77.2,lstm=78.1),nws_soft_anchor(dev=4.7)",
+  "forecast_reason": "H1:blend(wxgb=0.90,xgb=78.8,lstm=80.1),nws_soft_anchor(dev=4.9) | H3:blend(wxgb=0.80,xgb=80.1,lstm=79.7),nws_strong_anchor(dev=8.0) | H5:blend(wxgb=0.40,xgb=77.2,lstm=78.1),nws_soft_anchor(dev=4.7)",
   "blend_weights_xgb": {
     "h1": 0.9,
     "h3": 0.8,
@@ -156,11 +156,11 @@
       "pre_anchor_source": "blend",
       "blend_weight_xgb": 0.9,
       "pre_anchor_f": 78.93271102905274,
-      "nws_f": 73.0,
-      "final_f": 75.3730844116211,
+      "nws_f": 74.0,
+      "final_f": 75.9730844116211,
       "anchor_applied": true,
-      "anchor_delta_f": -3.559626617431647,
-      "reason": "H1:blend(wxgb=0.90,xgb=78.8,lstm=80.1),nws_soft_anchor(dev=5.9)"
+      "anchor_delta_f": -2.9596266174316384,
+      "reason": "H1:blend(wxgb=0.90,xgb=78.8,lstm=80.1),nws_soft_anchor(dev=4.9)"
     },
     "h3": {
       "pre_anchor_source": "blend",
