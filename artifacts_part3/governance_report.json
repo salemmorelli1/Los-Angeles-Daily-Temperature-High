@@ -1,6 +1,6 @@
 {
   "schema_version": "1.1.0",
-  "run_at": "2026-08-14T14:36:20.561060",
+  "run_at": "2026-08-14T15:24:07.154525",
   "decision_date": "2026-08-14",
   "publish_mode": "NORMAL",
   "forecast_source": "blend",
@@ -17,7 +17,7 @@
       "level": "CRITICAL",
       "message": "OK",
       "details": {
-        "fetched_at": "2026-08-14 14:35:42.960045",
+        "fetched_at": "2026-08-14 15:23:47.802785",
         "age_hours": 0.0,
         "historical_end": "2026-08-13",
         "staleness_days": 1
@@ -156,7 +156,7 @@
       "name": "BNN_CALIBRATION_GATE",
       "passed": true,
       "level": "WARN",
-      "message": "OK (test gate passed) \u2014 half-split diagnostic warning: H=1: half-split=71.6% < 85%; H=3: half-split=72.9% < 85%; H=5: half-split=65.9% < 85%. Monitor; consider BNN retrain if this persists.",
+      "message": "OK (test gate passed) \u2014 half-split diagnostic warning: H=1: half-split=70.7% < 85%; H=3: half-split=72.5% < 85%; H=5: half-split=65.1% < 85%. Monitor; consider BNN retrain if this persists.",
       "details": {
         "calibration_pass": true,
         "validation_calibration_pass": false,
@@ -166,9 +166,9 @@
         "intervals_publishable": false,
         "intervals_displayable": true,
         "coverage_by_horizon": {
-          "h1": 0.9281,
-          "h3": 0.8867,
-          "h5": 0.8802
+          "h1": 0.9325,
+          "h3": 0.8911,
+          "h5": 0.8824
         },
         "val_diagnostic_coverage_by_horizon": {
           "h1": 0.8384,
@@ -181,9 +181,9 @@
         "bnn_available": true,
         "half_split_validation_pass": false,
         "half_split_notes": [
-          "H=1: half-split=71.6% < 85%",
-          "H=3: half-split=72.9% < 85%",
-          "H=5: half-split=65.9% < 85%"
+          "H=1: half-split=70.7% < 85%",
+          "H=3: half-split=72.5% < 85%",
+          "H=5: half-split=65.1% < 85%"
         ],
         "half_split_warning": "Half-split diagnostic failed for one or more horizons. The deployed conformal radius uses the full validation set and passes the independent test gate. This is a stability note only. publish_mode is NOT affected."
       }
