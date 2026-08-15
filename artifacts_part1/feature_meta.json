@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0.0",
-  "built_at": "2026-08-14T15:23:52.052364",
-  "n_rows": 3147,
+  "built_at": "2026-08-15T13:56:32.965838",
+  "n_rows": 3148,
   "feature_cols": [
     "temp_high_f",
     "temp_low_f",
@@ -105,7 +105,7 @@
     "regime_REGIME_0_lag1",
     "regime_REGIME_1_lag1",
     "regime_REGIME_2_lag1",
-    "prob_regime_2_lag1",
+    "prob_regime_1_lag1",
     "prob_marine_layer_lag1",
     "prob_dry_clear_lag1",
     "alpha_pressure_tend_2d",
@@ -146,23 +146,23 @@
   "target_variable": "temp_high_f",
   "date_range": {
     "start": "2018-01-01",
-    "end": "2026-08-13"
+    "end": "2026-08-14"
   },
   "splits": {
     "train_start": "2018-01-01",
-    "train_end": "2024-01-08",
-    "val_start": "2024-01-09",
-    "val_end": "2025-04-23",
-    "test_start": "2025-04-24",
-    "test_end": "2026-08-08",
-    "n_train": 2199,
+    "train_end": "2024-01-09",
+    "val_start": "2024-01-10",
+    "val_end": "2025-04-24",
+    "test_start": "2025-04-25",
+    "test_end": "2026-08-09",
+    "n_train": 2200,
     "n_val": 471,
     "n_test": 472,
-    "n_labeled": 3142,
-    "n_feature_rows": 3147,
-    "live_feature_end": "2026-08-13"
+    "n_labeled": 3143,
+    "n_feature_rows": 3148,
+    "live_feature_end": "2026-08-14"
   },
   "alpha_features_merged": true,
-  "alpha_merge_date": "2026-08-14T15:23:53.385681",
+  "alpha_merge_date": "2026-08-15T13:56:34.856695",
   "post_alpha_n_features": 129
 }
