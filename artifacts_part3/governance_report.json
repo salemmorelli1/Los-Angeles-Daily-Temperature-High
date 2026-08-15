@@ -1,6 +1,6 @@
 {
   "schema_version": "1.1.0",
-  "run_at": "2026-08-15T13:57:24.355821",
+  "run_at": "2026-08-15T14:50:41.533514",
   "decision_date": "2026-08-15",
   "publish_mode": "NORMAL",
   "forecast_source": "blend",
@@ -17,7 +17,7 @@
       "level": "CRITICAL",
       "message": "OK",
       "details": {
-        "fetched_at": "2026-08-15 13:56:30.293449",
+        "fetched_at": "2026-08-15 14:50:14.381577",
         "age_hours": 0.0,
         "historical_end": "2026-08-14",
         "staleness_days": 1
@@ -156,7 +156,7 @@
       "name": "BNN_CALIBRATION_GATE",
       "passed": true,
       "level": "WARN",
-      "message": "OK (test gate passed) \u2014 half-split diagnostic warning: H=1: half-split=68.1% < 85%; H=3: half-split=77.7% < 85%; H=5: half-split=69.4% < 85%. Monitor; consider BNN retrain if this persists.",
+      "message": "OK (test gate passed) \u2014 half-split diagnostic warning: H=1: half-split=66.8% < 85%; H=3: half-split=75.1% < 85%; H=5: half-split=69.4% < 85%. Monitor; consider BNN retrain if this persists.",
       "details": {
         "calibration_pass": true,
         "validation_calibration_pass": true,
@@ -166,9 +166,9 @@
         "intervals_publishable": false,
         "intervals_displayable": true,
         "coverage_by_horizon": {
-          "h1": 0.9216,
-          "h3": 0.8649,
-          "h5": 0.8736
+          "h1": 0.9194,
+          "h3": 0.8693,
+          "h5": 0.878
         },
         "val_diagnostic_coverage_by_horizon": {
           "h1": 0.8559,
@@ -181,8 +181,8 @@
         "bnn_available": true,
         "half_split_validation_pass": false,
         "half_split_notes": [
-          "H=1: half-split=68.1% < 85%",
-          "H=3: half-split=77.7% < 85%",
+          "H=1: half-split=66.8% < 85%",
+          "H=3: half-split=75.1% < 85%",
           "H=5: half-split=69.4% < 85%"
         ],
         "half_split_warning": "Half-split diagnostic failed for one or more horizons. The deployed conformal radius uses the full validation set and passes the independent test gate. This is a stability note only. publish_mode is NOT affected."
