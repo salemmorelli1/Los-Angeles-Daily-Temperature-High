@@ -1,6 +1,6 @@
 {
   "schema_version": "1.1.0",
-  "run_at": "2026-08-18T14:11:19.154500",
+  "run_at": "2026-08-18T15:04:25.136979",
   "decision_date": "2026-08-18",
   "publish_mode": "NORMAL",
   "forecast_source": "blend+nws_anchor",
@@ -17,7 +17,7 @@
       "level": "CRITICAL",
       "message": "OK",
       "details": {
-        "fetched_at": "2026-08-18 14:10:52.207566",
+        "fetched_at": "2026-08-18 15:03:57.883139",
         "age_hours": 0.0,
         "historical_end": "2026-08-17",
         "staleness_days": 1
@@ -158,7 +158,7 @@
       "name": "BNN_CALIBRATION_GATE",
       "passed": true,
       "level": "WARN",
-      "message": "OK (test gate passed) \u2014 half-split diagnostic warning: H=1: half-split=79.6% < 85%; H=3: half-split=77.4% < 85%; H=5: half-split=69.6% < 85%. Monitor; consider BNN retrain if this persists.",
+      "message": "OK (test gate passed) \u2014 half-split diagnostic warning: H=1: half-split=80.4% < 85%; H=3: half-split=77.0% < 85%; H=5: half-split=68.7% < 85%. Monitor; consider BNN retrain if this persists.",
       "details": {
         "calibration_pass": true,
         "validation_calibration_pass": true,
@@ -168,12 +168,12 @@
         "intervals_publishable": false,
         "intervals_displayable": true,
         "coverage_by_horizon": {
-          "h1": 0.8824,
+          "h1": 0.8889,
           "h3": 0.8627,
-          "h5": 0.8693
+          "h5": 0.8671
         },
         "val_diagnostic_coverage_by_horizon": {
-          "h1": 0.8739,
+          "h1": 0.8783,
           "h3": 0.8652,
           "h5": 0.8565
         },
@@ -183,9 +183,9 @@
         "bnn_available": true,
         "half_split_validation_pass": false,
         "half_split_notes": [
-          "H=1: half-split=79.6% < 85%",
-          "H=3: half-split=77.4% < 85%",
-          "H=5: half-split=69.6% < 85%"
+          "H=1: half-split=80.4% < 85%",
+          "H=3: half-split=77.0% < 85%",
+          "H=5: half-split=68.7% < 85%"
         ],
         "half_split_warning": "Half-split diagnostic failed for one or more horizons. The deployed conformal radius uses the full validation set and passes the independent test gate. This is a stability note only. publish_mode is NOT affected."
       }
