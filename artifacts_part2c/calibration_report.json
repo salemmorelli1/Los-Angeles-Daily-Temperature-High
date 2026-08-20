@@ -14,69 +14,69 @@
     "n_val_eval": 230
   },
   "conformal_quantile_eval_f_by_horizon": {
-    "h1": 4.4841766357421875,
-    "h3": 6.3512420654296875,
-    "h5": 5.628852844238281
+    "h1": 4.4670257568359375,
+    "h3": 6.155513763427734,
+    "h5": 5.625053405761719
   },
   "conformal_quantile_live_f_by_horizon": {
-    "h1": 6.2386627197265625,
-    "h3": 8.170417785644531,
-    "h5": 8.385978698730469
+    "h1": 6.309257507324219,
+    "h3": 8.005237579345703,
+    "h5": 8.400676727294922
   },
   "raw_mc_dropout_calibration_results": {
-    "h1_coverage_90pct": 0.5359477124183006,
-    "h1_mean_ci_width_f": 5.038633550174356,
-    "h1_calibration_error": 0.3640522875816994,
+    "h1_coverage_90pct": 0.5228758169934641,
+    "h1_mean_ci_width_f": 5.034690865244481,
+    "h1_calibration_error": 0.37712418300653594,
     "h1_n": 459,
-    "h3_coverage_90pct": 0.4422657952069717,
-    "h3_mean_ci_width_f": 4.816830146806173,
-    "h3_calibration_error": 0.45773420479302834,
+    "h3_coverage_90pct": 0.4466230936819172,
+    "h3_mean_ci_width_f": 4.832497989430147,
+    "h3_calibration_error": 0.4533769063180828,
     "h3_n": 459,
-    "h5_coverage_90pct": 0.289760348583878,
-    "h5_mean_ci_width_f": 3.5229818472934964,
-    "h5_calibration_error": 0.610239651416122,
+    "h5_coverage_90pct": 0.29193899782135074,
+    "h5_mean_ci_width_f": 3.5249942289198666,
+    "h5_calibration_error": 0.6080610021786492,
     "h5_n": 459
   },
   "half_split_calibration_results": {
-    "h1_coverage_90pct": 0.6782608695652174,
-    "h1_mean_ci_width_f": 8.968353271484375,
-    "h1_calibration_error": 0.22173913043478266,
+    "h1_coverage_90pct": 0.6739130434782609,
+    "h1_mean_ci_width_f": 8.934051513671875,
+    "h1_calibration_error": 0.22608695652173916,
     "h1_n": 230,
-    "h3_coverage_90pct": 0.7478260869565218,
-    "h3_mean_ci_width_f": 12.702484130859375,
-    "h3_calibration_error": 0.15217391304347827,
+    "h3_coverage_90pct": 0.7304347826086957,
+    "h3_mean_ci_width_f": 12.311027526855469,
+    "h3_calibration_error": 0.16956521739130437,
     "h3_n": 230,
-    "h5_coverage_90pct": 0.6521739130434783,
-    "h5_mean_ci_width_f": 11.257705688476562,
-    "h5_calibration_error": 0.24782608695652175,
+    "h5_coverage_90pct": 0.6565217391304348,
+    "h5_mean_ci_width_f": 11.250106811523438,
+    "h5_calibration_error": 0.24347826086956526,
     "h5_n": 230
   },
   "half_split_validation_pass": false,
   "calibration_results": {
-    "h1_coverage_90pct": 0.8608695652173913,
-    "h1_mean_ci_width_f": 12.477325439453125,
-    "h1_calibration_error": 0.03913043478260869,
+    "h1_coverage_90pct": 0.8521739130434782,
+    "h1_mean_ci_width_f": 12.618515014648438,
+    "h1_calibration_error": 0.047826086956521796,
     "h1_n": 230,
-    "h3_coverage_90pct": 0.8608695652173913,
-    "h3_mean_ci_width_f": 16.340835571289062,
-    "h3_calibration_error": 0.03913043478260869,
+    "h3_coverage_90pct": 0.8565217391304348,
+    "h3_mean_ci_width_f": 16.010475158691406,
+    "h3_calibration_error": 0.04347826086956519,
     "h3_n": 230,
     "h5_coverage_90pct": 0.8521739130434782,
-    "h5_mean_ci_width_f": 16.771957397460938,
+    "h5_mean_ci_width_f": 16.801353454589844,
     "h5_calibration_error": 0.047826086956521796,
     "h5_n": 230
   },
   "test_coverage_results": {
-    "h1_coverage_90pct": 0.9130434782608695,
-    "h1_mean_ci_width_f": 12.477325439453125,
-    "h1_calibration_error": 0.01304347826086949,
+    "h1_coverage_90pct": 0.9195652173913044,
+    "h1_mean_ci_width_f": 12.618515014648438,
+    "h1_calibration_error": 0.019565217391304346,
     "h1_n": 460,
     "h3_coverage_90pct": 0.8673913043478261,
-    "h3_mean_ci_width_f": 16.340835571289062,
+    "h3_mean_ci_width_f": 16.010475158691406,
     "h3_calibration_error": 0.03260869565217395,
     "h3_n": 460,
     "h5_coverage_90pct": 0.8717391304347826,
-    "h5_mean_ci_width_f": 16.771957397460938,
+    "h5_mean_ci_width_f": 16.801353454589844,
     "h5_calibration_error": 0.02826086956521745,
     "h5_n": 460
   },
@@ -95,17 +95,17 @@
   "horizon_display_flags": {
     "1": {
       "displayable": true,
-      "anchor_delta_f": 1.759,
+      "anchor_delta_f": 1.64,
       "suppressed": false
     },
     "3": {
       "displayable": true,
-      "anchor_delta_f": 2.031,
+      "anchor_delta_f": 0.731,
       "suppressed": false
     },
     "5": {
       "displayable": true,
-      "anchor_delta_f": 1.134,
+      "anchor_delta_f": 0.324,
       "suppressed": false
     }
   },
