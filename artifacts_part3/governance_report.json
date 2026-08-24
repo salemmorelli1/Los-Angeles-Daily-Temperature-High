@@ -1,6 +1,6 @@
 {
   "schema_version": "1.1.0",
-  "run_at": "2026-08-24T14:22:36.800040",
+  "run_at": "2026-08-24T15:11:50.429079",
   "decision_date": "2026-08-24",
   "publish_mode": "NORMAL",
   "forecast_source": "blend+nws_anchor",
@@ -17,7 +17,7 @@
       "level": "CRITICAL",
       "message": "OK",
       "details": {
-        "fetched_at": "2026-08-24 14:22:06.542427",
+        "fetched_at": "2026-08-24 15:11:20.948387",
         "age_hours": 0.0,
         "historical_end": "2026-08-23",
         "staleness_days": 1
@@ -159,7 +159,7 @@
       "name": "BNN_CALIBRATION_GATE",
       "passed": true,
       "level": "WARN",
-      "message": "OK (test gate passed) \u2014 half-split diagnostic warning: H=1: half-split=67.0% < 85%; H=3: half-split=72.2% < 85%; H=5: half-split=73.5% < 85%. Monitor; consider BNN retrain if this persists.",
+      "message": "OK (test gate passed) \u2014 half-split diagnostic warning: H=1: half-split=66.5% < 85%; H=3: half-split=68.7% < 85%; H=5: half-split=74.3% < 85%. Monitor; consider BNN retrain if this persists.",
       "details": {
         "calibration_pass": true,
         "validation_calibration_pass": false,
@@ -169,14 +169,14 @@
         "intervals_publishable": false,
         "intervals_displayable": true,
         "coverage_by_horizon": {
-          "h1": 0.9304,
+          "h1": 0.9261,
           "h3": 0.8761,
-          "h5": 0.8543
+          "h5": 0.8478
         },
         "val_diagnostic_coverage_by_horizon": {
           "h1": 0.8391,
-          "h3": 0.8565,
-          "h5": 0.8565
+          "h3": 0.8522,
+          "h5": 0.8652
         },
         "min_coverage_threshold": 0.75,
         "min_validation_coverage": 0.85,
@@ -184,9 +184,9 @@
         "bnn_available": true,
         "half_split_validation_pass": false,
         "half_split_notes": [
-          "H=1: half-split=67.0% < 85%",
-          "H=3: half-split=72.2% < 85%",
-          "H=5: half-split=73.5% < 85%"
+          "H=1: half-split=66.5% < 85%",
+          "H=3: half-split=68.7% < 85%",
+          "H=5: half-split=74.3% < 85%"
         ],
         "half_split_warning": "Half-split diagnostic failed for one or more horizons. The deployed conformal radius uses the full validation set and passes the independent test gate. This is a stability note only. publish_mode is NOT affected."
       }
