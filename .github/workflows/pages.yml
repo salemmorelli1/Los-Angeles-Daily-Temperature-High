@@ -5,6 +5,7 @@ on:
     branches: ["main"]
     paths:
       - "index.html"
+      - "report/**"
       - "assets/**"
       - ".github/workflows/pages.yml"
       - "artifacts_part0/**"
@@ -54,6 +55,10 @@ jobs:
           fi
 
           cp index.html _site/index.html
+
+          if [ -d report ]; then
+            cp -r report _site/report
+          fi
 
           if [ -d assets ]; then
             cp -r assets _site/assets
