@@ -379,7 +379,7 @@
       <div class="top-actions">
         <span class="live-chip"><span class="live-dot"></span><span id="connectionLabel">Connecting to artifacts</span></span>
         <button class="button small" id="refreshBtn" type="button" aria-label="Refresh forecast artifacts">Refresh</button>
-        <a class="button small sun" href="report/Los_Angeles_Temperature_Forecasting_Laboratory_APA_Report.pdf" target="_blank" rel="noopener"><span>Read report</span> ↗</a>
+        <a class="button small sun" href="report/Los_Angeles_Temperature_Forecasting_Laboratory_APA_Report.pdf" target="_blank" rel="noopener"><span>Read 25-page report</span> ↗</a>
         <a class="button small primary" id="repoLink" href="https://github.com/salemmorelli1/Los-Angeles-Daily-Temperature-High" target="_blank" rel="noopener"><span>Repository</span> ↗</a>
       </div>
     </div>
@@ -400,7 +400,7 @@
         <div class="hero-actions">
           <button class="button sun" type="button" data-open-tab="labTab">Open scenario lab</button>
           <button class="button" type="button" data-open-tab="verifyTab">Inspect verification</button>
-          <a class="button" href="report/Los_Angeles_Temperature_Forecasting_Laboratory_APA_Report.pdf" target="_blank" rel="noopener">Read the APA report</a>
+          <a class="button" href="report/Los_Angeles_Temperature_Forecasting_Laboratory_APA_Report.pdf" target="_blank" rel="noopener">Read the 25-page APA report</a>
         </div>
       </div>
 
@@ -437,7 +437,43 @@
       <button class="tab-button" type="button" data-tab="modelTab">Model stack</button>
       <button class="tab-button" type="button" data-tab="governanceTab">Governance</button>
       <button class="tab-button" type="button" data-tab="dataTab">Data & artifacts</button>
+      <button class="tab-button" type="button" data-tab="reportTab">Research report</button>
     </nav>
+
+    <section class="tab-panel" id="reportTab">
+      <div class="section-head">
+        <div><span class="eyebrow">Peer-review-ready research record</span><h2>Read the complete statistical audit.</h2></div>
+        <p>The regenerated 25-page APA report connects the repository's code, committed artifacts, temporal holdouts, calibration diagnostics, governance rules, and realized live attribution in one evidence chain.</p>
+      </div>
+      <div class="grid two">
+        <article class="card dark">
+          <span class="card-label">Research report · August 24, 2026 audit snapshot</span>
+          <h3>Los Angeles Temperature-Forecasting Laboratory</h3>
+          <p>Includes 17 equations, six figures, audited tables, APA references, and a two-page Python reproduction appendix. The PDF is the publication version; the DOCX is supplied for future thesis editing.</p>
+          <div class="hero-actions">
+            <a class="button sun" href="report/Los_Angeles_Temperature_Forecasting_Laboratory_APA_Report.pdf" target="_blank" rel="noopener">Read the 25-page PDF ↗</a>
+            <a class="button" href="report/Los_Angeles_Temperature_Forecasting_Laboratory_APA_Report.docx" download>Download the Word report</a>
+          </div>
+        </article>
+        <aside class="card">
+          <span class="card-label">Audited evidence base</span>
+          <h3>Committed artifacts, not browser estimates</h3>
+          <div class="kv-grid">
+            <div><span>Daily records</span><strong>3,157</strong></div>
+            <div><span>Predictors</span><strong>129</strong></div>
+            <div><span>Forecast horizons</span><strong>1 / 3 / 5 days</strong></div>
+            <div><span>Live log rows</span><strong>65</strong></div>
+            <div><span>APA pages</span><strong>25</strong></div>
+            <div><span>Accessibility audit</span><strong>0 findings</strong></div>
+          </div>
+        </aside>
+      </div>
+      <div class="grid three" style="margin-top:16px">
+        <article class="card"><span class="card-label">Finding 01</span><h3>Holdout signal is real</h3><p>XGBoost achieved 2.30°F, 3.76°F, and 4.38°F MAE; the LSTM achieved 3.14°F, 4.06°F, and 4.48°F across H=1, H=3, and H=5.</p></article>
+        <article class="card"><span class="card-label">Finding 02</span><h3>Publication policy dominated error</h3><p>The unanchored live model substantially outperformed the historically anchored canonical forecast in the committed attribution tape.</p></article>
+        <article class="card"><span class="card-label">Finding 03</span><h3>Intervals require qualified language</h3><p>Conformalized test coverage improved sharply, but nonstationarity and validation reuse support the label calibrated risk band rather than an unconditional 90% guarantee.</p></article>
+      </div>
+    </section>
 
     <section class="tab-panel active" id="overviewTab">
       <div class="section-head">
