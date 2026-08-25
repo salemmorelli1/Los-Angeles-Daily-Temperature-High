@@ -1,95 +1,95 @@
 {
   "schema_version": "1.2.0",
-  "generated_at": "2026-08-25T14:25:54.823887",
+  "generated_at": "2026-08-25T15:23:57.584512",
   "target_clock": "target_date_h = feature_date + h calendar days",
   "n_prediction_rows": 66,
   "skill_min_samples": 30,
   "promote_min_samples": 60,
   "realized_samples_by_horizon": {
-    "h1": 64,
-    "h3": 62,
-    "h5": 60
+    "h1": 65,
+    "h3": 63,
+    "h5": 61
   },
   "metrics_by_horizon": {
     "h1": {
-      "n_samples": 64,
+      "n_samples": 65,
       "pred_col_used": "forecast_h1",
-      "mae_f": 7.176,
-      "rmse_f": 8.793,
-      "bias_f": -6.703,
-      "persistence_mae_f": 1.948,
-      "skill_vs_persistence": -2.6828,
-      "hit_rate": 0.2031,
-      "clim_mae_f": 2.291,
-      "skill_vs_climatology": -2.1324,
-      "bnn_coverage_90pct": 0.5,
-      "bnn_n_samples": 64
+      "mae_f": 7.075,
+      "rmse_f": 8.725,
+      "bias_f": -6.59,
+      "persistence_mae_f": 1.926,
+      "skill_vs_persistence": -2.6732,
+      "hit_rate": 0.2,
+      "clim_mae_f": 2.356,
+      "skill_vs_climatology": -2.0025,
+      "bnn_coverage_90pct": 0.5077,
+      "bnn_n_samples": 65
     },
     "h3": {
-      "n_samples": 62,
+      "n_samples": 63,
       "pred_col_used": "forecast_h3",
-      "mae_f": 7.558,
-      "rmse_f": 9.158,
-      "bias_f": -6.633,
-      "persistence_mae_f": 3.219,
-      "skill_vs_persistence": -1.3477,
-      "hit_rate": 0.2097,
-      "clim_mae_f": 2.468,
-      "skill_vs_climatology": -2.0627,
-      "bnn_coverage_90pct": 0.5806,
-      "bnn_n_samples": 62
+      "mae_f": 7.515,
+      "rmse_f": 9.105,
+      "bias_f": -6.45,
+      "persistence_mae_f": 3.19,
+      "skill_vs_persistence": -1.3555,
+      "hit_rate": 0.2063,
+      "clim_mae_f": 2.533,
+      "skill_vs_climatology": -1.9674,
+      "bnn_coverage_90pct": 0.5873,
+      "bnn_n_samples": 63
     },
     "h5": {
-      "n_samples": 60,
+      "n_samples": 61,
       "pred_col_used": "forecast_h5",
-      "mae_f": 7.038,
-      "rmse_f": 8.083,
-      "bias_f": -5.919,
-      "persistence_mae_f": 3.518,
-      "skill_vs_persistence": -1.0004,
-      "hit_rate": 0.2333,
-      "clim_mae_f": 2.286,
-      "skill_vs_climatology": -2.0786,
-      "bnn_coverage_90pct": 0.6333,
-      "bnn_n_samples": 60
+      "mae_f": 7.016,
+      "rmse_f": 8.05,
+      "bias_f": -5.728,
+      "persistence_mae_f": 3.505,
+      "skill_vs_persistence": -1.0018,
+      "hit_rate": 0.2295,
+      "clim_mae_f": 2.356,
+      "skill_vs_climatology": -1.9778,
+      "bnn_coverage_90pct": 0.6393,
+      "bnn_n_samples": 61
     }
   },
   "model_only_metrics": {
     "h1": {
-      "n_samples": 64,
+      "n_samples": 65,
       "pred_col_used": "forecast_pre_anchor_h1",
-      "mae_f": 1.683,
-      "rmse_f": 2.346,
-      "bias_f": -0.056
+      "mae_f": 1.667,
+      "rmse_f": 2.329,
+      "bias_f": -0.045
     },
     "h3": {
-      "n_samples": 62,
+      "n_samples": 63,
       "pred_col_used": "forecast_pre_anchor_h3",
-      "mae_f": 3.092,
-      "rmse_f": 3.979,
-      "bias_f": 1.144
+      "mae_f": 3.12,
+      "rmse_f": 3.995,
+      "bias_f": 1.203
     },
     "h5": {
-      "n_samples": 60,
+      "n_samples": 61,
       "pred_col_used": "forecast_pre_anchor_h5",
-      "mae_f": 3.374,
-      "rmse_f": 4.131,
-      "bias_f": 1.588
+      "mae_f": 3.412,
+      "rmse_f": 4.162,
+      "bias_f": 1.655
     }
   },
   "nws_baseline_metrics": {
-    "nws_h1_mae_f": 9.034375,
-    "nws_h1_rmse_f": 10.45025418351152,
-    "nws_h1_bias_f": -8.275,
-    "nws_h1_n_days": 64,
-    "nws_h3_mae_f": 9.232258064516131,
-    "nws_h3_rmse_f": 10.706735896079024,
-    "nws_h3_bias_f": -8.309677419354838,
-    "nws_h3_n_days": 62,
-    "nws_h5_mae_f": 8.681666666666667,
-    "nws_h5_rmse_f": 9.737273745766831,
-    "nws_h5_bias_f": -7.681666666666668,
-    "nws_h5_n_days": 60
+    "nws_h1_mae_f": 8.920000000000002,
+    "nws_h1_rmse_f": 10.371454908694197,
+    "nws_h1_bias_f": -8.123076923076923,
+    "nws_h1_n_days": 65,
+    "nws_h3_mae_f": 9.15873015873016,
+    "nws_h3_rmse_f": 10.637221262645438,
+    "nws_h3_bias_f": -8.104761904761903,
+    "nws_h3_n_days": 63,
+    "nws_h5_mae_f": 8.647540983606557,
+    "nws_h5_rmse_f": 9.694032303179208,
+    "nws_h5_bias_f": -7.447540983606559,
+    "nws_h5_n_days": 61
   },
   "forecast_source_summary": {
     "forecast_source_counts": {
@@ -107,7 +107,7 @@
   },
   "summary": {
     "best_horizon": 5,
-    "overall_skill": -1.6769666666666667,
+    "overall_skill": -1.6768333333333334,
     "skill_trustworthy": true,
     "nws_independence_warning": "NWS anchoring active on ['H=1', 'H=3', 'H=5']. Realized-error metrics are valid but skill comparisons against NWS are not independent for anchored rows. Use model_only_metrics for unbiased model-vs-NWS comparisons."
   }
