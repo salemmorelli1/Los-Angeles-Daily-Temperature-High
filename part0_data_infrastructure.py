@@ -30,7 +30,7 @@ import os
 import time
 from datetime import date, timedelta
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 import pandas as pd
@@ -460,8 +460,8 @@ def fetch_klax_observations(station: str = NWS_STATION, days_back: int = 30) -> 
             if pd.isna(obs_time):
                 continue
 
-            def _val(key: str) -> Optional[float]:
-                v = props.get(key, {})
+            def _val(key: str, properties: Dict = props) -> Optional[float]:
+                v = properties.get(key, {})
                 if isinstance(v, dict):
                     return v.get("value")
                 return None
@@ -720,4 +720,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

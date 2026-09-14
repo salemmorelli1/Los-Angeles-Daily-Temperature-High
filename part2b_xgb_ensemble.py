@@ -12,10 +12,11 @@ Part 2B owns the canonical forecast_h1 / forecast_h3 / forecast_h5 columns
 and forecast_source / forecast_reason in the prediction log.
 
 Fallback chain (evaluated in order):
-  1. blend_h*     — validation-tuned XGB/LSTM blend (if both present and pass sanity)
-  2. xgb_h*       — XGB alone                  (if LSTM is implausible)
-  3. nws_h*       — NWS official forecast       (if XGB not available)
-  4. persistence  — last observed temp          (last resort)
+  1. blend_h*     — validation-tuned XGB/LSTM blend (if XGB gate passes)
+  2. xgb_h*       — XGB alone                      (if LSTM is implausible)
+  3. target_h*    — Part 2 LSTM alone              (if XGB is unavailable/blocked)
+  4. nws_h*       — NWS official forecast           (if learned models are unavailable)
+  5. persistence  — last observed temp              (last resort)
 
 A candidate is "plausible" if its deviation from the last observed temperature
 is ≤ FORECAST_SANITY_THRESHOLD_F. The LSTM is always checked; if it fails the
@@ -69,7 +70,7 @@ PART2_DIR = PROJECT_DIR / "artifacts_part2"
 ARTIFACTS_DIR = PROJECT_DIR / "artifacts_part2b"
 ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
 
-SCHEMA_VERSION = "1.2.1-nws-warm-anchor"
+SCHEMA_VERSION = "1.3.0-realized-skill-gates"
 HORIZONS = [1, 3, 5]
 
 XGB_PARAMS = {
@@ -82,6 +83,14 @@ XGB_PARAMS = {
 
 GATE_IMPROVEMENT_F = 0.2           # XGB must beat persistence by this much
 BNN_RECOMMENDATION_THRESHOLD_F = 0.3  # XGB must beat LSTM by this much
+
+# NWS anchoring is a learned overlay, not an unconditional safety rule. It is
+# enabled per horizon only after row-level, realized forecasts show that NWS has
+# beaten the independent pre-anchor model by a material MAE margin. This gate
+# fails closed when history is missing or incomplete.
+NWS_ANCHOR_MIN_REALIZED_SAMPLES = 30
+NWS_ANCHOR_LOOKBACK_ROWS = 90
+NWS_ANCHOR_MIN_MAE_IMPROVEMENT_F = 0.25
 
 # A forecast is "plausible" if it deviates by less than this from last observed
 FORECAST_SANITY_THRESHOLD_F = 15.0
@@ -196,6 +205,98 @@ def naive_persistence_mae(df_val: pd.DataFrame) -> Dict[str, float]:
         pers = df_val.loc[y.index, "temp_high_f_lag1"]
         maes[f"h{h}"] = float(np.mean(np.abs(y.values - pers.values)))
     return maes
+
+
+def evaluate_xgb_validation_gate(
+    val_metrics: Dict[str, float],
+    persistence_maes: Dict[str, float],
+) -> Tuple[bool, Dict[str, Dict[str, object]]]:
+    """Require finite XGB and persistence MAE for every governed horizon.
+
+    ``all([])`` is true in Python, so the previous inline expression could
+    report a passing gate when the persistence baseline was absent. A model
+    promotion gate must instead fail closed on missing or non-finite evidence.
+    """
+    diagnostics: Dict[str, Dict[str, object]] = {}
+    passed = True
+
+    for h in HORIZONS:
+        xgb_mae = pd.to_numeric(
+            pd.Series([val_metrics.get(f"h{h}_mae_f", np.nan)]), errors="coerce"
+        ).iloc[0]
+        persistence_mae = pd.to_numeric(
+            pd.Series([persistence_maes.get(f"h{h}", np.nan)]), errors="coerce"
+        ).iloc[0]
+        evidence_available = bool(np.isfinite(xgb_mae) and np.isfinite(persistence_mae))
+        horizon_pass = bool(
+            evidence_available
+            and float(xgb_mae) <= float(persistence_mae) - GATE_IMPROVEMENT_F
+        )
+        diagnostics[f"h{h}"] = {
+            "passed": horizon_pass,
+            "evidence_available": evidence_available,
+            "xgb_val_mae_f": float(xgb_mae) if np.isfinite(xgb_mae) else None,
+            "persistence_val_mae_f": (
+                float(persistence_mae) if np.isfinite(persistence_mae) else None
+            ),
+            "required_improvement_f": float(GATE_IMPROVEMENT_F),
+        }
+        passed = passed and horizon_pass
+
+    return bool(passed), diagnostics
+
+
+def evaluate_nws_anchor_skill(
+    df_log: pd.DataFrame,
+) -> Tuple[Dict[int, bool], Dict[str, Dict[str, object]]]:
+    """Decide per horizon whether realized evidence permits NWS anchoring.
+
+    Only forecasts having pre-anchor, NWS, and realized values on the same row
+    enter the paired comparison. The most recent rows are used so an obsolete
+    NWS grid or an old operating regime cannot authorize the overlay forever.
+    """
+    allowed = {h: False for h in HORIZONS}
+    diagnostics: Dict[str, Dict[str, object]] = {}
+
+    for h in HORIZONS:
+        cols = [f"forecast_pre_anchor_h{h}", f"nws_h{h}", f"realized_h{h}"]
+        if df_log.empty or any(col not in df_log.columns for col in cols):
+            diagnostics[f"h{h}"] = {
+                "enabled": False,
+                "reason": "paired_history_missing",
+                "n_paired": 0,
+            }
+            continue
+
+        paired = df_log[cols].apply(pd.to_numeric, errors="coerce").dropna()
+        paired = paired.tail(NWS_ANCHOR_LOOKBACK_ROWS)
+        n_paired = int(len(paired))
+        if n_paired < NWS_ANCHOR_MIN_REALIZED_SAMPLES:
+            diagnostics[f"h{h}"] = {
+                "enabled": False,
+                "reason": "insufficient_paired_history",
+                "n_paired": n_paired,
+                "min_samples": int(NWS_ANCHOR_MIN_REALIZED_SAMPLES),
+            }
+            continue
+
+        model_mae = float((paired[cols[0]] - paired[cols[2]]).abs().mean())
+        nws_mae = float((paired[cols[1]] - paired[cols[2]]).abs().mean())
+        improvement = float(model_mae - nws_mae)
+        enabled = bool(improvement >= NWS_ANCHOR_MIN_MAE_IMPROVEMENT_F)
+        allowed[h] = enabled
+        diagnostics[f"h{h}"] = {
+            "enabled": enabled,
+            "reason": "nws_better_by_required_margin" if enabled else "nws_not_better",
+            "n_paired": n_paired,
+            "lookback_rows": int(NWS_ANCHOR_LOOKBACK_ROWS),
+            "model_pre_anchor_mae_f": model_mae,
+            "nws_mae_f": nws_mae,
+            "nws_improvement_f": improvement,
+            "required_improvement_f": float(NWS_ANCHOR_MIN_MAE_IMPROVEMENT_F),
+        }
+
+    return allowed, diagnostics
 
 
 
@@ -504,78 +605,90 @@ def _finish_candidate(value: float, source: str, reason: str, h: int, nws_preds:
     return adjusted, source, reason
 
 
+def _select_pre_anchor_candidate(
+    h: int,
+    xgb_preds: Dict[str, float],
+    lstm_preds: Dict[str, float],
+    nws_preds: Dict[int, Optional[float]],
+    last_obs: Optional[float],
+    blend_weights_xgb: Optional[Dict[str, float]] = None,
+) -> Tuple[float, str, str]:
+    """Select the exact fallback candidate before any NWS anchoring overlay."""
+    key = f"h{h}"
+    xgb_val = xgb_preds.get(key)
+    lstm_val = lstm_preds.get(key)
+    last_obs_f = float(last_obs) if last_obs is not None else float("nan")
+
+    xgb_ok = bool(
+        xgb_val is not None
+        and np.isfinite(xgb_val)
+        and (not np.isfinite(last_obs_f) or _is_plausible(float(xgb_val), last_obs_f))
+    )
+    lstm_ok = bool(
+        lstm_val is not None
+        and np.isfinite(lstm_val)
+        and (not np.isfinite(last_obs_f) or _is_plausible(float(lstm_val), last_obs_f))
+    )
+
+    if xgb_ok and lstm_ok:
+        w_xgb = _blend_weight_for_h(blend_weights_xgb, h)
+        value = w_xgb * float(xgb_val) + (1.0 - w_xgb) * float(lstm_val)
+        return value, "blend", f"H{h}:blend(wxgb={w_xgb:.2f},xgb={xgb_val:.1f},lstm={lstm_val:.1f})"
+
+    if xgb_ok:
+        suffix = (
+            f"(lstm_implausible:{lstm_val:.1f})"
+            if lstm_val is not None and np.isfinite(lstm_val)
+            else ""
+        )
+        return float(xgb_val), "xgb", f"H{h}:xgb_only{suffix}"
+
+    # Preserve the required Part 2 model as the next independent fallback.
+    if lstm_ok:
+        suffix = (
+            f"(xgb_implausible:{xgb_val:.1f})"
+            if xgb_val is not None and np.isfinite(xgb_val)
+            else ""
+        )
+        return float(lstm_val), "lstm", f"H{h}:lstm_only{suffix}"
+
+    nws_val = nws_preds.get(h)
+    if nws_val is not None and np.isfinite(nws_val):
+        return float(nws_val), "nws", f"H{h}:nws_fallback"
+
+    if np.isfinite(last_obs_f):
+        return last_obs_f, "persistence", f"H{h}:persistence_fallback"
+
+    return float("nan"), "unavailable", f"H{h}:no_forecast_available"
+
+
 def compute_canonical_forecast(
     xgb_preds: Dict[str, float],
     lstm_preds: Dict[str, float],
     nws_preds: Dict[int, Optional[float]],
     last_obs: Optional[float],
     blend_weights_xgb: Optional[Dict[str, float]] = None,
+    nws_anchor_allowed: Optional[Dict[int, bool]] = None,
 ) -> Tuple[Dict[str, float], str, str]:
     """Apply the fallback chain and return (forecast, source, reason).
 
-    Chain: blend → xgb → nws → persistence, followed by an NWS/heat-event
-    anchoring overlay when the selected model candidate diverges materially
-    from the official NWS benchmark.
+    Chain: blend → xgb → Part 2 model → NWS → persistence, followed by an
+    NWS/heat-event anchoring overlay only when paired realized skill authorizes
+    that overlay for the horizon.
     """
     forecast: Dict[str, float] = {}
     sources: List[str] = []
     reasons: List[str] = []
 
-    if last_obs is None:
-        last_obs = float("nan")
-
     for h in HORIZONS:
         key = f"h{h}"
-        xgb_val = xgb_preds.get(key)
-        lstm_val = lstm_preds.get(key)
+        selected_val, selected_source, selected_reason = _select_pre_anchor_candidate(
+            h, xgb_preds, lstm_preds, nws_preds, last_obs, blend_weights_xgb
+        )
 
-        selected_val: Optional[float] = None
-        selected_source = "unavailable"
-        selected_reason = f"H{h}:no_forecast_available"
-
-        # --- blend ---
-        if (xgb_val is not None and np.isfinite(xgb_val) and
-                lstm_val is not None and np.isfinite(lstm_val)):
-            lstm_ok = _is_plausible(lstm_val, last_obs) if np.isfinite(last_obs) else True
-            xgb_ok = _is_plausible(xgb_val, last_obs) if np.isfinite(last_obs) else True
-            if lstm_ok and xgb_ok:
-                w_xgb = _blend_weight_for_h(blend_weights_xgb, h)
-                selected_val = w_xgb * xgb_val + (1.0 - w_xgb) * lstm_val
-                selected_source = "blend"
-                selected_reason = f"H{h}:blend(wxgb={w_xgb:.2f},xgb={xgb_val:.1f},lstm={lstm_val:.1f})"
-            elif xgb_ok:
-                selected_val = xgb_val
-                selected_source = "xgb"
-                selected_reason = f"H{h}:xgb_only(lstm_implausible:{lstm_val:.1f})"
-
-        # --- xgb alone ---
-        if selected_val is None and xgb_val is not None and np.isfinite(xgb_val):
-            if not np.isfinite(last_obs) or _is_plausible(xgb_val, last_obs):
-                selected_val = xgb_val
-                selected_source = "xgb"
-                selected_reason = f"H{h}:xgb_only"
-
-        # --- NWS ---
-        if selected_val is None:
-            nws_val = nws_preds.get(h)
-            if nws_val is not None and np.isfinite(nws_val):
-                selected_val = float(nws_val)
-                selected_source = "nws"
-                selected_reason = f"H{h}:nws_fallback"
-
-        # --- persistence ---
-        if selected_val is None:
-            if np.isfinite(last_obs):
-                selected_val = float(last_obs)
-                selected_source = "persistence"
-                selected_reason = f"H{h}:persistence_fallback"
-            else:
-                selected_val = float("nan")
-                selected_source = "unavailable"
-                selected_reason = f"H{h}:no_forecast_available"
-
-        # NWS/heat-event safety overlay for model-selected candidates.
-        if selected_source in {"blend", "xgb"}:
+        # Apply the overlay only when paired live evidence authorizes it.
+        anchor_allowed = bool((nws_anchor_allowed or {}).get(h, False))
+        if selected_source in {"blend", "xgb", "lstm"} and anchor_allowed:
             selected_val, selected_source, selected_reason = _finish_candidate(
                 selected_val, selected_source, selected_reason, h, nws_preds
             )
@@ -600,6 +713,8 @@ def build_anchor_audit_fields(
     nws_preds: Dict[int, Optional[float]],
     reason: str,
     blend_weights_xgb: Optional[Dict[str, float]] = None,
+    last_obs: Optional[float] = None,
+    nws_anchor_allowed: Optional[Dict[int, bool]] = None,
 ) -> Tuple[Dict[str, object], Dict[str, Dict[str, object]]]:
     """Create transparent NWS-anchor audit columns.
 
@@ -614,17 +729,15 @@ def build_anchor_audit_fields(
 
     for h in HORIZONS:
         key = f"h{h}"
-        xgb_val = xgb_preds.get(key, np.nan)
-        lstm_val = lstm_preds.get(key, np.nan)
-        nws_val = nws_preds.get(h, np.nan)
-
-        if np.isfinite(xgb_val) and np.isfinite(lstm_val):
-            w_xgb = _blend_weight_for_h(blend_weights_xgb, h)
-            pre_anchor = w_xgb * float(xgb_val) + (1.0 - w_xgb) * float(lstm_val)
-            pre_source = "blend"
-        elif np.isfinite(xgb_val):
-            pre_anchor = float(xgb_val)
-            pre_source = "xgb"
+        nws_val = pd.to_numeric(
+            pd.Series([nws_preds.get(h, np.nan)]), errors="coerce"
+        ).iloc[0]
+        selected, selected_source, _ = _select_pre_anchor_candidate(
+            h, xgb_preds, lstm_preds, nws_preds, last_obs, blend_weights_xgb
+        )
+        if selected_source in {"blend", "xgb", "lstm"}:
+            pre_anchor = float(selected)
+            pre_source = selected_source
         else:
             pre_anchor = float("nan")
             pre_source = "unavailable"
@@ -650,12 +763,14 @@ def build_anchor_audit_fields(
             "anchor_applied": bool(anchor_applied),
             "anchor_delta_f": float(delta) if np.isfinite(delta) else None,
             "reason": h_reason,
+            "anchor_allowed_by_skill_gate": bool((nws_anchor_allowed or {}).get(h, False)),
         }
 
         flat[f"forecast_pre_anchor_h{h}"] = details[key]["pre_anchor_f"]
         flat[f"nws_h{h}"] = details[key]["nws_f"]
         flat[f"nws_anchor_applied_h{h}"] = bool(anchor_applied)
         flat[f"nws_anchor_delta_h{h}"] = details[key]["anchor_delta_f"]
+        flat[f"nws_anchor_allowed_h{h}"] = details[key]["anchor_allowed_by_skill_gate"]
 
     flat["nws_anchor_used"] = bool(any_anchor)
     return flat, details
@@ -791,10 +906,7 @@ def main() -> int:
             pickle.dump(m, f)
 
     # Gate validation
-    gate = all(
-        val_metrics.get(f"h{h}_mae_f", 999) <= pers_maes.get(f"h{h}", 999) - GATE_IMPROVEMENT_F
-        for h in HORIZONS if f"h{h}" in pers_maes
-    )
+    gate, gate_diagnostics = evaluate_xgb_validation_gate(val_metrics, pers_maes)
     print(f"\n[Part 2B] Gate validation passed: {gate}")
 
     # BNN recommendation
@@ -807,7 +919,9 @@ def main() -> int:
         xgb_avg = float(np.mean([val_metrics[f"h{h}_mae_f"] for h in HORIZONS
                                   if f"h{h}_mae_f" in val_metrics]))
         if lstm_val_mae is not None:
-            bnn_rec = (lstm_val_mae - xgb_avg) > BNN_RECOMMENDATION_THRESHOLD_F
+            bnn_rec = bool(
+                gate and (lstm_val_mae - xgb_avg) > BNN_RECOMMENDATION_THRESHOLD_F
+            )
             print(f"  LSTM val MAE={lstm_val_mae:.2f}°F  XGB avg={xgb_avg:.2f}°F  "
                   f"BNN recommended={bnn_rec}")
 
@@ -874,6 +988,8 @@ def main() -> int:
         )
         if "feature_date" in log.columns:
             mask = mask & (log["feature_date"].astype(str).str.strip() == fd_str)
+        if "model" in log.columns:
+            mask = mask & (log["model"].astype(str).str.strip().str.upper() == model_key)
         sub = log[mask]
         if not sub.empty:
             row = sub.iloc[-1]
@@ -885,11 +1001,29 @@ def main() -> int:
 
     last_obs = load_last_observed_temp()
     nws_preds = load_nws_forecast_for_horizons(feature_date)
+    nws_anchor_allowed, nws_anchor_skill = evaluate_nws_anchor_skill(log)
+    governed_xgb_live = xgb_live if gate else {}
+    if not gate:
+        print("[Part 2B] XGB validation gate failed — canonical chain will use the Part 2 model.")
+    print(f"[Part 2B] NWS anchor allowed by horizon: {nws_anchor_allowed}")
+
     forecast, source, reason = compute_canonical_forecast(
-        xgb_live, lstm_live, nws_preds, last_obs, blend_weights_xgb
+        governed_xgb_live,
+        lstm_live,
+        nws_preds,
+        last_obs,
+        blend_weights_xgb,
+        nws_anchor_allowed,
     )
     anchor_log_fields, anchor_details = build_anchor_audit_fields(
-        forecast, xgb_live, lstm_live, nws_preds, reason, blend_weights_xgb
+        forecast,
+        governed_xgb_live,
+        lstm_live,
+        nws_preds,
+        reason,
+        blend_weights_xgb,
+        last_obs,
+        nws_anchor_allowed,
     )
 
     print("\n=== CANONICAL FORECAST ===")
@@ -927,6 +1061,7 @@ def main() -> int:
         "schema_version": SCHEMA_VERSION,
         "built_at": pd.Timestamp.now().isoformat(),
         "gate_validation_passed": gate,
+        "gate_validation_diagnostics": gate_diagnostics,
         "bnn_sleeve_recommended": bnn_rec,
         "val_metrics": val_metrics,
         "test_metrics": test_metrics,
@@ -948,6 +1083,7 @@ def main() -> int:
         },
         "nws_anchor_used": bool(anchor_log_fields.get("nws_anchor_used", False)),
         "nws_anchor_details": anchor_details,
+        "nws_anchor_skill_gate": nws_anchor_skill,
         "feature_importances": feat_importances,
         "hyperparameters": XGB_PARAMS,
         "nws_anchor_policy": {
@@ -960,6 +1096,9 @@ def main() -> int:
             "max_warm_nws_cold_gap_f": MAX_WARM_NWS_COLD_GAP_F,
             "heat_event_threshold_f": HEAT_EVENT_THRESHOLD_F,
             "heat_event_min_model_f": HEAT_EVENT_MIN_MODEL_F,
+            "min_realized_samples": NWS_ANCHOR_MIN_REALIZED_SAMPLES,
+            "lookback_rows": NWS_ANCHOR_LOOKBACK_ROWS,
+            "min_mae_improvement_f": NWS_ANCHOR_MIN_MAE_IMPROVEMENT_F,
         },
     }
     with open(ARTIFACTS_DIR / "part2b_summary.json", "w") as f:
@@ -970,5 +1109,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
-

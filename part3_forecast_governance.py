@@ -70,7 +70,7 @@ PART2C_DIR = PROJECT_DIR / "artifacts_part2c"
 ARTIFACTS_DIR = PROJECT_DIR / "artifacts_part3"
 ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
 
-SCHEMA_VERSION = "1.1.0"
+SCHEMA_VERSION = "1.2.0-fail-closed-hold"
 HORIZONS = [1, 3, 5]
 
 # Thresholds
@@ -470,7 +470,7 @@ def _bnn_expected_from_current_stack() -> Dict[str, Any]:
     result["reason"] = "lstm_and_part2b_gate_passed"
     return result
 
-def check_bnn_calibration() -> GovernanceCheck:
+def check_bnn_calibration(latest_row: Optional[pd.Series] = None) -> GovernanceCheck:
     """Check BNN calibration coverage if Part 2C has run. WARN level.
 
     Fix (Audit 4, Issue 5): surfaces half_split_validation_pass=False as a
@@ -481,9 +481,17 @@ def check_bnn_calibration() -> GovernanceCheck:
     and the dashboard without forcing CAUTION unnecessarily.
     """
     chk = GovernanceCheck("BNN_CALIBRATION_GATE", level="WARN")
+    expected = _bnn_expected_from_current_stack()
+    if not expected.get("expected", False):
+        chk.details = {"bnn_available": False, "bnn_expected": expected}
+        chk.message = (
+            "BNN sleeve not expected for the current stack — any older calibration "
+            "artifact is ignored"
+        )
+        return chk
+
     cal_path = PART2C_DIR / "calibration_report.json"
     if not cal_path.exists():
-        expected = _bnn_expected_from_current_stack()
         chk.details = {"bnn_available": False, "bnn_expected": expected}
         if expected.get("expected", False):
             return chk.warn(
@@ -493,6 +501,47 @@ def check_bnn_calibration() -> GovernanceCheck:
             )
         chk.message = "BNN sleeve not run — calibration gate skipped"
         return chk
+
+    meta_path = PART2C_DIR / "part2c_meta.json"
+    if latest_row is not None:
+        if not meta_path.exists():
+            chk.details = {
+                "bnn_available": False,
+                "bnn_expected": expected,
+                "reason": "part2c_meta_missing",
+            }
+            return chk.warn(
+                "BNN metadata is missing for the current expected run",
+                **chk.details,
+            )
+        try:
+            with open(meta_path) as f:
+                bnn_meta = json.load(f)
+            artifact_feature_date = pd.Timestamp(
+                bnn_meta.get("feature_date", "1970-01-01")
+            ).normalize()
+            current_feature_date = pd.Timestamp(
+                latest_row.get("feature_date", "1970-01-01")
+            ).normalize()
+        except (OSError, json.JSONDecodeError, TypeError, ValueError) as exc:
+            chk.details = {
+                "bnn_available": False,
+                "bnn_expected": expected,
+                "reason": f"part2c_meta_invalid:{type(exc).__name__}",
+            }
+            return chk.warn("BNN metadata could not be validated", **chk.details)
+
+        if artifact_feature_date != current_feature_date:
+            chk.details = {
+                "bnn_available": False,
+                "bnn_expected": expected,
+                "artifact_feature_date": str(artifact_feature_date.date()),
+                "current_feature_date": str(current_feature_date.date()),
+            }
+            return chk.warn(
+                "BNN artifact is stale for the current forecast row",
+                **chk.details,
+            )
 
     with open(cal_path) as f:
         cal = json.load(f)
@@ -676,7 +725,7 @@ def main() -> int:
         check_forecast_spread(latest),
         check_persistence_sanity(latest, df_hist),
         check_nws_sanity(latest),
-        check_bnn_calibration(),
+        check_bnn_calibration(latest),
     ]
 
     publish_mode = determine_publish_mode(checks)
@@ -778,7 +827,9 @@ def main() -> int:
     print("[Part 3] Upserted governance_history.parquet")
 
     print(f"\n[Part 3] ✅  Complete. Mode={publish_mode}")
-    return 0
+    # The daily runner explicitly treats exit code 1 as a governance stop.
+    # Returning zero for HOLD made the documented fail-closed control a no-op.
+    return 1 if publish_mode == "HOLD" else 0
 
 
 if __name__ == "__main__":

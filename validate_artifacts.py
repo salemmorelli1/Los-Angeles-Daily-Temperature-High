@@ -36,7 +36,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from typing import List, Tuple
+from typing import Any, Dict, List, Tuple
 
 
 # ---------------------------------------------------------------------------
@@ -457,8 +457,6 @@ def check_bnn_expected_artifacts() -> Tuple[str, str, str]:
 
         import pandas as pd
 
-        with open(cal_path) as f:
-            cal = json.load(f)
         df_log = pd.read_csv(log_path)
 
         bnn_available = bool(df_log.iloc[-1].get("bnn_available", False)) if not df_log.empty else False
@@ -937,7 +935,6 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
 
 
 

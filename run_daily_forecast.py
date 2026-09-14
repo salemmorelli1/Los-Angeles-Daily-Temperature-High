@@ -172,7 +172,7 @@ def main() -> int:
     parser.add_argument("--direct", action="store_true", help="Skip pre-flight checks")
     args = parser.parse_args()
 
-    print(f"[Runner] LA Temperature Forecast — Daily Runner")
+    print("[Runner] LA Temperature Forecast — Daily Runner")
     print(f"[Runner] Project root: {PROJECT_DIR}")
     print(f"[Runner] Date: {__import__('datetime').date.today()}")
 
@@ -221,7 +221,7 @@ def main() -> int:
         print("\n[Runner] No saved model artifacts found — will train.")
         needs_retrain = True
 
-    print(f"\n=== EXECUTION ORDER ===")
+    print("\n=== EXECUTION ORDER ===")
     print("Part 0 → Part 6 → Part 1 → Part 2A → Part 2 → Part 2B* → Part 2C* → Part 3 → Part 9")
     print("(* optional sleeves)")
 
@@ -270,7 +270,7 @@ def main() -> int:
             df = pd.read_csv(log_path)
             if not df.empty:
                 latest = df.iloc[-1]
-                print(f"\n=== TODAY'S FORECAST ===")
+                print("\n=== TODAY'S FORECAST ===")
                 print(f"  Decision date: {latest.get('decision_date', '?')}")
                 for h in [1, 3, 5]:
                     val = latest.get(f"target_h{h}")
@@ -286,5 +286,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
 
