@@ -17,6 +17,9 @@ This version applies the pipeline-contract fixes from the code audit:
 - Part 2 supports `--mode train` and `--mode predict`; the daily runner now uses predict-only when retraining is not needed.
 - Part 2C skips Transformer artifacts safely, fixes MC-dropout uncertainty scaling, and publishes intervals only when calibrated/conformalized.
 - Part 9 backfills realized values against explicit target-date columns instead of `decision_date + h`.
+- Part 2B fails closed when XGB validation evidence is missing, retains the Part 2 model before external fallbacks, and permits NWS anchoring only when paired realized MAE shows that NWS is better for that horizon.
+- Part 3 returns a nonzero exit status for `HOLD`, so the daily runner actually stops publication.
+- The dual-cron selector keys off the triggering schedule rather than delayed wall-clock start time, preventing false-green runs in which every production step is skipped.
 
 **No API key required.** All data sources are free and open:
 - [Open-Meteo](https://open-meteo.com/) — historical archive + 7-day forecast
@@ -46,13 +49,13 @@ Part 3  Forecast Governance       (staleness gates, bounds checks, publish mode)
 Part 9  Live Attribution          (MAE/RMSE/Skill vs NWS + climatology)
 ```
 
-`*` Optional, non-blocking sleeves. Part 2C activates only when Part 2B reports `bnn_sleeve_recommended: true`.
+`*` Optional sleeves. Part 2C runs for an LSTM stack when Part 2B's validation gate passes; `bnn_sleeve_recommended` remains diagnostic telemetry.
 
 Part 6 regime names are intentionally neutral in model features. Physical labels such as “marine layer” are stored only as metadata suggestions when the state statistics support them.
 
 ### NWS anchoring disclosure
 
-Part 2B may apply a conservative NWS anchoring overlay when the learned model stack diverges materially from the official NWS forecast, especially during potential heat events. When `forecast_source` contains `nws_anchor`, the canonical forecast is still valid as a governed public forecast, but future skill comparisons against NWS are **not independent** for those anchored rows. Part 9 therefore reports an NWS-anchor disclosure alongside attribution metrics.
+Part 2B may apply an NWS anchoring overlay only when at least 30 paired realized forecasts show that NWS beats the independent pre-anchor model by at least 0.25°F MAE for that horizon. The gate uses at most the latest 90 paired rows and fails closed when evidence is missing. NWS remains available as a fallback when learned forecasts are unavailable. When `forecast_source` contains `nws_anchor`, skill comparisons against NWS are **not independent** for those anchored rows, so Part 9 reports both canonical and pre-anchor model attribution.
 
 
 ---
@@ -112,6 +115,7 @@ LA_Temp_Forecast/
 ├── part6_weather_regime_engine.py  # HMM regime detection
 ├── part9_live_attribution.py       # Accuracy metrics and backfill
 ├── run_daily_forecast.py           # Master daily runner
+├── tests/                           # Governance and fallback regression tests
 ├── requirements.txt
 ├── README.md
 └── .gitignore
@@ -147,7 +151,7 @@ artifacts_part9/   live_attribution_report.json, attribution_tape.parquet
 |--------|-----------------|--------------|
 | **Open-Meteo Archive** | Historical daily obs 2018–present | `archive-api.open-meteo.com/v1/archive` |
 | **Open-Meteo Forecast** | 7-day gridded forecast | `api.open-meteo.com/v1/forecast` |
-| **NWS API** | Official NWS 7-day text forecast (benchmark) | `api.weather.gov/gridpoints/LOX/155,49/forecast` |
+| **NWS API** | Official NWS 7-day text forecast (benchmark) | `api.weather.gov/gridpoints/LOX/148,41/forecast/hourly` |
 | **NWS KLAX Obs** | Recent KLAX hourly observations | `api.weather.gov/stations/KLAX/observations` |
 | **NOAA ENSO** | Monthly Niño 3.4 anomaly index | `psl.noaa.gov/data/correlation/nina34.anom.data` |
 
@@ -160,7 +164,7 @@ All sources are **free, open, and require no API key.**
 ### Part 2 — LSTM Forecaster
 - **Architecture**: 2-layer stacked LSTM → BatchNorm → 3 independent forecast heads (H=1, H=3, H=5)
 - **Input**: 14-day look-back window of ~100+ engineered features
-- **Training**: Adam + ReduceLROnPlateau scheduler, early stopping, horizon-weighted MSE, heat-event row weighting, and an asymmetric heat under-prediction penalty
+- **Training**: Adam + ReduceLROnPlateau scheduler, early stopping, and horizon-weighted MSE. The heat-weighted asymmetric objective is retained only as a disabled experiment after it failed the accepted audit.
 - **Typical performance**: H=1 MAE ≈ 2–4°F (vs NWS H=1 ≈ 2–3°F)
 
 ### Part 6 — Weather Regime Engine
@@ -176,7 +180,7 @@ The Gaussian HMM emits neutral statistical states (`REGIME_0`, `REGIME_1`, `REGI
 Validated physical probability columns replace their matching `prob_regime_*` source columns to avoid perfect duplicate features. Unvalidated states remain neutral as `prob_regime_*`.
 
 ### Part 2C — BNN Uncertainty
-Monte Carlo Dropout with N=200 samples produces calibrated 90% confidence intervals. Good calibration means ~90% of observed temperature highs fall within the CI bounds.
+Monte Carlo Dropout with N=200 samples supplies diagnostic uncertainty, and split-conformal residuals determine the 90% band width. Bands centered on the canonical forecast are labeled display/risk bands rather than unconditional 90% predictive-interval guarantees.
 
 ---
 
@@ -198,7 +202,7 @@ For first-time setup, all parts run in sequence. For daily operation:
 - **Part 1** runs after Part 0 or Part 2A
 - **Part 2** re-trains automatically when model age > 7 days
 - **Part 2B** always runs (fast, non-blocking)
-- **Part 2C** runs only if `bnn_sleeve_recommended: true` in Part 2B summary
+- **Part 2C** runs for LSTM when Part 2B's validation gate passes; it skips Transformer runs
 - **Part 3** and **Part 9** always run
 
 ---
@@ -232,6 +236,5 @@ python run_daily_forecast.py
 ## License
 
 MIT
-
 
 

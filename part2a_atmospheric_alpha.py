@@ -44,7 +44,7 @@ import json
 import os
 import warnings
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -417,7 +417,6 @@ def build_alpha_features(df: pd.DataFrame, enso_df: Optional[pd.DataFrame] = Non
 
     alpha_all = frames[0].copy()
     for frame in frames[1:]:
-        common_date = frame["date"]
         for col in frame.columns:
             if col != "date":
                 alpha_all[col] = frame[col].values
@@ -665,6 +664,5 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
 
 

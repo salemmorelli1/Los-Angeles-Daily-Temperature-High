@@ -34,7 +34,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 import numpy as np
 import pandas as pd
@@ -79,7 +79,7 @@ MIN_NONULL_FRAC = 0.60
 def load_historical() -> pd.DataFrame:
     path = PART0_DIR / "historical_daily.parquet"
     if not path.exists():
-        raise FileNotFoundError(f"historical_daily.parquet not found. Run Part 0 first.")
+        raise FileNotFoundError("historical_daily.parquet not found. Run Part 0 first.")
     df = pd.read_parquet(path)
     df["date"] = pd.to_datetime(df["date"]).dt.normalize()
     return df.sort_values("date").reset_index(drop=True)
@@ -423,5 +423,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
 

@@ -71,7 +71,7 @@ PART3_DIR = PROJECT_DIR / "artifacts_part3"
 ARTIFACTS_DIR = PROJECT_DIR / "artifacts_part9"
 ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
 
-SCHEMA_VERSION = "1.2.0"
+SCHEMA_VERSION = "1.2.1-idempotent-report"
 HORIZONS = [1, 3, 5]
 OM_ARCHIVE_URL = "https://archive-api.open-meteo.com/v1/archive"
 LAT = 33.9425
@@ -580,6 +580,37 @@ def compute_rolling_skill(df_tape: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def _report_with_stable_generated_at(
+    report_core: Dict[str, Any],
+    existing_path: Path,
+) -> Dict[str, Any]:
+    """Preserve ``generated_at`` when the report has no material changes.
+
+    The scheduled backfill previously rewrote an otherwise identical report
+    with a new timestamp every day, guaranteeing a no-op Git commit even when
+    there were no new forecasts or realizations. Stable output restores the
+    idempotency promised by this module's production contract.
+    """
+    generated_at = pd.Timestamp.now().isoformat()
+    if existing_path.exists():
+        try:
+            with open(existing_path) as f:
+                existing = json.load(f)
+            existing_core = {
+                key: value for key, value in existing.items() if key != "generated_at"
+            }
+            if existing_core == report_core and existing.get("generated_at"):
+                generated_at = str(existing["generated_at"])
+        except (OSError, json.JSONDecodeError, TypeError):
+            pass
+
+    report = {"schema_version": report_core["schema_version"], "generated_at": generated_at}
+    report.update(
+        {key: value for key, value in report_core.items() if key != "schema_version"}
+    )
+    return report
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -671,9 +702,8 @@ def main() -> int:
         for h in HORIZONS
         if metrics.get(f"h{h}", {}).get("skill_vs_persistence") is not None
     ]
-    report = {
+    report_core = {
         "schema_version": SCHEMA_VERSION,
-        "generated_at": pd.Timestamp.now().isoformat(),
         "target_clock": "target_date_h = feature_date + h calendar days",
         "n_prediction_rows": len(df_log),
         "skill_min_samples": SKILL_MIN_SAMPLES,
@@ -704,7 +734,9 @@ def main() -> int:
             "nws_independence_warning": source_summary.get("nws_independence_warning"),
         },
     }
-    with open(ARTIFACTS_DIR / "live_attribution_report.json", "w") as f:
+    report_path = ARTIFACTS_DIR / "live_attribution_report.json"
+    report = _report_with_stable_generated_at(report_core, report_path)
+    with open(report_path, "w") as f:
         json.dump(report, f, indent=2, default=str)
     print("[Part 9] Saved live_attribution_report.json")
 
@@ -732,6 +764,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
-
 

@@ -17,10 +17,11 @@ name: Daily LA Temperature Forecast
 # projects. Target time: 6:35 AM Pacific.
 #   6:35 AM PDT (UTC-7, ~Mar-Nov) = 13:35 UTC  -> cron: "35 13 * * *"
 #   6:35 AM PST (UTC-8, ~Nov-Mar) = 14:35 UTC  -> cron: "35 14 * * *"
-# Both crons fire every day; a Python time gate passes the one landing in
-# the 6:00-9:00 AM Pacific window (180 minutes -- comfortable room for
-# GitHub scheduler drift) and suppresses the opposing-DST-season duplicate.
-# Manual workflow_dispatch runs bypass the gate entirely.
+# Both crons fire every day. A Python gate selects the cron expression matching
+# the current Pacific UTC offset and suppresses only the opposing-DST duplicate.
+# The decision uses the triggering schedule expression, not the job's eventual
+# start time, because GitHub may delay scheduled jobs by several hours. Manual
+# workflow_dispatch runs bypass the gate entirely.
 on:
   schedule:
     - cron: "35 13 * * *"   # 6:35 AM PDT (UTC-7, summer)
@@ -99,40 +100,46 @@ jobs:
           fi
           echo "OK: gate key '${WRITTEN_KEY}' is consistent throughout the workflow."
 
-      # ── Time gate ─────────────────────────────────────────────────────
-      # Both crons fire every day; the gate passes the one landing in the
-      # 6:00-9:00 AM Pacific window (typically the summer cron in PDT
-      # months, the winter cron in PST months) and suppresses the
-      # out-of-window duplicate. Manual dispatches always proceed.
-      - name: Check run window (6:00-9:00 AM Pacific)
+      # ── DST schedule selector ─────────────────────────────────────────
+      # Select by the triggering cron expression, not wall-clock start time.
+      # This remains correct even when GitHub starts a queued schedule hours
+      # late, which previously produced a green run with every real step skipped.
+      - name: Select Pacific DST-matched schedule
         id: gate
         run: |
           python - <<'PYEOF'
-          import sys, os
+          import json
+          import os
+          import sys
           from datetime import datetime
           from zoneinfo import ZoneInfo
 
           event = os.environ.get("GITHUB_EVENT_NAME", "")
           if event == "workflow_dispatch":
-              print("Manual dispatch — skipping time gate.")
+              print("Manual dispatch — skipping schedule selector.")
               with open(os.environ["GITHUB_OUTPUT"], "a") as f:
                   f.write("run=true\n")
               sys.exit(0)
 
           now = datetime.now(ZoneInfo("America/Los_Angeles"))
-          hour, minute = now.hour, now.minute
+          offset_hours = int(now.utcoffset().total_seconds() // 3600)
+          expected_schedule = "35 13 * * *" if offset_hours == -7 else "35 14 * * *"
 
-          # 6:00-9:00 AM Pacific: covers the 6:35 AM nominal trigger with up
-          # to 180 minutes of GitHub scheduler drift. Suppresses the
-          # out-of-window duplicate cron (the one for the opposing DST season).
-          in_window = 6 <= hour < 9
-          print(f"Pacific time: {now.strftime('%Y-%m-%d %H:%M')} in_window={in_window}")
+          with open(os.environ["GITHUB_EVENT_PATH"]) as f:
+              triggering_schedule = str(json.load(f).get("schedule", "")).strip()
+
+          should_run = triggering_schedule == expected_schedule
+          print(
+              f"Pacific time: {now.strftime('%Y-%m-%d %H:%M %Z')} | "
+              f"trigger={triggering_schedule!r} | expected={expected_schedule!r} | "
+              f"run={should_run}"
+          )
 
           with open(os.environ["GITHUB_OUTPUT"], "a") as f:
-              f.write(f"run={'true' if in_window else 'false'}\n")
+              f.write(f"run={'true' if should_run else 'false'}\n")
 
-          if not in_window:
-              print("Outside 6:00-9:00 AM Pacific window — skipping run.")
+          if not should_run:
+              print("Opposing-DST cron selected — suppressing duplicate run.")
           PYEOF
 
       - name: Set up Python

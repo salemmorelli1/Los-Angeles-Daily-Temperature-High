@@ -71,6 +71,12 @@ jobs:
           python run_daily_forecast.py --help
           python part2_deep_learning_forecaster.py --help
 
+      - name: Run regression tests
+        run: python -m unittest discover -s tests -v
+
+      - name: Validate committed artifact contracts
+        run: python validate_artifacts.py
+
 # ---------------------------------------------------------------------------
 # Job 2 — Integration check (heavy, manual or weekly only)
 # ---------------------------------------------------------------------------
