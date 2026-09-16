@@ -1,7 +1,7 @@
 {
   "schema_version": "1.2.0-fail-closed-hold",
-  "run_at": "2026-09-15T17:47:04.861032",
-  "decision_date": "2026-09-15",
+  "run_at": "2026-09-16T17:44:58.878092",
+  "decision_date": "2026-09-16",
   "publish_mode": "NORMAL",
   "forecast_source": "blend",
   "bnn_available": true,
@@ -17,9 +17,9 @@
       "level": "CRITICAL",
       "message": "OK",
       "details": {
-        "fetched_at": "2026-09-15 17:46:08.566949",
+        "fetched_at": "2026-09-16 17:44:08.435166",
         "age_hours": 0.0,
-        "historical_end": "2026-09-14",
+        "historical_end": "2026-09-15",
         "staleness_days": 1
       }
     },
@@ -29,7 +29,7 @@
       "level": "WARN",
       "message": "OK",
       "details": {
-        "trained_at": "2026-09-15 17:46:43.622026",
+        "trained_at": "2026-09-16 17:44:37.348969",
         "age_days": 0
       }
     },
@@ -62,9 +62,9 @@
       "details": {
         "forecast_source": "blend",
         "forecast_values": {
-          "h1": 77.25,
-          "h3": 75.24,
-          "h5": 74.33
+          "h1": 78.06,
+          "h3": 77.1,
+          "h5": 74.23
         }
       }
     },
@@ -75,9 +75,9 @@
       "message": "OK",
       "details": {
         "forecast_values": {
-          "h1": 77.25,
-          "h3": 75.24,
-          "h5": 74.33
+          "h1": 78.06,
+          "h3": 77.1,
+          "h5": 74.23
         },
         "bounds": {
           "min_f": 32.0,
@@ -91,7 +91,7 @@
       "level": "WARN",
       "message": "OK",
       "details": {
-        "spread_f": 2.9,
+        "spread_f": 3.8,
         "max_spread_f": 35.0
       }
     },
@@ -101,16 +101,16 @@
       "level": "CRITICAL",
       "message": "OK",
       "details": {
-        "last_observed_f": 78.4,
+        "last_observed_f": 78.2,
         "check_deviations_f": {
-          "h1": 1.2,
-          "h3": 3.2,
-          "h5": 4.1
+          "h1": 0.1,
+          "h3": 1.1,
+          "h5": 4.0
         },
         "canonical_deviations_f": {
-          "h1": 1.2,
-          "h3": 3.2,
-          "h5": 4.1
+          "h1": 0.1,
+          "h3": 1.1,
+          "h5": 4.0
         },
         "threshold_f": 15.0,
         "forecast_source": "blend",
@@ -125,24 +125,24 @@
       "details": {
         "comparisons": {
           "h1": {
-            "forecast_f": 77.2,
-            "nws_f": 76.0,
-            "deviation_f": 1.2,
+            "forecast_f": 78.1,
+            "nws_f": 78.0,
+            "deviation_f": 0.1,
             "direction": "warm",
             "tier": "OK"
           },
           "h3": {
-            "forecast_f": 75.2,
-            "nws_f": 74.0,
-            "deviation_f": 1.2,
-            "direction": "warm",
+            "forecast_f": 77.1,
+            "nws_f": 78.0,
+            "deviation_f": 0.9,
+            "direction": "cold",
             "tier": "OK"
           },
           "h5": {
-            "forecast_f": 74.3,
-            "nws_f": 75.0,
-            "deviation_f": 0.7,
-            "direction": "cold",
+            "forecast_f": 74.2,
+            "nws_f": 74.0,
+            "deviation_f": 0.2,
+            "direction": "warm",
             "tier": "OK"
           }
         },
@@ -156,24 +156,24 @@
       "name": "BNN_CALIBRATION_GATE",
       "passed": true,
       "level": "WARN",
-      "message": "OK (test gate passed) \u2014 half-split diagnostic warning: H=1: half-split=78.9% < 85%; H=3: half-split=78.4% < 85%. Monitor; consider BNN retrain if this persists.",
+      "message": "OK (test gate passed) \u2014 half-split diagnostic warning: H=1: half-split=76.3% < 85%; H=3: half-split=78.9% < 85%; H=5: half-split=78.0% < 85%. Monitor; consider BNN retrain if this persists.",
       "details": {
         "calibration_pass": true,
-        "validation_calibration_pass": true,
+        "validation_calibration_pass": false,
         "test_calibration_pass": true,
         "interval_status": "CONFORMAL_CALIBRATED",
         "interval_label": "canonical_display_interval",
         "intervals_publishable": false,
         "intervals_displayable": true,
         "coverage_by_horizon": {
-          "h1": 0.9159,
-          "h3": 0.9181,
-          "h5": 0.8987
+          "h1": 0.9332,
+          "h3": 0.8987,
+          "h5": 0.875
         },
         "val_diagnostic_coverage_by_horizon": {
-          "h1": 0.8534,
-          "h3": 0.8534,
-          "h5": 0.8879
+          "h1": 0.8491,
+          "h3": 0.8448,
+          "h5": 0.8578
         },
         "min_coverage_threshold": 0.75,
         "min_validation_coverage": 0.85,
@@ -181,8 +181,9 @@
         "bnn_available": true,
         "half_split_validation_pass": false,
         "half_split_notes": [
-          "H=1: half-split=78.9% < 85%",
-          "H=3: half-split=78.4% < 85%"
+          "H=1: half-split=76.3% < 85%",
+          "H=3: half-split=78.9% < 85%",
+          "H=5: half-split=78.0% < 85%"
         ],
         "half_split_warning": "Half-split diagnostic failed for one or more horizons. The deployed conformal radius uses the full validation set and passes the independent test gate. This is a stability note only. publish_mode is NOT affected."
       }
