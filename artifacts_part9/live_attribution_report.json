@@ -1,8 +1,8 @@
 {
   "schema_version": "1.2.1-idempotent-report",
-  "generated_at": "2026-09-19T17:22:08.312995",
+  "generated_at": "2026-09-20T16:58:31.448648",
   "target_clock": "target_date_h = feature_date + h calendar days",
-  "n_prediction_rows": 73,
+  "n_prediction_rows": 74,
   "skill_min_samples": 30,
   "promote_min_samples": 60,
   "realized_samples_by_horizon": {
@@ -94,7 +94,7 @@
   "forecast_source_summary": {
     "forecast_source_counts": {
       "blend+nws_anchor": 62,
-      "blend": 11
+      "blend": 12
     },
     "nws_anchor_rows": 62,
     "nws_anchor_rows_by_horizon": {
@@ -102,7 +102,7 @@
       "h3": 55,
       "h5": 52
     },
-    "n_prediction_rows": 73,
+    "n_prediction_rows": 74,
     "nws_independence_warning": "NWS anchoring active on ['H=1', 'H=3', 'H=5']. Realized-error metrics are valid but skill comparisons against NWS are not independent for anchored rows. Use model_only_metrics for unbiased model-vs-NWS comparisons."
   },
   "summary": {
