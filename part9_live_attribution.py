@@ -48,6 +48,8 @@ import numpy as np
 import pandas as pd
 import requests
 
+from forecast_protocol import moving_block_bootstrap_mean_ci, pacific_today_timestamp
+
 warnings.filterwarnings("ignore")
 
 
@@ -71,7 +73,7 @@ PART3_DIR = PROJECT_DIR / "artifacts_part3"
 ARTIFACTS_DIR = PROJECT_DIR / "artifacts_part9"
 ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
 
-SCHEMA_VERSION = "1.2.1-idempotent-report"
+SCHEMA_VERSION = "1.3.0-paired-block-bootstrap"
 HORIZONS = [1, 3, 5]
 OM_ARCHIVE_URL = "https://archive-api.open-meteo.com/v1/archive"
 LAT = 33.9425
@@ -233,7 +235,7 @@ def fetch_realized_temps(start: pd.Timestamp, end: pd.Timestamp) -> pd.DataFrame
     # Cap at yesterday — future dates are never in the archive
     end = min(
         pd.Timestamp(end).normalize(),
-        pd.Timestamp.today().normalize() - pd.Timedelta(days=1),
+        pacific_today_timestamp() - pd.Timedelta(days=1),
     )
     if start > end:
         return pd.DataFrame()
@@ -287,7 +289,7 @@ def backfill_realized(df_log: pd.DataFrame, df_realized: pd.DataFrame) -> pd.Dat
         pd.Timestamp(k).normalize(): float(v)
         for k, v in zip(df_realized["date"], df_realized["realized_high_f"])
     }
-    today = pd.Timestamp.today().normalize()
+    today = pacific_today_timestamp()
 
     for idx, row in df_log.iterrows():
         for h in HORIZONS:
@@ -496,36 +498,68 @@ def compute_metrics(df_log: pd.DataFrame, clim_df: pd.DataFrame) -> Dict[str, An
             "bias_f": round(bias, 3),
         }
 
-        # Skill metrics — only when n >= SKILL_MIN_SAMPLES
+        # Comparative metrics use identical paired rows for model and baseline.
         if n >= SKILL_MIN_SAMPLES:
             pers_mask = mask & pers.notna()
-            if int(pers_mask.sum()) >= SKILL_MIN_SAMPLES:
-                pers_err = (real[pers_mask] - pers[pers_mask]).abs()
-                pers_mae = float(pers_err.mean())
-                row["persistence_mae_f"] = round(pers_mae, 3)
-                row["skill_vs_persistence"] = round(
-                    float(1 - mae / pers_mae) if pers_mae > 0 else 0.0, 4
+            n_paired = int(pers_mask.sum())
+            row["n_paired_persistence"] = n_paired
+            if n_paired >= SKILL_MIN_SAMPLES:
+                paired_dates = pd.to_datetime(
+                    df_log.loc[pers_mask, f"target_date_h{h}"], errors="coerce"
                 )
-                model_day_err = (real[pers_mask] - pred[pers_mask]).abs()
-                row["hit_rate"] = round(float((model_day_err < pers_err).mean()), 4)
+                paired = pd.DataFrame({
+                    "target_date": paired_dates.to_numpy(),
+                    "model_abs_error": (real[pers_mask] - pred[pers_mask]).abs().to_numpy(),
+                    "persistence_abs_error": (real[pers_mask] - pers[pers_mask]).abs().to_numpy(),
+                }).dropna().sort_values("target_date", kind="stable")
+                pers_mae = float(paired["persistence_abs_error"].mean())
+                paired_model_mae = float(paired["model_abs_error"].mean())
+                row["persistence_mae_f"] = round(pers_mae, 3)
+                row["paired_model_mae_f"] = round(paired_model_mae, 3)
+                row["skill_vs_persistence"] = round(
+                    float(1 - paired_model_mae / pers_mae) if pers_mae > 0 else 0.0, 4
+                )
+                row["hit_rate"] = round(
+                    float((paired["model_abs_error"] < paired["persistence_abs_error"]).mean()),
+                    4,
+                )
+                loss_delta = (
+                    paired["model_abs_error"].to_numpy()
+                    - paired["persistence_abs_error"].to_numpy()
+                )
+                loss_ci = moving_block_bootstrap_mean_ci(
+                    loss_delta, block_length=5, n_boot=2000, seed=42 + h
+                )
+                row["paired_loss_delta_mean_f"] = round(float(loss_delta.mean()), 3)
+                row["paired_loss_delta_ci95_f"] = [
+                    round(loss_ci["lower"], 3), round(loss_ci["upper"], 3)
+                ]
+                row["paired_loss_delta_ci_method"] = "moving_block_bootstrap"
+                row["paired_loss_delta_block_length_rows"] = int(loss_ci["block_length_rows"])
             else:
                 row["persistence_mae_f"] = None
+                row["paired_model_mae_f"] = None
                 row["skill_vs_persistence"] = None
                 row["hit_rate"] = None
 
-            target_dates = pd.to_datetime(df_log.loc[mask, f"target_date_h{h}"])
+            target_dates = pd.to_datetime(
+                df_log.loc[mask, f"target_date_h{h}"], errors="coerce"
+            )
             clim_p = climatology_for_dates(target_dates, clim_map)
-            clim_m = clim_p.notna()
-            if int(clim_m.sum()) >= SKILL_MIN_SAMPLES:
-                clim_err = (
-                    real[mask].reset_index(drop=True)[clim_m.values]
-                    - clim_p[clim_m].reset_index(drop=True)
-                ).abs()
-                clim_mae = float(clim_err.mean())
+            clim_frame = pd.DataFrame({
+                "target_date": target_dates.to_numpy(),
+                "real": real[mask].to_numpy(),
+                "model": pred[mask].to_numpy(),
+                "climatology": clim_p.to_numpy(),
+            }).dropna().sort_values("target_date", kind="stable")
+            if len(clim_frame) >= SKILL_MIN_SAMPLES:
+                clim_mae = float((clim_frame["real"] - clim_frame["climatology"]).abs().mean())
+                paired_model_mae = float((clim_frame["real"] - clim_frame["model"]).abs().mean())
                 row["clim_mae_f"] = round(clim_mae, 3)
                 row["skill_vs_climatology"] = round(
-                    float(1 - mae / clim_mae) if clim_mae > 0 else 0.0, 4
+                    float(1 - paired_model_mae / clim_mae) if clim_mae > 0 else 0.0, 4
                 )
+                row["n_paired_climatology"] = int(len(clim_frame))
             else:
                 row["clim_mae_f"] = None
                 row["skill_vs_climatology"] = None
@@ -648,7 +682,7 @@ def main() -> int:
     min_target = all_target_dates.min()
     max_target = min(
         all_target_dates.max(),
-        pd.Timestamp.today().normalize() - pd.Timedelta(days=1),
+        pacific_today_timestamp() - pd.Timedelta(days=1),
     )
     df_realized = fetch_realized_temps(min_target, max_target)
 

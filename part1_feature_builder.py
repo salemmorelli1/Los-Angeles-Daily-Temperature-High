@@ -39,6 +39,8 @@ from typing import Dict, List, Optional
 import numpy as np
 import pandas as pd
 
+from forecast_protocol import PURGE_DAYS
+
 # ---------------------------------------------------------------------------
 # Environment
 # ---------------------------------------------------------------------------
@@ -58,7 +60,7 @@ PART6_DIR = PROJECT_DIR / "artifacts_part6"
 ARTIFACTS_DIR = PROJECT_DIR / "artifacts_part1"
 ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
 
-SCHEMA_VERSION = "1.0.0"
+SCHEMA_VERSION = "1.1.0-calendar-targets-purged"
 
 # Forecast horizons (trading days ahead)
 HORIZONS = [1, 3, 5]
@@ -242,10 +244,21 @@ def add_regime_features(df: pd.DataFrame, regime_df: Optional[pd.DataFrame]) -> 
 
 
 def add_target_columns(df: pd.DataFrame) -> pd.DataFrame:
-    """Add forward-shifted target values for each horizon."""
+    """Look up each target on its documented calendar date."""
+    out = df.copy()
+    dates = pd.to_datetime(out["date"], errors="coerce").dt.normalize()
+    if dates.isna().any():
+        raise ValueError("Cannot build calendar targets with invalid feature dates")
+    if dates.duplicated().any():
+        raise ValueError("Cannot build calendar targets with duplicate feature dates")
+    values = pd.Series(
+        pd.to_numeric(out[TARGET_COL], errors="coerce").to_numpy(),
+        index=dates,
+    )
     for h in HORIZONS:
-        df[f"target_h{h}"] = df[TARGET_COL].shift(-h)
-    return df
+        target_dates = dates + pd.Timedelta(days=h)
+        out[f"target_h{h}"] = target_dates.map(values).to_numpy()
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -336,15 +349,30 @@ def compute_splits(df: pd.DataFrame) -> Dict[str, str]:
 
     dates = df_labeled["date"].sort_values().reset_index(drop=True)
 
+    train_end = pd.Timestamp(dates.iloc[train_end_idx - 1]).normalize()
+    val_end = pd.Timestamp(dates.iloc[val_end_idx - 1]).normalize()
+    train_effective_end = train_end - pd.Timedelta(days=PURGE_DAYS)
+    val_effective_end = val_end - pd.Timedelta(days=PURGE_DAYS)
+    date_values = pd.to_datetime(df_labeled["date"]).dt.normalize()
+    n_train_effective = int((date_values <= train_effective_end).sum())
+    n_val_effective = int(
+        ((date_values > train_end) & (date_values <= val_effective_end)).sum()
+    )
+
     return {
         "train_start": str(dates.iloc[0].date()),
-        "train_end": str(dates.iloc[train_end_idx - 1].date()),
+        "train_end": str(train_end.date()),
+        "train_effective_end": str(train_effective_end.date()),
         "val_start": str(dates.iloc[train_end_idx].date()),
-        "val_end": str(dates.iloc[val_end_idx - 1].date()),
+        "val_end": str(val_end.date()),
+        "val_effective_end": str(val_effective_end.date()),
         "test_start": str(dates.iloc[val_end_idx].date()),
         "test_end": str(dates.iloc[-1].date()),
+        "purge_days": PURGE_DAYS,
         "n_train": train_end_idx,
+        "n_train_after_purge": n_train_effective,
         "n_val": val_end_idx - train_end_idx,
+        "n_val_after_purge": n_val_effective,
         "n_test": n - val_end_idx,
         "n_labeled": n,
         "n_feature_rows": len(df),

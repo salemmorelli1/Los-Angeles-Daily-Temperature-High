@@ -17,6 +17,22 @@ on:
       - "artifacts_part3/**"
       - "artifacts_part6/**"
       - "artifacts_part9/**"
+  pull_request:
+    branches: ["main"]
+    paths:
+      - "index.html"
+      - "report/**"
+      - "assets/**"
+      - ".github/workflows/pages.yml"
+      - "artifacts_part0/**"
+      - "artifacts_part1/**"
+      - "artifacts_part2/**"
+      - "artifacts_part2a/**"
+      - "artifacts_part2b/**"
+      - "artifacts_part2c/**"
+      - "artifacts_part3/**"
+      - "artifacts_part6/**"
+      - "artifacts_part9/**"
   workflow_dispatch:
 
 permissions:
@@ -68,6 +84,24 @@ jobs:
             cp favicon.ico _site/favicon.ico
           fi
 
+          for artifact_file in \
+            artifacts_part2/prediction_log.csv \
+            artifacts_part2/part2_meta.json \
+            artifacts_part2b/part2b_summary.json \
+            artifacts_part2c/part2c_meta.json \
+            artifacts_part2c/calibration_report.json \
+            artifacts_part3/governance_report.json \
+            artifacts_part6/regime_meta.json \
+            artifacts_part9/live_attribution_report.json
+          do
+            if [ ! -f "$artifact_file" ]; then
+              echo "ERROR: required dashboard artifact not found: $artifact_file"
+              exit 1
+            fi
+            mkdir -p "_site/$(dirname "$artifact_file")"
+            cp "$artifact_file" "_site/$artifact_file"
+          done
+
           touch _site/.nojekyll
 
           echo "Prepared static site contents:"
@@ -80,6 +114,7 @@ jobs:
 
   deploy:
     name: Deploy static site
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     needs: build
     timeout-minutes: 10

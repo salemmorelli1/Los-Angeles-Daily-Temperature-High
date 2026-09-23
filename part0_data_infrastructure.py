@@ -36,10 +36,12 @@ import numpy as np
 import pandas as pd
 import requests
 
+from forecast_protocol import pacific_today
+
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-SCHEMA_VERSION = "1.0.0"
+SCHEMA_VERSION = "1.1.0-pacific-complete-day"
 
 # KLAX coordinates (Los Angeles International Airport)
 LAT = 33.9425
@@ -167,7 +169,7 @@ def fetch_historical_daily(
 ) -> pd.DataFrame:
     """Pull daily temperature/weather observations from Open-Meteo archive."""
     if end_date is None:
-        end_date = (date.today() - timedelta(days=1)).strftime("%Y-%m-%d")
+        end_date = (pacific_today() - timedelta(days=1)).strftime("%Y-%m-%d")
 
     print(f"[Part 0] Fetching Open-Meteo historical daily: {start_date} → {end_date}")
 
@@ -227,7 +229,7 @@ def fetch_hourly_aggregated(
 ) -> pd.DataFrame:
     """Pull hourly data and aggregate to daily mean/range for pressure, humidity, dew point."""
     if end_date is None:
-        end_date = (date.today() - timedelta(days=1)).strftime("%Y-%m-%d")
+        end_date = (pacific_today() - timedelta(days=1)).strftime("%Y-%m-%d")
 
     print(f"[Part 0] Fetching Open-Meteo hourly for aggregation: {start_date} → {end_date}")
 
@@ -445,7 +447,7 @@ def fetch_nws_official_forecast(
 def fetch_klax_observations(station: str = NWS_STATION, days_back: int = 30) -> pd.DataFrame:
     """Pull recent hourly observations from KLAX via NWS API."""
     url = f"{NWS_BASE}/stations/{station}/observations"
-    start_iso = (date.today() - timedelta(days=days_back)).strftime("%Y-%m-%dT00:00:00Z")
+    start_iso = (pacific_today() - timedelta(days=days_back)).strftime("%Y-%m-%dT00:00:00Z")
     print(f"[Part 0] Fetching KLAX observations: last {days_back} days")
 
     try:
@@ -556,19 +558,11 @@ def build_master_historical(
 # Calendar continuity check
 # ---------------------------------------------------------------------------
 def _check_calendar_continuity(df_historical: pd.DataFrame) -> Dict[str, Any]:
-    """Verify historical_daily.parquet has one row per continuous calendar day.
+    """Check calendar continuity for lag and rolling feature assumptions.
 
-    Part 1's add_target_columns() builds target_h{h} as
-    TARGET_COL.shift(-h) -- a positional shift. That is only equivalent to
-    the documented contract "target_date_h = feature_date + h calendar days"
-    if there is no missing calendar day anywhere in the row order. A missing
-    day would silently misalign every downstream target_date_h{h} computed
-    elsewhere as feature_date + h days (Part 2's write_prediction_row, Part
-    9's target_date_for_row, ...) from the value Part 1's shift actually
-    captured. This has not been an observed failure -- Open-Meteo's archive
-    API returns one row per requested day with nulls for unavailable fields
-    rather than omitting days -- but nothing previously verified the
-    assumption, so a gap would have failed silently rather than loudly.
+    Part 1 now looks up targets by explicit calendar date, so a missing date
+    cannot shift a label onto the wrong horizon. This check still reports gaps
+    that affect positional lags and rolling feature windows.
     """
     result: Dict[str, Any] = {"continuous": True, "n_gap_days": 0, "gap_ranges": []}
     if df_historical.empty or len(df_historical) < 2:
@@ -584,8 +578,8 @@ def _check_calendar_continuity(df_historical: pd.DataFrame) -> Dict[str, Any]:
         result["gap_ranges"] = [d.strftime("%Y-%m-%d") for d in missing[:20]]
         print(
             f"[Part 0] WARNING: historical_daily.parquet has {len(missing)} missing "
-            f"calendar day(s) — target_h*/target_date_h* alignment downstream "
-            f"assumes no gaps. First gap dates: {result['gap_ranges']}"
+            f"calendar day(s) — lag and rolling features span a data gap. "
+            f"First gap dates: {result['gap_ranges']}"
         )
     return result
 
@@ -679,7 +673,7 @@ def main() -> int:
     df_existing = load_historical()
     if not df_existing.empty:
         last_date = pd.Timestamp(df_existing["date"].max()).date()
-        today = date.today()
+        today = pacific_today()
         if last_date >= today - timedelta(days=1):
             print(f"[Part 0] Historical cache is current (last: {last_date}).")
             start_date = HISTORY_START

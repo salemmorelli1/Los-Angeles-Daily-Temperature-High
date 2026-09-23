@@ -54,6 +54,8 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 
+from forecast_protocol import pacific_today_timestamp, purged_labeled_splits
+
 warnings.filterwarnings("ignore")
 
 
@@ -229,13 +231,9 @@ def _build_labeled_splits(
     df: pd.DataFrame,
     splits: Dict,
 ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    labeled = df.dropna(subset=_target_cols()).copy()
-    train_end = pd.Timestamp(splits["train_end"])
-    val_end = pd.Timestamp(splits["val_end"])
-
-    df_train = labeled[labeled["date"] <= train_end].copy()
-    df_val = labeled[(labeled["date"] > train_end) & (labeled["date"] <= val_end)].copy()
-    df_test = labeled[labeled["date"] > val_end].copy()
+    df_train, df_val, df_test = purged_labeled_splits(
+        df, splits, _target_cols()
+    )
 
     if df_train.empty or df_val.empty or df_test.empty:
         raise ValueError(
@@ -1110,7 +1108,7 @@ def main(model_type: str = "lstm", mode: str = "train") -> int:
     write_prediction_row(
         preds_f=live_pred,
         was_clipped=bool(live_clipped),
-        decision_date=pd.Timestamp.today().normalize(),
+        decision_date=pacific_today_timestamp(),
         feature_date=feature_date,
         model_type=model_type,
     )

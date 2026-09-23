@@ -46,6 +46,8 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 import pandas as pd
 
+from forecast_protocol import pacific_today, pacific_today_timestamp
+
 warnings.filterwarnings("ignore")
 
 
@@ -158,7 +160,7 @@ def check_data_freshness() -> GovernanceCheck:
     fetched_at = pd.Timestamp(meta.get("fetched_at", "1970-01-01"))
     age_h = (pd.Timestamp.now() - fetched_at).total_seconds() / 3600
     hist_end = pd.Timestamp(meta.get("historical_end", "1970-01-01"))
-    staleness = (pd.Timestamp.today().normalize() - hist_end).days
+    staleness = (pacific_today_timestamp() - hist_end).days
     chk.details = {
         "fetched_at": str(fetched_at), "age_hours": round(age_h, 1),
         "historical_end": str(hist_end.date()), "staleness_days": staleness,
@@ -710,7 +712,7 @@ def main() -> int:
     df_hist = load_historical()
 
     latest = df_log.iloc[-1] if df_log is not None and not df_log.empty else pd.Series()
-    decision_date = str(latest.get("decision_date", pd.Timestamp.today().date()))
+    decision_date = str(latest.get("decision_date", pacific_today()))
     forecast_source = str(latest.get("forecast_source", "unknown"))
 
     print(f"[Part 3] Evaluating governance for decision_date={decision_date}")

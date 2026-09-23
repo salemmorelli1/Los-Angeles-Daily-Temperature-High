@@ -47,11 +47,12 @@ jobs:
       - name: Install lightweight dependencies only
         run: |
           python -m pip install --upgrade pip
-          pip install numpy pandas requests pyarrow scikit-learn
+          pip install numpy pandas requests pyarrow scikit-learn tzdata
 
       - name: Compile all project scripts
         run: |
           python -m py_compile \
+            forecast_protocol.py \
             part0_data_infrastructure.py \
             part1_feature_builder.py \
             part2_deep_learning_forecaster.py \
@@ -124,6 +125,7 @@ jobs:
       - name: Compile all project scripts (full stack)
         run: |
           python -m py_compile \
+            forecast_protocol.py \
             part0_data_infrastructure.py \
             part1_feature_builder.py \
             part2_deep_learning_forecaster.py \
