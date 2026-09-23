@@ -11,12 +11,12 @@ Canonical forecast columns
 Part 2B owns the canonical forecast_h1 / forecast_h3 / forecast_h5 columns
 and forecast_source / forecast_reason in the prediction log.
 
-Fallback chain (evaluated in order):
-  1. blend_h*     — validation-tuned XGB/LSTM blend (if XGB gate passes)
-  2. xgb_h*       — XGB alone                      (if LSTM is implausible)
-  3. target_h*    — Part 2 LSTM alone              (if XGB is unavailable/blocked)
-  4. nws_h*       — NWS official forecast           (if learned models are unavailable)
-  5. persistence  — last observed temp              (last resort)
+Per-horizon forecast policy:
+  1. Use a validation-approved XGB/LSTM blend or individual model only when
+     recent paired realized errors establish skill over persistence.
+  2. Use persistence when learned skill is absent or not established.
+  3. Apply an NWS adjustment only when its paired realized-skill gate passes.
+  4. Keep shadow learned candidates in the log to continue evaluating skill.
 
 A candidate is "plausible" if its deviation from the last observed temperature
 is ≤ FORECAST_SANITY_THRESHOLD_F. The LSTM is always checked; if it fails the
@@ -47,6 +47,12 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 
+from forecast_protocol import (
+    moving_block_bootstrap_mean_ci,
+    pacific_today_timestamp,
+    purged_labeled_splits,
+)
+
 warnings.filterwarnings("ignore")
 
 
@@ -70,7 +76,7 @@ PART2_DIR = PROJECT_DIR / "artifacts_part2"
 ARTIFACTS_DIR = PROJECT_DIR / "artifacts_part2b"
 ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
 
-SCHEMA_VERSION = "1.3.0-realized-skill-gates"
+SCHEMA_VERSION = "1.4.0-temporal-purge-live-skill"
 HORIZONS = [1, 3, 5]
 
 XGB_PARAMS = {
@@ -91,6 +97,9 @@ BNN_RECOMMENDATION_THRESHOLD_F = 0.3  # XGB must beat LSTM by this much
 NWS_ANCHOR_MIN_REALIZED_SAMPLES = 30
 NWS_ANCHOR_LOOKBACK_ROWS = 90
 NWS_ANCHOR_MIN_MAE_IMPROVEMENT_F = 0.25
+
+LIVE_SKILL_MIN_REALIZED_SAMPLES = 30
+LIVE_SKILL_LOOKBACK_ROWS = 90
 
 # A forecast is "plausible" if it deviates by less than this from last observed
 FORECAST_SANITY_THRESHOLD_F = 15.0
@@ -195,16 +204,107 @@ def _clean(df: pd.DataFrame, cols: List[str]) -> np.ndarray:
 # Baselines
 # ---------------------------------------------------------------------------
 def naive_persistence_mae(df_val: pd.DataFrame) -> Dict[str, float]:
+    """Score persistence from the last observation known on feature_date."""
     maes: Dict[str, float] = {}
-    if "temp_high_f_lag1" not in df_val.columns:
+    if "temp_high_f" not in df_val.columns:
         return maes
     for h in HORIZONS:
-        y = df_val[f"target_h{h}"].dropna()
-        if len(y) == 0:
+        target_col = f"target_h{h}"
+        if target_col not in df_val.columns:
             continue
-        pers = df_val.loc[y.index, "temp_high_f_lag1"]
-        maes[f"h{h}"] = float(np.mean(np.abs(y.values - pers.values)))
+        paired = pd.DataFrame({
+            "target": pd.to_numeric(df_val[target_col], errors="coerce"),
+            "persistence": pd.to_numeric(df_val["temp_high_f"], errors="coerce"),
+        }).dropna()
+        if not paired.empty:
+            maes[f"h{h}"] = float(
+                np.mean(np.abs(paired["target"].to_numpy() - paired["persistence"].to_numpy()))
+            )
     return maes
+
+
+def evaluate_live_model_skill(
+    df_log: pd.DataFrame,
+    min_samples: int = LIVE_SKILL_MIN_REALIZED_SAMPLES,
+    lookback_rows: int = LIVE_SKILL_LOOKBACK_ROWS,
+) -> Tuple[Dict[int, bool], Dict[str, Dict[str, object]]]:
+    """Fail closed unless recent paired errors show learned-model skill.
+
+    Loss differences are model absolute error minus persistence absolute error;
+    negative values favor the learned candidate. The block bootstrap preserves
+    short-range serial dependence across adjacent forecast issue dates.
+    """
+    allowed = {h: False for h in HORIZONS}
+    diagnostics: Dict[str, Dict[str, object]] = {}
+    for h in HORIZONS:
+        real_col = f"realized_h{h}"
+        persistence_col = f"persistence_h{h}"
+        candidate_col = f"forecast_candidate_h{h}"
+        pre_anchor_col = f"forecast_pre_anchor_h{h}"
+        if df_log.empty or real_col not in df_log or persistence_col not in df_log:
+            diagnostics[f"h{h}"] = {
+                "enabled": False, "reason": "paired_history_missing", "n_paired": 0
+            }
+            continue
+
+        candidate = pd.to_numeric(
+            df_log.get(candidate_col, pd.Series(np.nan, index=df_log.index)),
+            errors="coerce",
+        )
+        pre_anchor = pd.to_numeric(
+            df_log.get(pre_anchor_col, pd.Series(np.nan, index=df_log.index)),
+            errors="coerce",
+        )
+        candidate = candidate.where(candidate.notna(), pre_anchor)
+        paired = pd.DataFrame({
+            "candidate": candidate,
+            "persistence": pd.to_numeric(df_log[persistence_col], errors="coerce"),
+            "realized": pd.to_numeric(df_log[real_col], errors="coerce"),
+        })
+        if "feature_date" in df_log.columns:
+            paired["_feature_date"] = pd.to_datetime(df_log["feature_date"], errors="coerce")
+            sort_cols = ["_feature_date"]
+            if "decision_date" in df_log.columns:
+                paired["_decision_date"] = pd.to_datetime(df_log["decision_date"], errors="coerce")
+                sort_cols.append("_decision_date")
+            paired = paired.sort_values(sort_cols, kind="stable")
+        elif "decision_date" in df_log.columns:
+            paired["_decision_date"] = pd.to_datetime(df_log["decision_date"], errors="coerce")
+            paired = paired.sort_values("_decision_date", kind="stable")
+        paired = paired.dropna(subset=["candidate", "persistence", "realized"]).tail(lookback_rows)
+        n_paired = int(len(paired))
+        delta = (
+            np.abs(paired["candidate"].to_numpy() - paired["realized"].to_numpy())
+            - np.abs(paired["persistence"].to_numpy() - paired["realized"].to_numpy())
+        )
+        if n_paired < min_samples:
+            diagnostics[f"h{h}"] = {
+                "enabled": False,
+                "reason": "insufficient_paired_history",
+                "n_paired": n_paired,
+                "min_samples": int(min_samples),
+                "lookback_rows": int(lookback_rows),
+            }
+            continue
+
+        ci = moving_block_bootstrap_mean_ci(delta, block_length=5, n_boot=2000, seed=42 + h)
+        model_mae = float(np.abs(paired["candidate"] - paired["realized"]).mean())
+        persistence_mae = float(np.abs(paired["persistence"] - paired["realized"]).mean())
+        enabled = bool(ci["upper"] < 0.0)
+        allowed[h] = enabled
+        diagnostics[f"h{h}"] = {
+            "enabled": enabled,
+            "reason": "paired_skill_ci_below_zero" if enabled else "skill_not_established",
+            "n_paired": n_paired,
+            "lookback_rows": int(lookback_rows),
+            "candidate_mae_f": model_mae,
+            "persistence_mae_f": persistence_mae,
+            "mean_paired_loss_delta_f": float(delta.mean()),
+            "loss_delta_ci95_f": [ci["lower"], ci["upper"]],
+            "bootstrap_block_length_rows": int(ci["block_length_rows"]),
+            "bootstrap_replicates": int(ci["n_boot"]),
+        }
+    return allowed, diagnostics
 
 
 def evaluate_xgb_validation_gate(
@@ -244,6 +344,22 @@ def evaluate_xgb_validation_gate(
         passed = passed and horizon_pass
 
     return bool(passed), diagnostics
+
+
+def select_gate_approved_xgb_predictions(
+    xgb_predictions: Dict[str, float],
+    diagnostics: Dict[str, Dict[str, object]],
+) -> Dict[str, float]:
+    """Keep validation-approved XGB horizons even if another horizon is blocked."""
+    approved: Dict[str, float] = {}
+    for h in HORIZONS:
+        key = f"h{h}"
+        value = pd.to_numeric(
+            pd.Series([xgb_predictions.get(key, np.nan)]), errors="coerce"
+        ).iloc[0]
+        if diagnostics.get(key, {}).get("passed", False) and np.isfinite(value):
+            approved[key] = float(value)
+    return approved
 
 
 def evaluate_nws_anchor_skill(
@@ -612,12 +728,21 @@ def _select_pre_anchor_candidate(
     nws_preds: Dict[int, Optional[float]],
     last_obs: Optional[float],
     blend_weights_xgb: Optional[Dict[str, float]] = None,
+    learned_allowed: bool = True,
 ) -> Tuple[float, str, str]:
     """Select the exact fallback candidate before any NWS anchoring overlay."""
     key = f"h{h}"
     xgb_val = xgb_preds.get(key)
     lstm_val = lstm_preds.get(key)
     last_obs_f = float(last_obs) if last_obs is not None else float("nan")
+
+    if not learned_allowed:
+        if np.isfinite(last_obs_f):
+            return last_obs_f, "persistence", f"H{h}:live_skill_gate_persistence"
+        nws_val = nws_preds.get(h)
+        if nws_val is not None and np.isfinite(nws_val):
+            return float(nws_val), "nws", f"H{h}:live_skill_gate_nws_fallback"
+        return float("nan"), "unavailable", f"H{h}:live_skill_gate_no_baseline"
 
     xgb_ok = bool(
         xgb_val is not None
@@ -669,12 +794,14 @@ def compute_canonical_forecast(
     last_obs: Optional[float],
     blend_weights_xgb: Optional[Dict[str, float]] = None,
     nws_anchor_allowed: Optional[Dict[int, bool]] = None,
+    model_skill_allowed: Optional[Dict[int, bool]] = None,
 ) -> Tuple[Dict[str, float], str, str]:
     """Apply the fallback chain and return (forecast, source, reason).
 
-    Chain: blend → xgb → Part 2 model → NWS → persistence, followed by an
-    NWS/heat-event anchoring overlay only when paired realized skill authorizes
-    that overlay for the horizon.
+    Learned candidates pass a horizon-specific live-skill gate first. The
+    canonical fallback is persistence when the paired block-bootstrap interval
+    does not establish a learned-model improvement. NWS anchoring is a separate
+    realized-skill overlay.
     """
     forecast: Dict[str, float] = {}
     sources: List[str] = []
@@ -683,7 +810,13 @@ def compute_canonical_forecast(
     for h in HORIZONS:
         key = f"h{h}"
         selected_val, selected_source, selected_reason = _select_pre_anchor_candidate(
-            h, xgb_preds, lstm_preds, nws_preds, last_obs, blend_weights_xgb
+            h,
+            xgb_preds,
+            lstm_preds,
+            nws_preds,
+            last_obs,
+            blend_weights_xgb,
+            learned_allowed=bool((model_skill_allowed or {}).get(h, True)),
         )
 
         # Apply the overlay only when paired live evidence authorizes it.
@@ -715,6 +848,7 @@ def build_anchor_audit_fields(
     blend_weights_xgb: Optional[Dict[str, float]] = None,
     last_obs: Optional[float] = None,
     nws_anchor_allowed: Optional[Dict[int, bool]] = None,
+    model_skill_allowed: Optional[Dict[int, bool]] = None,
 ) -> Tuple[Dict[str, object], Dict[str, Dict[str, object]]]:
     """Create transparent NWS-anchor audit columns.
 
@@ -733,7 +867,17 @@ def build_anchor_audit_fields(
             pd.Series([nws_preds.get(h, np.nan)]), errors="coerce"
         ).iloc[0]
         selected, selected_source, _ = _select_pre_anchor_candidate(
-            h, xgb_preds, lstm_preds, nws_preds, last_obs, blend_weights_xgb
+            h,
+            xgb_preds,
+            lstm_preds,
+            nws_preds,
+            last_obs,
+            blend_weights_xgb,
+            learned_allowed=bool((model_skill_allowed or {}).get(h, True)),
+        )
+        candidate, candidate_source, _ = _select_pre_anchor_candidate(
+            h, xgb_preds, lstm_preds, nws_preds, last_obs,
+            blend_weights_xgb, learned_allowed=True
         )
         if selected_source in {"blend", "xgb", "lstm"}:
             pre_anchor = float(selected)
@@ -756,6 +900,12 @@ def build_anchor_audit_fields(
         delta = final_val - pre_anchor if np.isfinite(final_val) and np.isfinite(pre_anchor) else float("nan")
         details[key] = {
             "pre_anchor_source": pre_source,
+            "candidate_source": candidate_source,
+            "candidate_f": (
+                float(candidate)
+                if candidate_source in {"blend", "xgb", "lstm"} and np.isfinite(candidate)
+                else None
+            ),
             "blend_weight_xgb": _blend_weight_for_h(blend_weights_xgb, h) if pre_source == "blend" else None,
             "pre_anchor_f": float(pre_anchor) if np.isfinite(pre_anchor) else None,
             "nws_f": float(nws_val) if np.isfinite(nws_val) else None,
@@ -767,6 +917,8 @@ def build_anchor_audit_fields(
         }
 
         flat[f"forecast_pre_anchor_h{h}"] = details[key]["pre_anchor_f"]
+        flat[f"forecast_candidate_h{h}"] = details[key]["candidate_f"]
+        flat[f"forecast_candidate_source_h{h}"] = details[key]["candidate_source"]
         flat[f"nws_h{h}"] = details[key]["nws_f"]
         flat[f"nws_anchor_applied_h{h}"] = bool(anchor_applied)
         flat[f"nws_anchor_delta_h{h}"] = details[key]["anchor_delta_f"]
@@ -835,18 +987,10 @@ def main() -> int:
     feature_cols = _feature_cols(df)
     print(f"[Part 2B] {len(df)} rows, {len(feature_cols)} features")
 
-    train_end = pd.Timestamp(splits["train_end"])
-    val_end = pd.Timestamp(splits["val_end"])
-
-    # Correction 1: filter to fully labeled rows before splitting so the
-    # unlabeled live tail (feature rows without realized targets) never enters
-    # the train/val/test splits. X_all retains the full matrix for live inference.
+    # Keep the full feature matrix for live inference, and purge the final
+    # five calendar days from train and validation to prevent target overlap.
     target_cols = [f"target_h{h}" for h in HORIZONS]
-    labeled = df.dropna(subset=target_cols).copy()
-
-    df_train = labeled[labeled["date"] <= train_end].copy()
-    df_val = labeled[(labeled["date"] > train_end) & (labeled["date"] <= val_end)].copy()
-    df_test = labeled[labeled["date"] > val_end].copy()
+    df_train, df_val, df_test = purged_labeled_splits(df, splits, target_cols)
 
     X_tr = _clean(df_train, feature_cols)
     X_va = _clean(df_val, feature_cols)
@@ -953,7 +1097,7 @@ def main() -> int:
     # Canonical forecast fallback chain
     # -------------------------------------------------------------------
     feature_date = pd.Timestamp(df["date"].max()).normalize()
-    decision_date = pd.Timestamp.today().normalize()
+    decision_date = pacific_today_timestamp()
 
     # Determine which row Part 2 actually wrote. Part 2 keys its prediction_log
     # row by model=model_type.upper() ("LSTM" or "TRANSFORMER" depending on the
@@ -1002,9 +1146,18 @@ def main() -> int:
     last_obs = load_last_observed_temp()
     nws_preds = load_nws_forecast_for_horizons(feature_date)
     nws_anchor_allowed, nws_anchor_skill = evaluate_nws_anchor_skill(log)
-    governed_xgb_live = xgb_live if gate else {}
-    if not gate:
-        print("[Part 2B] XGB validation gate failed — canonical chain will use the Part 2 model.")
+    model_skill_allowed, model_skill_diagnostics = evaluate_live_model_skill(log)
+    governed_xgb_live = select_gate_approved_xgb_predictions(
+        xgb_live, gate_diagnostics
+    )
+    blocked_xgb_horizons = [
+        h for h in HORIZONS if f"h{h}" not in governed_xgb_live
+    ]
+    if blocked_xgb_horizons:
+        print(
+            f"[Part 2B] XGB validation gate blocked H={blocked_xgb_horizons}; "
+            "approved horizons remain eligible for the canonical chain."
+        )
     print(f"[Part 2B] NWS anchor allowed by horizon: {nws_anchor_allowed}")
 
     forecast, source, reason = compute_canonical_forecast(
@@ -1014,6 +1167,7 @@ def main() -> int:
         last_obs,
         blend_weights_xgb,
         nws_anchor_allowed,
+        model_skill_allowed=model_skill_allowed,
     )
     anchor_log_fields, anchor_details = build_anchor_audit_fields(
         forecast,
@@ -1024,6 +1178,7 @@ def main() -> int:
         blend_weights_xgb,
         last_obs,
         nws_anchor_allowed,
+        model_skill_allowed,
     )
 
     print("\n=== CANONICAL FORECAST ===")
@@ -1084,6 +1239,7 @@ def main() -> int:
         "nws_anchor_used": bool(anchor_log_fields.get("nws_anchor_used", False)),
         "nws_anchor_details": anchor_details,
         "nws_anchor_skill_gate": nws_anchor_skill,
+        "live_model_skill_gate": model_skill_diagnostics,
         "feature_importances": feat_importances,
         "hyperparameters": XGB_PARAMS,
         "nws_anchor_policy": {
