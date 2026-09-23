@@ -3,11 +3,13 @@
 """
 Part 6 — Weather Regime Engine
 ================================
-Fits a regime model over historical meteorological features and writes daily
-weather-regime artifacts for the LA Temperature Forecasting stack.
+Fits a regime model on the first chronological 70% of meteorological features
+and writes daily weather-regime artifacts for the LA Temperature Forecasting
+stack. Scaling and imputation are trained on that same window. HMM posteriors
+use a forward filter so later observations do not change earlier regime states.
 
 Primary backend: GaussianHMM from hmmlearn.
-Fallback backend: deterministic KMeans if HMM fitting/decoding fails.
+Fallback backend: deterministic KMeans if HMM fitting fails.
 """
 
 from __future__ import annotations
@@ -42,9 +44,10 @@ SRC_DIR = PROJECT_DIR / "artifacts_part0"
 ARTIFACTS_DIR = PROJECT_DIR / "artifacts_part6"
 ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
 
-SCHEMA_VERSION = "1.1.0"
+SCHEMA_VERSION = "1.2.0-causal-filtered-train-only"
 N_REGIMES = 3
 MIN_ROWS_FOR_MODEL = 180
+REGIME_FIT_FRAC = 0.70
 
 
 def load_historical() -> pd.DataFrame:
@@ -115,14 +118,31 @@ def prepare_regime_features(df: pd.DataFrame) -> Tuple[pd.DataFrame, List[str]]:
     feat_sub = feat[["date"] + feature_cols].copy()
     feat_sub = feat_sub.dropna(thresh=threshold + 1)
 
-    for col in feature_cols:
-        arr = pd.to_numeric(feat_sub[col], errors="coerce").replace([np.inf, -np.inf], np.nan)
-        med = arr.median()
-        if pd.isna(med):
-            med = 0.0
-        feat_sub[col] = arr.fillna(med).astype(float)
-
     return feat_sub.reset_index(drop=True), feature_cols
+
+
+def impute_regime_features(
+    feat_df: pd.DataFrame,
+    feature_cols: List[str],
+    n_fit_rows: int,
+) -> Tuple[pd.DataFrame, Dict[str, float]]:
+    """Fit missing-value replacements on the chronological training window."""
+    if n_fit_rows <= 0 or n_fit_rows > len(feat_df):
+        raise ValueError("n_fit_rows must be within the feature-frame length")
+    out = feat_df.copy()
+    fit = out.iloc[:n_fit_rows]
+    medians: Dict[str, float] = {}
+    for col in feature_cols:
+        fit_values = pd.to_numeric(fit[col], errors="coerce").replace(
+            [np.inf, -np.inf], np.nan
+        )
+        median = fit_values.median()
+        medians[col] = float(median) if pd.notna(median) else 0.0
+        values = pd.to_numeric(out[col], errors="coerce").replace(
+            [np.inf, -np.inf], np.nan
+        )
+        out[col] = values.fillna(medians[col]).astype(float)
+    return out, medians
 
 
 def fit_hmm(X: np.ndarray, n_regimes: int = N_REGIMES, n_iter: int = 200):
@@ -147,9 +167,16 @@ def fit_kmeans_fallback(X: np.ndarray, n_regimes: int = N_REGIMES) -> KMeans:
     return model
 
 
-def _soft_probs_from_distances(distances: np.ndarray) -> np.ndarray:
+def _soft_probs_from_distances(
+    distances: np.ndarray,
+    reference_scale: Optional[float] = None,
+) -> np.ndarray:
     d = np.asarray(distances, dtype=float)
-    scale = np.nanmedian(d)
+    scale = (
+        float(reference_scale)
+        if reference_scale is not None
+        else float(np.nanmedian(d))
+    )
     if not np.isfinite(scale) or scale <= 0:
         scale = 1.0
     logits = -d / scale
@@ -158,6 +185,27 @@ def _soft_probs_from_distances(distances: np.ndarray) -> np.ndarray:
     denom = expv.sum(axis=1, keepdims=True)
     denom[denom == 0] = 1.0
     return expv / denom
+
+
+def causal_hmm_filter(model: Any, X: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    """Return one-step filtered HMM state probabilities without future smoothing."""
+    if len(X) == 0:
+        return np.empty((0, int(model.n_components))), np.empty(0, dtype=int)
+    log_likelihood = np.asarray(model._compute_log_likelihood(X), dtype=float)
+    row_max = np.max(log_likelihood, axis=1, keepdims=True)
+    emissions = np.exp(np.clip(log_likelihood - row_max, -745.0, 0.0))
+    n_rows, n_states = emissions.shape
+    filtered = np.zeros((n_rows, n_states), dtype=float)
+
+    alpha = np.asarray(model.startprob_, dtype=float) * emissions[0]
+    total = alpha.sum()
+    filtered[0] = alpha / total if np.isfinite(total) and total > 0 else 1.0 / n_states
+    transition = np.asarray(model.transmat_, dtype=float)
+    for i in range(1, n_rows):
+        alpha = (filtered[i - 1] @ transition) * emissions[i]
+        total = alpha.sum()
+        filtered[i] = alpha / total if np.isfinite(total) and total > 0 else filtered[i - 1]
+    return filtered.argmax(axis=1).astype(int), filtered
 
 
 def _state_means_from_model(model: Any, scaler: StandardScaler, feature_cols: List[str], backend: str) -> pd.DataFrame:
@@ -242,6 +290,8 @@ def save_model(
     label_map: Dict[int, str],
     feature_cols: List[str],
     backend: str,
+    imputation_values: Optional[Dict[str, float]] = None,
+    fit_end_date: Optional[str] = None,
 ) -> None:
     bundle = {
         "model": model,
@@ -249,6 +299,8 @@ def save_model(
         "label_map": label_map,
         "feature_cols": feature_cols,
         "backend": backend,
+        "imputation_values": imputation_values or {},
+        "fit_end_date": fit_end_date,
         "schema_version": SCHEMA_VERSION,
     }
     with open(ARTIFACTS_DIR / "regime_model.pkl", "wb") as f:
@@ -270,22 +322,34 @@ def main() -> int:
             print(f"[Part 6] ERROR: Need at least {MIN_ROWS_FOR_MODEL} rows. Got {len(feat_df)}.", flush=True)
             return 1
 
+        n_fit = int(len(feat_df) * REGIME_FIT_FRAC)
+        if n_fit < MIN_ROWS_FOR_MODEL:
+            print(
+                f"[Part 6] ERROR: chronological fit window has {n_fit} rows; "
+                f"need at least {MIN_ROWS_FOR_MODEL}.",
+                flush=True,
+            )
+            return 1
+        fit_end_date = pd.Timestamp(feat_df["date"].iloc[n_fit - 1]).strftime("%Y-%m-%d")
+        feat_df, imputation_values = impute_regime_features(
+            feat_df, feature_cols, n_fit
+        )
         X_raw = feat_df[feature_cols].to_numpy(dtype=np.float64)
-        scaler = StandardScaler()
-        X_scaled = scaler.fit_transform(X_raw)
+        scaler = StandardScaler().fit(X_raw[:n_fit])
+        X_scaled = scaler.transform(X_raw)
         X_scaled = np.nan_to_num(X_scaled, nan=0.0, posinf=0.0, neginf=0.0)
+        X_fit = X_scaled[:n_fit]
 
         backend = "hmm"
         hmm_error: Optional[str] = None
 
         try:
             print(f"[Part 6] Fitting GaussianHMM with {N_REGIMES} states...", flush=True)
-            model = fit_hmm(X_scaled, n_regimes=N_REGIMES)
+            model = fit_hmm(X_fit, n_regimes=N_REGIMES)
             converged = bool(getattr(model.monitor_, "converged", False))
             history = list(getattr(model.monitor_, "history", []))
             log_likelihood = float(history[-1]) if history else None
-            states = model.predict(X_scaled)
-            posteriors = model.predict_proba(X_scaled)
+            states, posteriors = causal_hmm_filter(model, X_scaled)
             print(f"  Converged: {converged}", flush=True)
             if log_likelihood is not None:
                 print(f"  Log-likelihood: {log_likelihood:.2f}", flush=True)
@@ -293,9 +357,13 @@ def main() -> int:
             backend = "kmeans_fallback"
             hmm_error = repr(exc)
             print(f"[Part 6] WARNING: HMM failed; using KMeans fallback. Error: {hmm_error}", flush=True)
-            model = fit_kmeans_fallback(X_scaled, n_regimes=N_REGIMES)
+            model = fit_kmeans_fallback(X_fit, n_regimes=N_REGIMES)
             states = model.predict(X_scaled)
-            posteriors = _soft_probs_from_distances(model.transform(X_scaled))
+            fit_distances = model.transform(X_fit)
+            distance_scale = float(np.nanmedian(fit_distances))
+            posteriors = _soft_probs_from_distances(
+                model.transform(X_scaled), reference_scale=distance_scale
+            )
             converged = True
             log_likelihood = None
 
@@ -390,7 +458,14 @@ def main() -> int:
             "backend": backend,
             "hmm_error": hmm_error,
             "n_regimes": N_REGIMES,
-            "n_rows_fit": int(len(feat_df)),
+            "n_rows_fit": int(n_fit),
+            "n_rows_decoded": int(len(feat_df)),
+            "fit_fraction": float(REGIME_FIT_FRAC),
+            "fit_end_date": fit_end_date,
+            "imputation_values": imputation_values,
+            "posterior_method": (
+                "causal_forward_filter" if backend == "hmm" else "train_scaled_distance"
+            ),
             "feature_cols": feature_cols,
             "label_map": {str(k): v for k, v in label_map.items()},
             "physical_label_suggestions": {str(k): v for k, v in physical_label_suggestions.items()},
@@ -404,7 +479,15 @@ def main() -> int:
             json.dump(meta, f, indent=2, default=str)
         print("[Part 6] Saved regime_meta.json", flush=True)
 
-        save_model(model, scaler, label_map, feature_cols, backend)
+        save_model(
+            model,
+            scaler,
+            label_map,
+            feature_cols,
+            backend,
+            imputation_values=imputation_values,
+            fit_end_date=fit_end_date,
+        )
 
         print(f"\n[Part 6] ✅ Complete using backend={backend}.", flush=True)
         return 0
