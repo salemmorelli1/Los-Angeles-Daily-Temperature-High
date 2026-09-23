@@ -84,10 +84,22 @@ jobs:
             cp favicon.ico _site/favicon.ico
           fi
 
-          for artifact_dir in artifacts_part*; do
-            if [ -d "$artifact_dir" ]; then
-              cp -R "$artifact_dir" _site/
+          for artifact_file in \
+            artifacts_part2/prediction_log.csv \
+            artifacts_part2/part2_meta.json \
+            artifacts_part2b/part2b_summary.json \
+            artifacts_part2c/part2c_meta.json \
+            artifacts_part2c/calibration_report.json \
+            artifacts_part3/governance_report.json \
+            artifacts_part6/regime_meta.json \
+            artifacts_part9/live_attribution_report.json
+          do
+            if [ ! -f "$artifact_file" ]; then
+              echo "ERROR: required dashboard artifact not found: $artifact_file"
+              exit 1
             fi
+            mkdir -p "_site/$(dirname "$artifact_file")"
+            cp "$artifact_file" "_site/$artifact_file"
           done
 
           touch _site/.nojekyll
