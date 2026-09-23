@@ -44,6 +44,8 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 
+from forecast_protocol import PURGE_DAYS, purged_labeled_splits
+
 warnings.filterwarnings("ignore")
 
 
@@ -67,7 +69,7 @@ PART2B_DIR = PROJECT_DIR / "artifacts_part2b"
 ARTIFACTS_DIR = PROJECT_DIR / "artifacts_part2c"
 ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
 
-SCHEMA_VERSION = "1.2.0"
+SCHEMA_VERSION = "1.3.0-purged-validation-live-coverage"
 HORIZONS = [1, 3, 5]
 SEQUENCE_LEN = 14
 N_MC_SAMPLES = 200
@@ -523,36 +525,65 @@ def update_prediction_log_with_bnn(
 # ---------------------------------------------------------------------------
 # Per-horizon display flag computation
 # ---------------------------------------------------------------------------
+def evaluate_live_interval_coverage(
+    df_log: pd.DataFrame,
+    min_samples: int = 30,
+    lookback_rows: int = 90,
+    minimum_coverage: float = 0.80,
+) -> Dict[int, Dict[str, object]]:
+    """Audit recent realized coverage of intervals that were actually shown."""
+    diagnostics: Dict[int, Dict[str, object]] = {}
+    for h in HORIZONS:
+        real_col = f"realized_h{h}"
+        lo_col, hi_col = f"bnn_lo90_h{h}", f"bnn_hi90_h{h}"
+        if df_log.empty or any(c not in df_log.columns for c in [real_col, lo_col, hi_col]):
+            diagnostics[h] = {
+                "n_samples": 0, "coverage": None, "undercovered": False,
+                "reason": "paired_history_missing",
+            }
+            continue
+        frame = pd.DataFrame({
+            "real": pd.to_numeric(df_log[real_col], errors="coerce"),
+            "lo": pd.to_numeric(df_log[lo_col], errors="coerce"),
+            "hi": pd.to_numeric(df_log[hi_col], errors="coerce"),
+        })
+        shown_col = f"bnn_displayable_h{h}"
+        if shown_col in df_log.columns:
+            shown = df_log[shown_col].astype(str).str.strip().str.lower().isin(
+                {"true", "1", "yes"}
+            )
+            frame = frame.loc[shown]
+        frame = frame.dropna().tail(lookback_rows)
+        n = int(len(frame))
+        coverage = (
+            float(((frame["real"] >= frame["lo"]) & (frame["real"] <= frame["hi"])).mean())
+            if n else None
+        )
+        undercovered = bool(
+            n >= min_samples and coverage is not None and coverage < minimum_coverage
+        )
+        diagnostics[h] = {
+            "n_samples": n,
+            "coverage": coverage,
+            "minimum_coverage": float(minimum_coverage),
+            "min_samples": int(min_samples),
+            "undercovered": undercovered,
+            "reason": "below_live_coverage_floor" if undercovered else (
+                "coverage_ok" if n >= min_samples else "insufficient_history"
+            ),
+        }
+    return diagnostics
+
+
 def _compute_display_flags(
     cal_pass: bool,
     interval_label: str,
     live_center_f: np.ndarray,
     live_mean_f: np.ndarray,
+    live_coverage_gate: Optional[Dict[int, Dict[str, object]]] = None,
 ) -> tuple:
-    """Compute per-horizon and aggregate BNN display flags.
-
-    A horizon's interval is suppressed (not displayable) when the canonical
-    center was shifted more than LARGE_ANCHOR_THRESHOLD_F from the BNN
-    diagnostic mean — i.e. an NWS hard anchor moved the center outside the
-    calibration distribution.  The conformal radius is no longer valid for
-    that horizon in that case.
-
-    intervals_publishable is True only when all of the following hold:
-      - calibration passed
-      - interval_label is "conformal_calibrated" (center = BNN mean, no anchor)
-
-    intervals_displayable is True when calibration passed AND no horizon is
-    suppressed due to a large anchor delta.
-
-    Returns
-    -------
-    intervals_publishable : bool
-    intervals_displayable : bool
-    horizon_display_flags : dict  {h: {displayable, anchor_delta_f, suppressed}}
-    suppressed_horizons   : list[int]
-    """
+    """Compute interval display flags from calibration, anchor, and live coverage."""
     intervals_publishable = bool(cal_pass and interval_label == "conformal_calibrated")
-
     horizon_display_flags: Dict[int, Dict] = {}
     suppressed_horizons: List[int] = []
 
@@ -560,26 +591,32 @@ def _compute_display_flags(
         center = float(live_center_f[i])
         mean = float(live_mean_f[i])
         anchor_delta = abs(center - mean)
-        suppressed = cal_pass and (anchor_delta > LARGE_ANCHOR_THRESHOLD_F)
+        anchor_suppressed = bool(
+            cal_pass and anchor_delta > LARGE_ANCHOR_THRESHOLD_F
+        )
+        coverage_diag = (live_coverage_gate or {}).get(h, {})
+        coverage_suppressed = bool(coverage_diag.get("undercovered", False))
+        suppressed = anchor_suppressed or coverage_suppressed
         displayable = cal_pass and not suppressed
         horizon_display_flags[h] = {
             "displayable": displayable,
             "anchor_delta_f": round(anchor_delta, 3),
             "suppressed": suppressed,
+            "suppression_reason": (
+                "large_anchor_delta" if anchor_suppressed else
+                "recent_live_undercoverage" if coverage_suppressed else None
+            ),
+            "live_coverage": coverage_diag,
         }
         if suppressed:
             suppressed_horizons.append(h)
 
-    intervals_displayable = cal_pass and len(suppressed_horizons) == 0
-
+    intervals_displayable = bool(cal_pass and not suppressed_horizons)
     if suppressed_horizons:
         print(
-            f"[Part 2C] \u26a0\ufe0f  BNN display suppressed for H={suppressed_horizons}: "
-            f"NWS anchor delta > {LARGE_ANCHOR_THRESHOLD_F}\u00b0F. "
-            f"Conformal radius calibrated at a different center — setting "
-            f"intervals_displayable=False for these horizons."
+            f"[Part 2C] BNN display suppressed for H={suppressed_horizons}; "
+            "see per-horizon flags for anchor or live-coverage evidence."
         )
-
     return intervals_publishable, intervals_displayable, horizon_display_flags, suppressed_horizons
 
 # ---------------------------------------------------------------------------
@@ -599,12 +636,9 @@ def main() -> int:
     splits = load_splits()
     target_cols = _target_cols()
 
-    labeled = df.dropna(subset=target_cols).copy()
-    train_end = pd.Timestamp(splits["train_end"])
-    val_end = pd.Timestamp(splits["val_end"])
-
-    df_val = labeled[(labeled["date"] > train_end) & (labeled["date"] <= val_end)].copy()
-    df_test = labeled[labeled["date"] > val_end].copy()
+    _df_train, df_val, df_test = purged_labeled_splits(
+        df, splits, target_cols
+    )
 
     X_val = feat_scaler.transform(_clean_features(df_val, feature_cols)).astype(np.float32)
     y_val = tgt_scaler.transform(df_val[target_cols].values.astype(np.float32)).astype(np.float32)
@@ -632,21 +666,34 @@ def main() -> int:
 
     n_val_seq = len(val_mean_f)
     n_cal = n_val_seq // 2
-    if n_val_seq < 20 or n_cal <= 0 or n_cal >= n_val_seq:
+    val_dates = sequence_dates(df_val["date"])
+    eval_indices = np.asarray([], dtype=int)
+    if n_cal > 0 and len(val_dates) >= n_cal:
+        calibration_end = pd.Timestamp(val_dates.iloc[n_cal - 1]).normalize()
+        eval_start = calibration_end + pd.Timedelta(days=PURGE_DAYS)
+        eval_indices = np.flatnonzero(
+            pd.to_datetime(val_dates).to_numpy() > eval_start.to_datetime64()
+        )
+    if n_val_seq < 20 or n_cal <= 0 or len(eval_indices) == 0:
         print(
-            f"[Part 2C] Not enough validation sequences for split conformal: n={n_val_seq}. "
+            f"[Part 2C] Not enough validation sequences after the {PURGE_DAYS}-day "
+            f"calibration/evaluation purge: n={n_val_seq}, eval={len(eval_indices)}. "
             "Exiting gracefully."
         )
         return 0
 
     # Independent split-conformal diagnostic:
-    #   val_cal half fits q_eval_f.
-    #   val_eval half evaluates q_eval_f without reusing calibration rows.
+    #   val_cal first half fits q_eval_f.
+    #   val_eval begins after a five-calendar-day purge and evaluates q_eval_f.
     # This is an honest diagnostic of calibration stability, not the production
     # interval width used for live forecasts.
     q_eval_f = conformal_quantiles(val_true_f[:n_cal], val_mean_f[:n_cal], alpha=CONFORMAL_ALPHA)
-    half_eval_lo_f, half_eval_hi_f = apply_conformal_intervals(val_mean_f[n_cal:], q_eval_f)
-    half_split_cal = evaluate_calibration(val_true_f[n_cal:], half_eval_lo_f, half_eval_hi_f)
+    half_eval_lo_f, half_eval_hi_f = apply_conformal_intervals(
+        val_mean_f[eval_indices], q_eval_f
+    )
+    half_split_cal = evaluate_calibration(
+        val_true_f[eval_indices], half_eval_lo_f, half_eval_hi_f
+    )
     half_split_validation_pass = conformal_coverage_pass(half_split_cal, MIN_CONFORMAL_COVERAGE)
 
     # Production conformal width:
@@ -655,8 +702,12 @@ def main() -> int:
     # coverage below is reported as an in-sample diagnostic, while test coverage
     # is the independent gate for deployability.
     q_live_f = conformal_quantiles(val_true_f, val_mean_f, alpha=CONFORMAL_ALPHA)
-    val_prod_lo_f, val_prod_hi_f = apply_conformal_intervals(val_mean_f[n_cal:], q_live_f)
-    cal = evaluate_calibration(val_true_f[n_cal:], val_prod_lo_f, val_prod_hi_f)
+    val_prod_lo_f, val_prod_hi_f = apply_conformal_intervals(
+        val_mean_f[eval_indices], q_live_f
+    )
+    cal = evaluate_calibration(
+        val_true_f[eval_indices], val_prod_lo_f, val_prod_hi_f
+    )
     validation_calibration_pass = conformal_coverage_pass(cal, MIN_CONFORMAL_COVERAGE)
 
     # Persisted validation diagnostic intervals should match the deployed/live
@@ -712,6 +763,7 @@ def main() -> int:
     feature_date = pd.Timestamp(df["date"].max()).normalize()
 
     log = load_prediction_log()
+    live_coverage_gate = evaluate_live_interval_coverage(log)
     _idx, latest_row = _latest_log_row_for_feature_date(log, feature_date)
     canonical_center, center_source, center_details = _canonical_center_from_log(latest_row)
 
@@ -737,6 +789,7 @@ def main() -> int:
         interval_label=interval_label,
         live_center_f=live_center_f,
         live_mean_f=live_mean_f,
+        live_coverage_gate=live_coverage_gate,
     )
 
     print("\n=== LIVE PREDICTIONS WITH UNCERTAINTY ===")
@@ -761,9 +814,10 @@ def main() -> int:
     # Save prediction parquet
     # -------------------------------------------------------------------
     # Validation rows are labeled according to the same split-conformal logic:
-    #   val_cal  = first half of validation sequences used to fit the conformal quantile
-    #   val_eval = second half of validation sequences used for independent coverage evaluation
-    #   test     = independent test sequences
+    #   val_cal    = first half used to fit the conformal quantile
+    #   val_purged = five-calendar-day buffer after val_cal
+    #   val_eval   = later validation sequences used for independent diagnostics
+    #   test       = independent test sequences
     val_dates = sequence_dates(df_val["date"])
     test_dates = sequence_dates(df_test["date"])
 
@@ -778,10 +832,13 @@ def main() -> int:
     )
 
     n_val_rows = len(val_df)
-    n_val_cal = n_val_rows // 2
+    n_val_cal = n_cal
     if n_val_rows > 0:
+        val_df["split"] = "val_purged"
         val_df.loc[val_df.index[:n_val_cal], "split"] = "val_cal"
-        val_df.loc[val_df.index[n_val_cal:], "split"] = "val_eval"
+        val_df.loc[eval_indices, "split"] = "val_eval"
+    n_val_eval = int(len(eval_indices))
+    n_val_purged = int(n_val_rows - n_val_cal - n_val_eval)
 
     test_df = _make_pred_df(
         test_dates,
@@ -826,14 +883,16 @@ def main() -> int:
         "ci_lower_pct": CI_LOWER,
         "ci_upper_pct": CI_UPPER,
         "ci_target_coverage": 0.90,
-        "interval_method": "split_conformal_full_validation_with_half_split_diagnostic",
+        "interval_method": "split_conformal_full_validation_with_purged_half_split_diagnostic",
         "conformal_alpha": CONFORMAL_ALPHA,
         "min_validation_coverage": MIN_CONFORMAL_COVERAGE,
         "min_test_coverage": MIN_TEST_CONFORMAL_COVERAGE,
         "validation_split": {
             "n_val_sequences": int(n_val_seq),
             "n_val_cal": int(n_cal),
-            "n_val_eval": int(n_val_seq - n_cal),
+            "n_val_eval": int(n_val_eval),
+            "n_val_purged": int(n_val_purged),
+            "purge_days": int(PURGE_DAYS),
         },
         "conformal_quantile_eval_f_by_horizon": {
             f"h{h}": float(q_eval_f[i]) for i, h in enumerate(HORIZONS)
@@ -880,7 +939,7 @@ def main() -> int:
         "n_mc_samples": N_MC_SAMPLES,
         "sequence_len": SEQUENCE_LEN,
         "dropout_rate": DROPOUT,
-        "interval_method": "split_conformal_full_validation_with_half_split_diagnostic",
+        "interval_method": "split_conformal_full_validation_with_purged_half_split_diagnostic",
         "interval_status": interval_status,
         "interval_label": interval_label,
         "interval_center_source": center_source,
@@ -890,7 +949,9 @@ def main() -> int:
         "validation_split": {
             "n_val_sequences": int(n_val_seq),
             "n_val_cal": int(n_cal),
-            "n_val_eval": int(n_val_seq - n_cal),
+            "n_val_eval": int(n_val_eval),
+            "n_val_purged": int(n_val_purged),
+            "purge_days": int(PURGE_DAYS),
         },
         "live_predictions": {
             f"h{h}": {
