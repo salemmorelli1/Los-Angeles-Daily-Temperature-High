@@ -1,9 +1,9 @@
 {
   "schema_version": "1.1.0-pacific-complete-day",
-  "fetched_at": "2026-09-30T18:33:30.806924",
-  "historical_rows": 3194,
+  "fetched_at": "2026-10-01T19:02:07.690070",
+  "historical_rows": 3195,
   "historical_start": "2018-01-01",
-  "historical_end": "2026-09-29",
+  "historical_end": "2026-09-30",
   "historical_columns": [
     "temp_high_f",
     "temp_low_f",
