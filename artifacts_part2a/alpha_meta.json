@@ -1,7 +1,7 @@
 {
   "schema_version": "1.1.0",
-  "built_at": "2026-10-05T21:19:05.234830",
-  "n_alpha_features": 24,
+  "built_at": "2026-10-06T19:02:02.945751",
+  "n_alpha_features": 25,
   "alpha_feature_cols": [
     "alpha_pressure_tend_2d",
     "alpha_pressure_tend_3d",
@@ -22,6 +22,7 @@
     "alpha_temp_mom_7d",
     "alpha_temp_accel",
     "alpha_temp_zscore_30d",
+    "alpha_heat_wave_streak",
     "alpha_days_from_peak",
     "alpha_enso_proxy",
     "alpha_nino34_anom",
@@ -51,6 +52,7 @@
     "alpha_temp_mom_7d": "Seven-day temperature momentum shifted one day",
     "alpha_temp_accel": "Temperature acceleration (2nd derivative)",
     "alpha_temp_zscore_30d": "Temperature z-score vs 30-day distribution",
+    "alpha_heat_wave_streak": "Consecutive days at or above 95\u00b0F; omitted from metadata when sparse/constant guard drops it",
     "alpha_days_from_peak": "Days from Aug 15 (climatological hottest day)",
     "alpha_enso_proxy": "Local proxy for ENSO state from P/T anomalies",
     "alpha_nino34_anom": "NOAA Ni\u00f1o 3.4 monthly anomaly (if available)",

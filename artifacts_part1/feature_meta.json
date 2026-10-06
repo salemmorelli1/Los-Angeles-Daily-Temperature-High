@@ -1,7 +1,7 @@
 {
   "schema_version": "1.1.0-calendar-targets-purged",
-  "built_at": "2026-10-05T21:19:03.889266",
-  "n_rows": 3199,
+  "built_at": "2026-10-06T19:02:01.783994",
+  "n_rows": 3200,
   "feature_cols": [
     "temp_high_f",
     "temp_low_f",
@@ -105,7 +105,7 @@
     "regime_REGIME_0_lag1",
     "regime_REGIME_1_lag1",
     "regime_REGIME_2_lag1",
-    "prob_regime_0_lag1",
+    "prob_regime_1_lag1",
     "prob_marine_layer_lag1",
     "prob_dry_clear_lag1",
     "alpha_pressure_tend_2d",
@@ -127,6 +127,7 @@
     "alpha_temp_mom_7d",
     "alpha_temp_accel",
     "alpha_temp_zscore_30d",
+    "alpha_heat_wave_streak",
     "alpha_days_from_peak",
     "alpha_enso_proxy",
     "alpha_nino34_anom",
@@ -146,28 +147,28 @@
   "target_variable": "temp_high_f",
   "date_range": {
     "start": "2018-01-01",
-    "end": "2026-10-04"
+    "end": "2026-10-05"
   },
   "splits": {
     "train_start": "2018-01-01",
-    "train_end": "2024-02-13",
-    "train_effective_end": "2024-02-08",
-    "val_start": "2024-02-14",
-    "val_end": "2025-06-06",
-    "val_effective_end": "2025-06-01",
-    "test_start": "2025-06-07",
-    "test_end": "2026-09-29",
+    "train_end": "2024-02-14",
+    "train_effective_end": "2024-02-09",
+    "val_start": "2024-02-15",
+    "val_end": "2025-06-07",
+    "val_effective_end": "2025-06-02",
+    "test_start": "2025-06-08",
+    "test_end": "2026-09-30",
     "purge_days": 5,
-    "n_train": 2235,
-    "n_train_after_purge": 2230,
+    "n_train": 2236,
+    "n_train_after_purge": 2231,
     "n_val": 479,
     "n_val_after_purge": 474,
     "n_test": 480,
-    "n_labeled": 3194,
-    "n_feature_rows": 3199,
-    "live_feature_end": "2026-10-04"
+    "n_labeled": 3195,
+    "n_feature_rows": 3200,
+    "live_feature_end": "2026-10-05"
   },
   "alpha_features_merged": true,
-  "alpha_merge_date": "2026-10-05T21:19:05.234377",
-  "post_alpha_n_features": 129
+  "alpha_merge_date": "2026-10-06T19:02:02.945221",
+  "post_alpha_n_features": 130
 }
