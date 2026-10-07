@@ -16,70 +16,70 @@
     "purge_days": 5
   },
   "conformal_quantile_eval_f_by_horizon": {
-    "h1": 5.5469970703125,
-    "h3": 6.379875183105469,
-    "h5": 6.358642578125
+    "h1": 5.787803649902344,
+    "h3": 6.3900604248046875,
+    "h5": 6.2126007080078125
   },
   "conformal_quantile_live_f_by_horizon": {
-    "h1": 6.412506103515625,
-    "h3": 8.260543823242188,
-    "h5": 8.515403747558594
+    "h1": 6.339717864990234,
+    "h3": 8.412002563476562,
+    "h5": 8.422195434570312
   },
   "raw_mc_dropout_calibration_results": {
-    "h1_coverage_90pct": 0.6724511930585684,
-    "h1_mean_ci_width_f": 7.270496327034047,
-    "h1_calibration_error": 0.22754880694143165,
+    "h1_coverage_90pct": 0.6898047722342733,
+    "h1_mean_ci_width_f": 7.331050301839369,
+    "h1_calibration_error": 0.21019522776572674,
     "h1_n": 461,
-    "h3_coverage_90pct": 0.4967462039045553,
-    "h3_mean_ci_width_f": 5.932677908212658,
-    "h3_calibration_error": 0.4032537960954447,
+    "h3_coverage_90pct": 0.4924078091106291,
+    "h3_mean_ci_width_f": 5.941364387628055,
+    "h3_calibration_error": 0.40759219088937093,
     "h3_n": 461,
-    "h5_coverage_90pct": 0.5119305856832972,
-    "h5_mean_ci_width_f": 6.407096291829603,
-    "h5_calibration_error": 0.38806941431670283,
+    "h5_coverage_90pct": 0.5314533622559653,
+    "h5_mean_ci_width_f": 6.490465797209171,
+    "h5_calibration_error": 0.36854663774403473,
     "h5_n": 461
   },
   "half_split_calibration_results": {
-    "h1_coverage_90pct": 0.8230088495575221,
-    "h1_mean_ci_width_f": 11.093994140625,
-    "h1_calibration_error": 0.07699115044247795,
+    "h1_coverage_90pct": 0.827433628318584,
+    "h1_mean_ci_width_f": 11.575607299804688,
+    "h1_calibration_error": 0.072566371681416,
     "h1_n": 226,
     "h3_coverage_90pct": 0.7433628318584071,
-    "h3_mean_ci_width_f": 12.759750366210938,
+    "h3_mean_ci_width_f": 12.780120849609375,
     "h3_calibration_error": 0.1566371681415929,
     "h3_n": 226,
-    "h5_coverage_90pct": 0.7212389380530974,
-    "h5_mean_ci_width_f": 12.71728515625,
-    "h5_calibration_error": 0.17876106194690267,
+    "h5_coverage_90pct": 0.7168141592920354,
+    "h5_mean_ci_width_f": 12.425201416015625,
+    "h5_calibration_error": 0.18318584070796462,
     "h5_n": 226
   },
   "half_split_validation_pass": false,
   "calibration_results": {
-    "h1_coverage_90pct": 0.8628318584070797,
-    "h1_mean_ci_width_f": 12.82501220703125,
-    "h1_calibration_error": 0.03716814159292037,
+    "h1_coverage_90pct": 0.8672566371681416,
+    "h1_mean_ci_width_f": 12.679435729980469,
+    "h1_calibration_error": 0.032743362831858414,
     "h1_n": 226,
     "h3_coverage_90pct": 0.831858407079646,
-    "h3_mean_ci_width_f": 16.521087646484375,
+    "h3_mean_ci_width_f": 16.824005126953125,
     "h3_calibration_error": 0.06814159292035404,
     "h3_n": 226,
     "h5_coverage_90pct": 0.8539823008849557,
-    "h5_mean_ci_width_f": 17.030807495117188,
+    "h5_mean_ci_width_f": 16.844390869140625,
     "h5_calibration_error": 0.046017699115044275,
     "h5_n": 226
   },
   "test_coverage_results": {
-    "h1_coverage_90pct": 0.8758029978586723,
-    "h1_mean_ci_width_f": 12.82501220703125,
-    "h1_calibration_error": 0.024197002141327695,
+    "h1_coverage_90pct": 0.867237687366167,
+    "h1_mean_ci_width_f": 12.679435729980469,
+    "h1_calibration_error": 0.032762312633833,
     "h1_n": 467,
-    "h3_coverage_90pct": 0.9186295503211992,
-    "h3_mean_ci_width_f": 16.521087646484375,
-    "h3_calibration_error": 0.018629550321199173,
+    "h3_coverage_90pct": 0.9207708779443254,
+    "h3_mean_ci_width_f": 16.824005126953125,
+    "h3_calibration_error": 0.020770877944325417,
     "h3_n": 467,
-    "h5_coverage_90pct": 0.9014989293361885,
-    "h5_mean_ci_width_f": 17.030807495117188,
-    "h5_calibration_error": 0.0014989293361884481,
+    "h5_coverage_90pct": 0.8886509635974305,
+    "h5_mean_ci_width_f": 16.844390869140625,
+    "h5_calibration_error": 0.011349036402569568,
     "h5_n": 467
   },
   "validation_calibration_pass": false,
@@ -92,17 +92,17 @@
     "forecast_source": "persistence"
   },
   "intervals_publishable": false,
-  "intervals_displayable": false,
+  "intervals_displayable": true,
   "large_anchor_threshold_f": 15.0,
   "horizon_display_flags": {
     "1": {
       "displayable": true,
-      "anchor_delta_f": 5.722,
+      "anchor_delta_f": 0.83,
       "suppressed": false,
       "suppression_reason": null,
       "live_coverage": {
-        "n_samples": 39,
-        "coverage": 0.8974358974358975,
+        "n_samples": 40,
+        "coverage": 0.875,
         "minimum_coverage": 0.8,
         "min_samples": 30,
         "undercovered": false,
@@ -110,13 +110,13 @@
       }
     },
     "3": {
-      "displayable": false,
-      "anchor_delta_f": 16.906,
-      "suppressed": true,
-      "suppression_reason": "large_anchor_delta",
+      "displayable": true,
+      "anchor_delta_f": 9.893,
+      "suppressed": false,
+      "suppression_reason": null,
       "live_coverage": {
-        "n_samples": 37,
-        "coverage": 0.918918918918919,
+        "n_samples": 38,
+        "coverage": 0.8947368421052632,
         "minimum_coverage": 0.8,
         "min_samples": 30,
         "undercovered": false,
@@ -124,13 +124,13 @@
       }
     },
     "5": {
-      "displayable": false,
-      "anchor_delta_f": 19.602,
-      "suppressed": true,
-      "suppression_reason": "large_anchor_delta",
+      "displayable": true,
+      "anchor_delta_f": 12.734,
+      "suppressed": false,
+      "suppression_reason": null,
       "live_coverage": {
-        "n_samples": 35,
-        "coverage": 0.9142857142857143,
+        "n_samples": 36,
+        "coverage": 0.8888888888888888,
         "minimum_coverage": 0.8,
         "min_samples": 30,
         "undercovered": false,
@@ -138,9 +138,6 @@
       }
     }
   },
-  "suppressed_horizons_due_to_anchor": [
-    3,
-    5
-  ],
+  "suppressed_horizons_due_to_anchor": [],
   "statistical_note": "half_split_calibration_results are evaluated on the validation evaluation half using only the first validation half to fit q_eval_f. calibration_results use the deployed full-validation conformal radius and are therefore a production-width diagnostic; test_coverage_results are the independent deployability gate used for calibration_pass. If interval_label is canonical_display_interval, live bounds are centered on the canonical forecast and should be treated as calibrated display/risk bands rather than strict split-conformal predictive intervals."
 }
