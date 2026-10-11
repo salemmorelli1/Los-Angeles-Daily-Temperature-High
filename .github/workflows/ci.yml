@@ -20,122 +20,60 @@ concurrency:
   group: latemp-ci-${{ github.ref }}
   cancel-in-progress: true
 
-# ---------------------------------------------------------------------------
-# Job 1 — Syntax check (fast, lightweight)
-# ---------------------------------------------------------------------------
-# py_compile needs no packages at all.
-# The --help checks need only numpy and pandas (module-level imports).
-# torch, xgboost, hmmlearn are NOT installed here.
-# This job should complete in ~20 seconds.
-# ---------------------------------------------------------------------------
 jobs:
-  syntax-check:
-    name: Python syntax check
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-
+  verify:
+    name: CPU regression and model integration (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    env:
+      OMP_NUM_THREADS: "1"
+      OPENBLAS_NUM_THREADS: "1"
+      PYTHONUTF8: "1"
+      PYTHONIOENCODING: "utf-8"
     steps:
       - name: Check out repo
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
-          # No pip cache key — lightweight install is faster cold than restoring 3 GB
+          cache: pip
+          cache-dependency-path: requirements-ci-lock.txt
 
-      - name: Install lightweight dependencies only
+      - name: Install the tested CPU stack
         run: |
-          python -m pip install --upgrade pip
-          pip install numpy pandas requests pyarrow scikit-learn tzdata
+          python -m pip install --disable-pip-version-check torch==2.14.1 --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install --disable-pip-version-check -r requirements-ci-lock.txt
+          python -m pip check
 
-      - name: Compile all project scripts
+      - name: Compile and lint project code
         run: |
-          python -m py_compile \
-            forecast_protocol.py \
-            part0_data_infrastructure.py \
-            part1_feature_builder.py \
-            part2_deep_learning_forecaster.py \
-            part2a_atmospheric_alpha.py \
-            part2b_xgb_ensemble.py \
-            part2c_bnn_sleeve.py \
-            part3_forecast_governance.py \
-            part6_weather_regime_engine.py \
-            part9_live_attribution.py \
-            run_daily_forecast.py \
-            validate_artifacts.py \
-            validate_heat_branch_results.py
-          echo "✅ All scripts compile successfully."
+          python -m compileall -q *.py tests
+          python -m ruff check --select E9,F63,F7,F82 .
 
       - name: Check CLI interfaces
         run: |
           python run_daily_forecast.py --help
           python part2_deep_learning_forecaster.py --help
+          python part6_weather_regime_engine.py --help
 
-      - name: Run regression tests
-        run: python -m unittest discover -s tests -v
+      - name: Run regression and real model integration tests
+        run: |
+          python -c "import torch, hmmlearn, xgboost; print('CPU model dependencies available')"
+          python -m unittest discover -s tests -v
 
-      - name: Validate committed artifact contracts
+      - name: Validate retained artifact contracts
         run: python validate_artifacts.py
 
-# ---------------------------------------------------------------------------
-# Job 2 — Integration check (heavy, manual or weekly only)
-# ---------------------------------------------------------------------------
-# Installs the full ML stack (torch, xgboost, hmmlearn) and verifies
-# that all imports resolve. Runs only on workflow_dispatch or weekly
-# schedule — not on every push.
-# ---------------------------------------------------------------------------
-  integration-check:
-    name: Full dependency integration check
-    runs-on: ubuntu-latest
-    timeout-minutes: 40
-
-    # Only run on explicit manual trigger or weekly; skip on every push
-    if: github.event_name == 'workflow_dispatch'
-
-    steps:
-      - name: Check out repo
-        uses: actions/checkout@v5
-
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-          cache: "pip"
-
-      - name: Install full dependencies
+      - name: Verify checks did not rewrite committed forecasts
         run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-
-      - name: Verify all imports resolve
-        run: |
-          python -c "
-          import part0_data_infrastructure
-          import part1_feature_builder
-          import part2a_atmospheric_alpha
-          import part2b_xgb_ensemble
-          import part3_forecast_governance
-          import part6_weather_regime_engine
-          import part9_live_attribution
-          import run_daily_forecast
-          print('✅ All imports resolved successfully.')
-          "
-
-      - name: Compile all project scripts (full stack)
-        run: |
-          python -m py_compile \
-            forecast_protocol.py \
-            part0_data_infrastructure.py \
-            part1_feature_builder.py \
-            part2_deep_learning_forecaster.py \
-            part2a_atmospheric_alpha.py \
-            part2b_xgb_ensemble.py \
-            part2c_bnn_sleeve.py \
-            part3_forecast_governance.py \
-            part6_weather_regime_engine.py \
-            part9_live_attribution.py \
-            run_daily_forecast.py \
-            validate_artifacts.py \
-            validate_heat_branch_results.py
-          echo "✅ All scripts compile successfully."
+          git diff --check
+          git diff --exit-code

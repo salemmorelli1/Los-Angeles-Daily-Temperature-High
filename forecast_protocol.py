@@ -2,6 +2,9 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+import hashlib
+import json
+from pathlib import Path
 from typing import Dict, Sequence, Tuple
 from zoneinfo import ZoneInfo
 
@@ -10,6 +13,60 @@ import pandas as pd
 
 PACIFIC_TZ = ZoneInfo("America/Los_Angeles")
 PURGE_DAYS = 5
+TRAINING_PROTOCOL_VERSION = "purged-frozen-regime-v3"
+
+
+def file_sha256(path: Path) -> str:
+    """Identify the exact fitted artifact, independently of its filename."""
+    with path.open("rb") as stream:
+        return hashlib.file_digest(stream, "sha256").hexdigest()
+
+
+def training_lineage_errors(root: Path) -> list[str]:
+    """Validate the checkpoint, preprocessing bundle and saved fit boundary."""
+    try:
+        meta = json.loads((root / "artifacts_part2/part2_meta.json").read_text())
+        regime_meta = json.loads((root / "artifacts_part6/regime_meta.json").read_text())
+        if meta.get("training_protocol_version") != TRAINING_PROTOCOL_VERSION:
+            return ["checkpoint_requires_protocol_retrain"]
+        cutoff = pd.Timestamp(meta["training_splits"]["train_effective_end"])
+        fit_end = pd.Timestamp(regime_meta["fit_end_date"])
+        if pd.isna(cutoff) or pd.isna(fit_end) or fit_end > cutoff:
+            return ["regime_fit_crosses_purged_training_boundary"]
+        paths = {
+            "regime_model_sha256": root / "artifacts_part6/regime_model.pkl",
+            "checkpoint_sha256": root / f"artifacts_part2/{meta['model_type']}_model.pt",
+            "feature_scaler_sha256": root / "artifacts_part2/feature_scaler.pkl",
+            "target_scaler_sha256": root / "artifacts_part2/target_scaler.pkl",
+            "val_predictions_sha256": root / "artifacts_part2/val_predictions.parquet",
+        }
+        return [
+            f"{key}_mismatch" for key, path in paths.items()
+            if not meta.get(key) or file_sha256(path) != meta[key]
+        ]
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        return [f"training_lineage_unreadable:{type(exc).__name__}"]
+
+
+def forecast_is_published(row: pd.Series) -> bool:
+    """Published forecast inputs are immutable; outcomes may still be backfilled.
+
+    Legacy rows use their recorded governance time, without inventing a new
+    issue time or relabeling their historical provenance.
+    """
+    if str(row.get("publish_mode", "")).upper() not in {"NORMAL", "CAUTION"}:
+        return False
+    return any(
+        pd.notna(row.get(key)) and str(row.get(key, "")).strip() != ""
+        for key in ["forecast_finalized_at", "governance_run_at"]
+    )
+
+
+def protocol_published_history(df: pd.DataFrame, version: str) -> pd.DataFrame:
+    """Select first-issued paper forecasts from one method, without relabeling."""
+    versions = df.get("training_protocol_version", pd.Series(index=df.index, dtype=object))
+    published = pd.Series([forecast_is_published(row) for _, row in df.iterrows()], index=df.index, dtype=bool)
+    return df.loc[versions.eq(version) & published].copy()
 
 
 def pacific_today() -> date:
@@ -45,7 +102,10 @@ def purged_labeled_splits(
 
     train = labeled.loc[dates <= train_cutoff].copy()
     val = labeled.loc[(dates > train_end) & (dates <= val_cutoff)].copy()
-    test = labeled.loc[dates > val_end].copy()
+    test_mask = dates > val_end
+    if "test_end" in splits:
+        test_mask &= dates <= pd.Timestamp(splits["test_end"]).normalize()
+    test = labeled.loc[test_mask].copy()
 
     if train.empty or val.empty or test.empty:
         raise ValueError(

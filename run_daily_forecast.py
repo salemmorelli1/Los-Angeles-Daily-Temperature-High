@@ -31,6 +31,8 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+from forecast_protocol import forecast_is_published, pacific_today_timestamp, training_lineage_errors
+
 # ---------------------------------------------------------------------------
 # Environment
 # ---------------------------------------------------------------------------
@@ -161,6 +163,21 @@ def _feature_cols_changed(project_dir: Path) -> Tuple[bool, str]:
     return False, "feature_cols_unchanged"
 
 
+def published_forecast_exists(project_dir: Path) -> bool:
+    """A same-day rerun must not amend the first published forecast."""
+    import pandas as pd
+
+    path = project_dir / "artifacts_part2/prediction_log.csv"
+    if not path.exists():
+        return False
+    log = pd.read_csv(path)
+    if "decision_date" not in log:
+        return False
+    today = pacific_today_timestamp()
+    rows = log.loc[pd.to_datetime(log["decision_date"], errors="coerce").dt.normalize() == today]
+    return any(forecast_is_published(row) for _, row in rows.iterrows())
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -187,6 +204,10 @@ def main() -> int:
         print(f"\n[Runner] ERROR: Required files missing: {missing}")
         return 1
 
+    if published_forecast_exists(PROJECT_DIR):
+        print("[Runner] Today's published forecast is preserved. Refreshing realized outcomes only.")
+        return run_part("PART9")
+
     # Decide whether Part 2 should train or load an existing model.
     model_meta_path = PROJECT_DIR / "artifacts_part2" / "part2_meta.json"
     model_file = PROJECT_DIR / "artifacts_part2" / (
@@ -194,10 +215,19 @@ def main() -> int:
     )
 
     needs_retrain = bool(args.retrain)
+    lineage_errors = training_lineage_errors(PROJECT_DIR)
     if args.skip_train:
+        if lineage_errors:
+            print(f"[Runner] --skip-train refused: {lineage_errors}. Retrain the stack.")
+            return 1
         needs_retrain = False
         print("\n[Runner] --skip-train set — Part 2 will run predict-only.")
-    elif model_meta_path.exists() and model_file.exists():
+    elif lineage_errors:
+        print(f"[Runner] Training lineage requires a stack retrain: {lineage_errors}")
+        needs_retrain = True
+    elif needs_retrain:
+        print("[Runner] --retrain set — refitting the regime and forecaster together.")
+    elif not needs_retrain and model_meta_path.exists() and model_file.exists():
         import datetime
         with open(model_meta_path) as f:
             meta = json.load(f)
@@ -210,7 +240,9 @@ def main() -> int:
         else:
             trained_raw = meta.get("trained_at", "2000-01-01")
             trained_at = __import__("datetime").datetime.fromisoformat(trained_raw)
-            age_days = (datetime.datetime.now() - trained_at).days
+            if trained_at.tzinfo is None:
+                trained_at = trained_at.replace(tzinfo=datetime.timezone.utc)
+            age_days = (datetime.datetime.now(datetime.timezone.utc) - trained_at).days
             if age_days > 7:
                 print(f"\n[Runner] Model is {age_days} days old — will retrain.")
                 needs_retrain = True
@@ -228,6 +260,8 @@ def main() -> int:
     # Execute pipeline
     for label in PIPELINE_ORDER:
         extra = []
+        if label == "PART6":
+            extra = ["--mode=train" if needs_retrain else "--mode=predict"]
         if label == "PART2":
             if not needs_retrain and not args.skip_train:
                 changed, reason = _feature_cols_changed(PROJECT_DIR)
@@ -235,6 +269,13 @@ def main() -> int:
                     print(f"\n[Runner] Feature set changed since last saved model "
                           f"({reason}) — upgrading to --mode=train for this run.")
                     needs_retrain = True
+                    # Refit and rebuild every encoder-dependent feature before
+                    # training the new neural checkpoint on a changed schema.
+                    for rebuild in ["PART6", "PART1", "PART2A"]:
+                        rebuild_args = ["--mode=train"] if rebuild == "PART6" else []
+                        rebuild_rc = run_part(rebuild, extra_args=rebuild_args)
+                        if rebuild_rc != 0:
+                            return rebuild_rc
             part2_mode = "train" if needs_retrain else "predict"
             extra = [f"--model={args.model}", f"--mode={part2_mode}"]
             print(f"\n[Runner] Part 2 mode: {part2_mode}")
@@ -273,7 +314,7 @@ def main() -> int:
                 print("\n=== TODAY'S FORECAST ===")
                 print(f"  Decision date: {latest.get('decision_date', '?')}")
                 for h in [1, 3, 5]:
-                    val = latest.get(f"target_h{h}")
+                    val = latest.get(f"forecast_h{h}")
                     if val and str(val) != "nan":
                         print(f"  H={h}: {float(val):.1f}°F")
                 mode = latest.get("publish_mode", "UNKNOWN")

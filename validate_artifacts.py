@@ -881,6 +881,22 @@ def check_alpha_meta_descriptions_match_features() -> Tuple[str, str, str]:
 # ---------------------------------------------------------------------------
 # Runner
 # ---------------------------------------------------------------------------
+def check_training_lineage_contract() -> Tuple[str, str, str]:
+    """Legacy artifacts are retained, but are never certified as v3 evidence."""
+    from forecast_protocol import training_lineage_errors
+    name = "training_lineage"
+    try:
+        meta = json.loads((PROJECT_DIR / "artifacts_part2/part2_meta.json").read_text())
+        errors = training_lineage_errors(PROJECT_DIR)
+        if not errors:
+            return _ok(name, "Checkpoint, scalers, validation table and frozen regime hashes match; fit is purged")
+        if meta.get("training_protocol_version") is None:
+            return _warn(name, "Retained legacy checkpoint is not v3-qualified; the next new-day production run must retrain the regime and forecaster")
+        return _fail(name, ", ".join(errors))
+    except (OSError, ValueError, TypeError) as exc:
+        return _fail(name, f"Cannot read model lineage: {exc}")
+
+
 def run_all_checks() -> List[Tuple[str, str, str]]:
     return [
         check_feature_meta_consistency(),
@@ -901,6 +917,7 @@ def run_all_checks() -> List[Tuple[str, str, str]]:
         check_no_redundant_regime_probability_features(),
         check_no_exact_duplicate_features(),
         check_alpha_meta_descriptions_match_features(),
+        check_training_lineage_contract(),
     ]
 
 

@@ -186,6 +186,10 @@ def _build_mc_lstm(
 
 
 def load_lstm_artifacts():
+    from forecast_protocol import training_lineage_errors
+    errors = training_lineage_errors(PROJECT_DIR)
+    if errors:
+        raise ValueError(f"BNN checkpoint lineage failed: {errors}")
     torch, _, _, _ = _try_import_torch()
 
     feat_scaler_path = PART2_DIR / "feature_scaler.pkl"
@@ -439,8 +443,7 @@ def _latest_log_row_for_feature_date(df_log: pd.DataFrame, feature_date: pd.Time
             idx = sub.index[-1]
             return int(idx), df_log.loc[idx]
 
-    idx = df_log.index[-1]
-    return int(idx), df_log.loc[idx]
+    return None, None
 
 
 def _canonical_center_from_log(row: Optional[pd.Series]) -> Tuple[Optional[np.ndarray], str, Dict[str, object]]:
@@ -489,6 +492,10 @@ def update_prediction_log_with_bnn(
     if idx is None:
         print("[Part 2C] No log row found — BNN uncertainty columns not written.")
         return
+
+    from forecast_protocol import forecast_is_published
+    if forecast_is_published(_row):
+        raise ValueError("Published forecast is immutable; Part 2C cannot overwrite it")
 
     df_log.loc[idx, "bnn_available"] = True
     df_log.loc[idx, "bnn_calibrated"] = bool(cal_pass)
@@ -553,7 +560,8 @@ def evaluate_live_interval_coverage(
                 {"true", "1", "yes"}
             )
             frame = frame.loc[shown]
-        frame = frame.dropna().tail(lookback_rows)
+        frame = frame.replace([np.inf, -np.inf], np.nan).dropna()
+        frame = frame.loc[frame["lo"] <= frame["hi"]].tail(lookback_rows)
         n = int(len(frame))
         coverage = (
             float(((frame["real"] >= frame["lo"]) & (frame["real"] <= frame["hi"])).mean())
@@ -591,18 +599,20 @@ def _compute_display_flags(
         center = float(live_center_f[i])
         mean = float(live_mean_f[i])
         anchor_delta = abs(center - mean)
+        finite_center = bool(np.isfinite(center) and np.isfinite(mean))
         anchor_suppressed = bool(
             cal_pass and anchor_delta > LARGE_ANCHOR_THRESHOLD_F
         )
         coverage_diag = (live_coverage_gate or {}).get(h, {})
         coverage_suppressed = bool(coverage_diag.get("undercovered", False))
-        suppressed = anchor_suppressed or coverage_suppressed
+        suppressed = not finite_center or anchor_suppressed or coverage_suppressed
         displayable = cal_pass and not suppressed
         horizon_display_flags[h] = {
             "displayable": displayable,
             "anchor_delta_f": round(anchor_delta, 3),
             "suppressed": suppressed,
             "suppression_reason": (
+                "non_finite_center" if not finite_center else
                 "large_anchor_delta" if anchor_suppressed else
                 "recent_live_undercoverage" if coverage_suppressed else None
             ),
@@ -612,6 +622,7 @@ def _compute_display_flags(
             suppressed_horizons.append(h)
 
     intervals_displayable = bool(cal_pass and not suppressed_horizons)
+    intervals_publishable = bool(intervals_publishable and not suppressed_horizons)
     if suppressed_horizons:
         print(
             f"[Part 2C] BNN display suppressed for H={suppressed_horizons}; "
@@ -633,7 +644,8 @@ def main() -> int:
     model, feat_scaler, tgt_scaler, feature_cols, part2_meta = load_lstm_artifacts()
 
     df = load_feature_matrix()
-    splits = load_splits()
+    # Daily percentage splits must not move held-out dates into calibration.
+    splits = part2_meta["training_splits"]
     target_cols = _target_cols()
 
     _df_train, df_val, df_test = purged_labeled_splits(
@@ -879,6 +891,8 @@ def main() -> int:
     # -------------------------------------------------------------------
     cal_report = {
         "schema_version": SCHEMA_VERSION,
+        "checkpoint_sha256": part2_meta["checkpoint_sha256"],
+        "training_splits": splits,
         "n_mc_samples": N_MC_SAMPLES,
         "ci_lower_pct": CI_LOWER,
         "ci_upper_pct": CI_UPPER,
@@ -932,6 +946,7 @@ def main() -> int:
 
     meta = {
         "schema_version": SCHEMA_VERSION,
+        "checkpoint_sha256": part2_meta["checkpoint_sha256"],
         "run_at": pd.Timestamp.now().isoformat(),
         "part2_model_type": part2_meta.get("model_type", "lstm"),
         "feature_date": feature_date.isoformat(),
