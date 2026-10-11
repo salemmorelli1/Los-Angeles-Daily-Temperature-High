@@ -3,7 +3,7 @@
 """
 Part 6 — Weather Regime Engine
 ================================
-Fits a regime model on the first chronological 70% of meteorological features
+Fits a regime model within the forecaster's purged training window
 and writes daily weather-regime artifacts for the LA Temperature Forecasting
 stack. Scaling and imputation are trained on that same window. HMM posteriors
 use a forward filter so later observations do not change earlier regime states.
@@ -15,6 +15,7 @@ Fallback backend: deterministic KMeans if HMM fitting fails.
 from __future__ import annotations
 
 import json
+import argparse
 import os
 import pickle
 import warnings
@@ -25,6 +26,9 @@ import numpy as np
 import pandas as pd
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
+
+from forecast_protocol import file_sha256
+from part1_feature_builder import add_target_columns, compute_splits
 
 warnings.filterwarnings("ignore")
 
@@ -44,10 +48,9 @@ SRC_DIR = PROJECT_DIR / "artifacts_part0"
 ARTIFACTS_DIR = PROJECT_DIR / "artifacts_part6"
 ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
 
-SCHEMA_VERSION = "1.2.0-causal-filtered-train-only"
+SCHEMA_VERSION = "1.3.0-purged-frozen-regime"
 N_REGIMES = 3
 MIN_ROWS_FOR_MODEL = 180
-REGIME_FIT_FRAC = 0.70
 
 
 def load_historical() -> pd.DataFrame:
@@ -292,6 +295,9 @@ def save_model(
     backend: str,
     imputation_values: Optional[Dict[str, float]] = None,
     fit_end_date: Optional[str] = None,
+    n_rows_fit: Optional[int] = None,
+    fit_date: Optional[str] = None,
+    distance_scale: Optional[float] = None,
 ) -> None:
     bundle = {
         "model": model,
@@ -301,6 +307,9 @@ def save_model(
         "backend": backend,
         "imputation_values": imputation_values or {},
         "fit_end_date": fit_end_date,
+        "n_rows_fit": n_rows_fit,
+        "fit_date": fit_date,
+        "distance_scale": distance_scale,
         "schema_version": SCHEMA_VERSION,
     }
     with open(ARTIFACTS_DIR / "regime_model.pkl", "wb") as f:
@@ -308,7 +317,13 @@ def save_model(
     print("[Part 6] Saved regime_model.pkl", flush=True)
 
 
-def main() -> int:
+def regime_training_cutoff(df: pd.DataFrame) -> pd.Timestamp:
+    """Use the same calendar labels and purge as Part 1, before it is built."""
+    splits = compute_splits(add_target_columns(df))
+    return pd.Timestamp(splits["train_effective_end"]).normalize()
+
+
+def main(mode: str = "train") -> int:
     print(f"[Part 6] Project root: {PROJECT_DIR}", flush=True)
 
     try:
@@ -322,7 +337,38 @@ def main() -> int:
             print(f"[Part 6] ERROR: Need at least {MIN_ROWS_FOR_MODEL} rows. Got {len(feat_df)}.", flush=True)
             return 1
 
-        n_fit = int(len(feat_df) * REGIME_FIT_FRAC)
+        if mode not in {"train", "predict"}:
+            raise ValueError("mode must be train or predict")
+        cutoff = regime_training_cutoff(df)
+        bundle = None
+        if mode == "predict":
+            with open(ARTIFACTS_DIR / "regime_model.pkl", "rb") as stream:
+                bundle = pickle.load(stream)
+            if bundle.get("schema_version") != SCHEMA_VERSION:
+                raise ValueError("Regime bundle requires a protocol retrain")
+            if bundle.get("feature_cols") != feature_cols:
+                raise ValueError("Regime feature schema changed; retrain the stack")
+            fit_end = pd.Timestamp(bundle["fit_end_date"]).normalize()
+            if pd.isna(fit_end) or fit_end > cutoff:
+                raise ValueError("Saved regime fit exceeds the purged training cutoff")
+            n_fit = int(bundle["n_rows_fit"])
+            fit_end_date = bundle["fit_end_date"]
+            fit_date = bundle["fit_date"]
+            imputation_values = bundle["imputation_values"]
+            feat_df = feat_df.copy()
+            for col in feature_cols:
+                feat_df[col] = pd.to_numeric(feat_df[col], errors="coerce").replace(
+                    [np.inf, -np.inf], np.nan
+                ).fillna(imputation_values[col])
+            scaler = bundle["scaler"]
+        else:
+            n_fit = int((feat_df["date"] <= cutoff).sum())
+            fit_end_date = pd.Timestamp(feat_df["date"].iloc[n_fit - 1]).strftime("%Y-%m-%d") if n_fit else None
+            fit_date = pd.Timestamp.now(tz="UTC").isoformat()
+            feat_df, imputation_values = impute_regime_features(
+                feat_df, feature_cols, n_fit
+            )
+            scaler = StandardScaler().fit(feat_df[feature_cols].to_numpy(dtype=float)[:n_fit])
         if n_fit < MIN_ROWS_FOR_MODEL:
             print(
                 f"[Part 6] ERROR: chronological fit window has {n_fit} rows; "
@@ -330,42 +376,55 @@ def main() -> int:
                 flush=True,
             )
             return 1
-        fit_end_date = pd.Timestamp(feat_df["date"].iloc[n_fit - 1]).strftime("%Y-%m-%d")
-        feat_df, imputation_values = impute_regime_features(
-            feat_df, feature_cols, n_fit
-        )
         X_raw = feat_df[feature_cols].to_numpy(dtype=np.float64)
-        scaler = StandardScaler().fit(X_raw[:n_fit])
         X_scaled = scaler.transform(X_raw)
         X_scaled = np.nan_to_num(X_scaled, nan=0.0, posinf=0.0, neginf=0.0)
         X_fit = X_scaled[:n_fit]
 
         backend = "hmm"
         hmm_error: Optional[str] = None
+        distance_scale = None
 
-        try:
-            print(f"[Part 6] Fitting GaussianHMM with {N_REGIMES} states...", flush=True)
-            model = fit_hmm(X_fit, n_regimes=N_REGIMES)
-            converged = bool(getattr(model.monitor_, "converged", False))
-            history = list(getattr(model.monitor_, "history", []))
-            log_likelihood = float(history[-1]) if history else None
-            states, posteriors = causal_hmm_filter(model, X_scaled)
-            print(f"  Converged: {converged}", flush=True)
-            if log_likelihood is not None:
-                print(f"  Log-likelihood: {log_likelihood:.2f}", flush=True)
-        except Exception as exc:
-            backend = "kmeans_fallback"
-            hmm_error = repr(exc)
-            print(f"[Part 6] WARNING: HMM failed; using KMeans fallback. Error: {hmm_error}", flush=True)
-            model = fit_kmeans_fallback(X_fit, n_regimes=N_REGIMES)
-            states = model.predict(X_scaled)
-            fit_distances = model.transform(X_fit)
-            distance_scale = float(np.nanmedian(fit_distances))
-            posteriors = _soft_probs_from_distances(
-                model.transform(X_scaled), reference_scale=distance_scale
-            )
-            converged = True
-            log_likelihood = None
+        if bundle is not None:
+            model = bundle["model"]
+            backend = bundle["backend"]
+            distance_scale = bundle.get("distance_scale")
+            if backend == "hmm":
+                states, posteriors = causal_hmm_filter(model, X_scaled)
+                converged = bool(getattr(model.monitor_, "converged", False))
+                history = list(getattr(model.monitor_, "history", []))
+                log_likelihood = float(history[-1]) if history else None
+            elif backend == "kmeans_fallback" and distance_scale is not None:
+                states = model.predict(X_scaled)
+                posteriors = _soft_probs_from_distances(model.transform(X_scaled), reference_scale=distance_scale)
+                converged, log_likelihood = True, None
+            else:
+                raise ValueError("Invalid saved regime backend or distance scale")
+            print(f"[Part 6] Reusing frozen {backend} fitted through {fit_end_date}", flush=True)
+        else:
+            try:
+                print(f"[Part 6] Fitting GaussianHMM with {N_REGIMES} states...", flush=True)
+                model = fit_hmm(X_fit, n_regimes=N_REGIMES)
+                converged = bool(getattr(model.monitor_, "converged", False))
+                history = list(getattr(model.monitor_, "history", []))
+                log_likelihood = float(history[-1]) if history else None
+                states, posteriors = causal_hmm_filter(model, X_scaled)
+                print(f"  Converged: {converged}", flush=True)
+                if log_likelihood is not None:
+                    print(f"  Log-likelihood: {log_likelihood:.2f}", flush=True)
+            except Exception as exc:
+                backend = "kmeans_fallback"
+                hmm_error = repr(exc)
+                print(f"[Part 6] WARNING: HMM failed; using KMeans fallback. Error: {hmm_error}", flush=True)
+                model = fit_kmeans_fallback(X_fit, n_regimes=N_REGIMES)
+                states = model.predict(X_scaled)
+                fit_distances = model.transform(X_fit)
+                distance_scale = float(np.nanmedian(fit_distances))
+                posteriors = _soft_probs_from_distances(
+                    model.transform(X_scaled), reference_scale=distance_scale
+                )
+                converged = True
+                log_likelihood = None
 
         states = np.asarray(states, dtype=int)
         means_df = _state_means_from_model(model, scaler, feature_cols, backend)
@@ -454,14 +513,16 @@ def main() -> int:
 
         meta = {
             "schema_version": SCHEMA_VERSION,
-            "fit_date": pd.Timestamp.now().isoformat(),
+            "fit_date": fit_date,
+            "decoded_at": pd.Timestamp.now(tz="UTC").isoformat(),
             "backend": backend,
             "hmm_error": hmm_error,
             "n_regimes": N_REGIMES,
             "n_rows_fit": int(n_fit),
             "n_rows_decoded": int(len(feat_df)),
-            "fit_fraction": float(REGIME_FIT_FRAC),
+            "fit_fraction": float(n_fit / len(feat_df)),
             "fit_end_date": fit_end_date,
+            "forecast_train_effective_end": str(cutoff.date()),
             "imputation_values": imputation_values,
             "posterior_method": (
                 "causal_forward_filter" if backend == "hmm" else "train_scaled_distance"
@@ -475,19 +536,23 @@ def main() -> int:
             "hmm_log_likelihood": log_likelihood,
         }
 
+        if mode == "train":
+            save_model(
+                model,
+                scaler,
+                label_map,
+                feature_cols,
+                backend,
+                imputation_values=imputation_values,
+                fit_end_date=fit_end_date,
+                n_rows_fit=n_fit,
+                fit_date=fit_date,
+                distance_scale=distance_scale,
+            )
+        meta["regime_model_sha256"] = file_sha256(ARTIFACTS_DIR / "regime_model.pkl")
         with open(ARTIFACTS_DIR / "regime_meta.json", "w") as f:
             json.dump(meta, f, indent=2, default=str)
         print("[Part 6] Saved regime_meta.json", flush=True)
-
-        save_model(
-            model,
-            scaler,
-            label_map,
-            feature_cols,
-            backend,
-            imputation_values=imputation_values,
-            fit_end_date=fit_end_date,
-        )
 
         print(f"\n[Part 6] ✅ Complete using backend={backend}.", flush=True)
         return 0
@@ -498,6 +563,8 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    parser = argparse.ArgumentParser(description="Fit or reuse the frozen weather regime model")
+    parser.add_argument("--mode", choices=["train", "predict"], default="train")
+    raise SystemExit(main(parser.parse_args().mode))
 
 

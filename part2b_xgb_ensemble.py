@@ -215,7 +215,7 @@ def naive_persistence_mae(df_val: pd.DataFrame) -> Dict[str, float]:
         paired = pd.DataFrame({
             "target": pd.to_numeric(df_val[target_col], errors="coerce"),
             "persistence": pd.to_numeric(df_val["temp_high_f"], errors="coerce"),
-        }).dropna()
+        }).replace([np.inf, -np.inf], np.nan).dropna()
         if not paired.empty:
             maes[f"h{h}"] = float(
                 np.mean(np.abs(paired["target"].to_numpy() - paired["persistence"].to_numpy()))
@@ -227,6 +227,7 @@ def evaluate_live_model_skill(
     df_log: pd.DataFrame,
     min_samples: int = LIVE_SKILL_MIN_REALIZED_SAMPLES,
     lookback_rows: int = LIVE_SKILL_LOOKBACK_ROWS,
+    protocol_version: Optional[str] = None,
 ) -> Tuple[Dict[int, bool], Dict[str, Dict[str, object]]]:
     """Fail closed unless recent paired errors show learned-model skill.
 
@@ -236,6 +237,9 @@ def evaluate_live_model_skill(
     """
     allowed = {h: False for h in HORIZONS}
     diagnostics: Dict[str, Dict[str, object]] = {}
+    if protocol_version is not None:
+        from forecast_protocol import protocol_published_history
+        df_log = protocol_published_history(df_log, protocol_version)
     for h in HORIZONS:
         real_col = f"realized_h{h}"
         persistence_col = f"persistence_h{h}"
@@ -271,7 +275,9 @@ def evaluate_live_model_skill(
         elif "decision_date" in df_log.columns:
             paired["_decision_date"] = pd.to_datetime(df_log["decision_date"], errors="coerce")
             paired = paired.sort_values("_decision_date", kind="stable")
-        paired = paired.dropna(subset=["candidate", "persistence", "realized"]).tail(lookback_rows)
+        paired = paired.replace([np.inf, -np.inf], np.nan).dropna(
+            subset=["candidate", "persistence", "realized"]
+        ).tail(lookback_rows)
         n_paired = int(len(paired))
         delta = (
             np.abs(paired["candidate"].to_numpy() - paired["realized"].to_numpy())
@@ -364,6 +370,7 @@ def select_gate_approved_xgb_predictions(
 
 def evaluate_nws_anchor_skill(
     df_log: pd.DataFrame,
+    protocol_version: Optional[str] = None,
 ) -> Tuple[Dict[int, bool], Dict[str, Dict[str, object]]]:
     """Decide per horizon whether realized evidence permits NWS anchoring.
 
@@ -373,6 +380,10 @@ def evaluate_nws_anchor_skill(
     """
     allowed = {h: False for h in HORIZONS}
     diagnostics: Dict[str, Dict[str, object]] = {}
+
+    if protocol_version is not None:
+        from forecast_protocol import protocol_published_history
+        df_log = protocol_published_history(df_log, protocol_version)
 
     for h in HORIZONS:
         cols = [f"forecast_pre_anchor_h{h}", f"nws_h{h}", f"realized_h{h}"]
@@ -384,7 +395,9 @@ def evaluate_nws_anchor_skill(
             }
             continue
 
-        paired = df_log[cols].apply(pd.to_numeric, errors="coerce").dropna()
+        paired = df_log[cols].apply(pd.to_numeric, errors="coerce").replace(
+            [np.inf, -np.inf], np.nan
+        ).dropna()
         paired = paired.tail(NWS_ANCHOR_LOOKBACK_ROWS)
         n_paired = int(len(paired))
         if n_paired < NWS_ANCHOR_MIN_REALIZED_SAMPLES:
@@ -502,10 +515,13 @@ def _load_lstm_val_predictions() -> pd.DataFrame:
         print("[Part 2B] val_predictions.parquet not found — using default blend weights.")
         return pd.DataFrame()
     df = pd.read_parquet(path)
-    if "date" not in df.columns:
-        print("[Part 2B] val_predictions.parquet has no date column — using default blend weights.")
+    if "date" not in df.columns or "split" not in df.columns:
+        print("[Part 2B] Validation provenance missing — using default blend weights.")
         return pd.DataFrame()
+    df = df.loc[df["split"].eq("val")].copy()
     df["date"] = pd.to_datetime(df["date"]).dt.normalize()
+    if df["date"].isna().any() or df["date"].duplicated().any():
+        raise ValueError("Invalid or duplicate LSTM validation dates")
     return df.sort_values("date").reset_index(drop=True)
 
 
@@ -962,6 +978,9 @@ def upsert_log_columns(updates: Dict, decision_date: str, feature_date: str, mod
         return
 
     idx = df.index[match][-1]
+    from forecast_protocol import forecast_is_published
+    if forecast_is_published(df.loc[idx]):
+        raise ValueError("Published forecast is immutable; Part 2B cannot overwrite it")
     for col, val in updates.items():
         df.loc[idx, col] = val
 
@@ -1145,8 +1164,13 @@ def main() -> int:
 
     last_obs = load_last_observed_temp()
     nws_preds = load_nws_forecast_for_horizons(feature_date)
-    nws_anchor_allowed, nws_anchor_skill = evaluate_nws_anchor_skill(log)
-    model_skill_allowed, model_skill_diagnostics = evaluate_live_model_skill(log)
+    from forecast_protocol import TRAINING_PROTOCOL_VERSION
+    nws_anchor_allowed, nws_anchor_skill = evaluate_nws_anchor_skill(
+        log, protocol_version=TRAINING_PROTOCOL_VERSION
+    )
+    model_skill_allowed, model_skill_diagnostics = evaluate_live_model_skill(
+        log, protocol_version=TRAINING_PROTOCOL_VERSION
+    )
     governed_xgb_live = select_gate_approved_xgb_predictions(
         xgb_live, gate_diagnostics
     )
@@ -1240,6 +1264,8 @@ def main() -> int:
         "nws_anchor_details": anchor_details,
         "nws_anchor_skill_gate": nws_anchor_skill,
         "live_model_skill_gate": model_skill_diagnostics,
+        "live_model_skill_protocol_version": TRAINING_PROTOCOL_VERSION,
+        "live_model_skill_min_paired": LIVE_SKILL_MIN_REALIZED_SAMPLES,
         "feature_importances": feat_importances,
         "hyperparameters": XGB_PARAMS,
         "nws_anchor_policy": {

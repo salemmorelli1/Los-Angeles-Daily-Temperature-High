@@ -295,7 +295,7 @@ def backfill_realized(df_log: pd.DataFrame, df_realized: pd.DataFrame) -> pd.Dat
         for h in HORIZONS:
             target_date = target_date_for_row(row, h)
             real_col = f"realized_h{h}"
-            if target_date > today:
+            if target_date >= today:
                 continue
             current = pd.to_numeric(
                 pd.Series([df_log.at[idx, real_col]]), errors="coerce"
@@ -332,13 +332,20 @@ def compute_persistence_baseline(df_log: pd.DataFrame, df_hist: pd.DataFrame) ->
         if pd.isna(fd):
             continue
         fd = pd.Timestamp(fd).normalize()
+        stored = {
+            c: pd.to_numeric(pd.Series([row.get(c)]), errors="coerce").iloc[0]
+            for c in ["persistence_temp_f"] + [f"persistence_h{h}" for h in HORIZONS]
+        }
+        original = next((float(v) for v in stored.values() if np.isfinite(v)), None)
         for lookback in range(0, 10):
             check = fd - pd.Timedelta(days=lookback)
             if check in hist_map:
-                val = hist_map[check]
-                df_log.at[idx, "persistence_temp_f"] = val
+                val = original if original is not None else hist_map[check]
+                if not np.isfinite(stored["persistence_temp_f"]):
+                    df_log.at[idx, "persistence_temp_f"] = val
                 for h in HORIZONS:
-                    df_log.at[idx, f"persistence_h{h}"] = val
+                    if not np.isfinite(stored[f"persistence_h{h}"]):
+                        df_log.at[idx, f"persistence_h{h}"] = val
                 break
     return df_log
 

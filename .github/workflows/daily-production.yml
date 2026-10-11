@@ -153,11 +153,10 @@ jobs:
         if: steps.gate.outputs.run == 'true' || github.event_name == 'workflow_dispatch'
         run: |
           python -m pip install --upgrade pip
-          # Keep production CPU-only. requirements.txt pins xgboost<2.0 to avoid
-          # nvidia-nccl-cu12/GPU dependency pulls on GitHub Actions.
-          grep -vE '^torch([<>=! ].*)?$' requirements.txt > /tmp/requirements-no-torch.txt
-          pip install -r /tmp/requirements-no-torch.txt
-          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          # Use the same pinned CPU stack verified by Linux/Windows CI.
+          pip install -r requirements-ci-lock.txt
+          pip install torch==2.14.1 --index-url https://download.pytorch.org/whl/cpu
+          python -m pip check
 
       # ── Restore accumulated artifacts from remote ────────────────────────
       # actions/checkout resolves github.sha at trigger/queue time, not at
@@ -190,6 +189,9 @@ jobs:
             artifacts_part2/transformer_model.pt \
             artifacts_part2/feature_scaler.pkl \
             artifacts_part2/target_scaler.pkl \
+            artifacts_part2/val_predictions.parquet \
+            artifacts_part6/regime_model.pkl \
+            artifacts_part6/regime_meta.json \
             artifacts_part3/governance_history.parquet \
             artifacts_part9/live_attribution_report.json \
             artifacts_part9/attribution_tape.parquet \

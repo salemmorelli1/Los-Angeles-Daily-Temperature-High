@@ -46,7 +46,10 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 import pandas as pd
 
-from forecast_protocol import pacific_today, pacific_today_timestamp
+from forecast_protocol import (
+    PACIFIC_TZ, forecast_is_published, pacific_today, pacific_today_timestamp,
+    training_lineage_errors,
+)
 
 warnings.filterwarnings("ignore")
 
@@ -157,8 +160,8 @@ def check_data_freshness() -> GovernanceCheck:
         return chk.fail("data_meta.json not found — Part 0 has not run")
     with open(meta_path) as f:
         meta = json.load(f)
-    fetched_at = pd.Timestamp(meta.get("fetched_at", "1970-01-01"))
-    age_h = (pd.Timestamp.now() - fetched_at).total_seconds() / 3600
+    fetched_at = pd.to_datetime(meta.get("fetched_at", "1970-01-01"), utc=True)
+    age_h = (pd.Timestamp.now(tz="UTC") - fetched_at).total_seconds() / 3600
     hist_end = pd.Timestamp(meta.get("historical_end", "1970-01-01"))
     staleness = (pacific_today_timestamp() - hist_end).days
     chk.details = {
@@ -179,8 +182,8 @@ def check_model_freshness() -> GovernanceCheck:
         return chk.fail("part2_meta.json not found — Part 2 has not run")
     with open(path) as f:
         meta = json.load(f)
-    trained_at = pd.Timestamp(meta.get("trained_at", "1970-01-01"))
-    age = (pd.Timestamp.now() - trained_at).days
+    trained_at = pd.to_datetime(meta.get("trained_at", "1970-01-01"), utc=True)
+    age = (pd.Timestamp.now(tz="UTC") - trained_at).days
     chk.details = {"trained_at": str(trained_at), "age_days": age}
     if age > MAX_MODEL_AGE_DAYS:
         return chk.warn(f"Model is {age}d old (max={MAX_MODEL_AGE_DAYS}d)", **chk.details)
@@ -198,6 +201,44 @@ def check_schema_integrity(df_log: Optional[pd.DataFrame]) -> GovernanceCheck:
     return chk
 
 
+def check_forecast_dates(row: pd.Series, df_hist: pd.DataFrame) -> GovernanceCheck:
+    """Reject a stale forecast even if Part 0 metadata was refreshed today."""
+    chk = GovernanceCheck("FORECAST_CALENDAR_LINEAGE", level="CRITICAL")
+    today = pacific_today_timestamp()
+    decision = pd.to_datetime(row.get("decision_date"), errors="coerce")
+    feature = pd.to_datetime(row.get("feature_date"), errors="coerce")
+    if pd.isna(decision) or pd.isna(feature):
+        return chk.fail("Forecast decision or feature date is missing/invalid")
+    if decision != today or feature != today - pd.Timedelta(days=1):
+        return chk.fail("Forecast does not use yesterday's complete data for today's decision")
+    if df_hist.empty or "date" not in df_hist or pd.to_datetime(df_hist["date"]).max().normalize() != feature:
+        return chk.fail("Forecast feature date does not match the historical data endpoint")
+    for h in HORIZONS:
+        target = pd.to_datetime(row.get(f"target_date_h{h}"), errors="coerce")
+        if pd.isna(target) or target != feature + pd.Timedelta(days=h):
+            return chk.fail(f"target_date_h{h} does not equal feature_date + {h} calendar days")
+    issued = pd.to_datetime(row.get("written_at"), errors="coerce", utc=True)
+    if pd.isna(issued) or pd.Timestamp(issued.tz_convert(PACIFIC_TZ).date()) != decision:
+        return chk.fail("Forecast issue time is missing or outside its Pacific decision date")
+    if issued > pd.Timestamp.now(tz="UTC") + pd.Timedelta(minutes=5):
+        return chk.fail("Forecast issue time is in the future")
+    chk.details = {"decision_date": str(decision.date()), "feature_date": str(feature.date()), "issued_at": str(issued)}
+    return chk
+
+
+def check_training_lineage(row: pd.Series) -> GovernanceCheck:
+    chk = GovernanceCheck("MODEL_TRAINING_LINEAGE", level="CRITICAL")
+    errors = training_lineage_errors(PROJECT_DIR)
+    if not errors:
+        meta = json.loads((PART2_DIR / "part2_meta.json").read_text())
+        errors = [
+            f"forecast_{key}_mismatch"
+            for key in ["training_protocol_version", "checkpoint_sha256", "regime_model_sha256"]
+            if row.get(key) != meta.get(key)
+        ]
+    return chk.fail("Checkpoint/preprocessing lineage failed", errors=errors) if errors else chk
+
+
 def check_forecast_source(row: pd.Series) -> GovernanceCheck:
     """Verify that canonical forecast_h* columns exist and have a valid source."""
     chk = GovernanceCheck("FORECAST_SOURCE_CHECK", level="CRITICAL")
@@ -208,7 +249,7 @@ def check_forecast_source(row: pd.Series) -> GovernanceCheck:
         "forecast_source": source,
         "forecast_values": {f"h{h}": round(fcast.get(f"h{h}", float("nan")), 2) for h in HORIZONS},
     }
-    if "unavailable" in source or not source or source == "lstm_preliminary":
+    if "unavailable" in source or not source or source.endswith("_preliminary"):
         return chk.fail(
             f"Forecast source is '{source}' — Part 2B may not have run or fallback failed.",
             **chk.details
@@ -545,8 +586,17 @@ def check_bnn_calibration(latest_row: Optional[pd.Series] = None) -> GovernanceC
                 **chk.details,
             )
 
+        checkpoint = latest_row.get("checkpoint_sha256")
+        if pd.notna(checkpoint) and checkpoint != bnn_meta.get("checkpoint_sha256"):
+            return chk.warn("BNN artifact belongs to a different checkpoint", bnn_available=False)
+
     with open(cal_path) as f:
         cal = json.load(f)
+
+    if latest_row is not None:
+        checkpoint = latest_row.get("checkpoint_sha256")
+        if pd.notna(checkpoint) and checkpoint != cal.get("checkpoint_sha256"):
+            return chk.warn("BNN calibration belongs to a different checkpoint", bnn_available=False)
 
     cal_pass = cal.get("calibration_pass", None)
     interval_status = cal.get("interval_status", "UNKNOWN")
@@ -722,6 +772,8 @@ def main() -> int:
         check_data_freshness(),
         check_model_freshness(),
         check_schema_integrity(df_log),
+        check_forecast_dates(latest, df_hist),
+        check_training_lineage(latest),
         check_forecast_source(latest),
         check_forecast_bounds(latest),
         check_forecast_spread(latest),
@@ -774,13 +826,16 @@ def main() -> int:
         print("  ✅ All checks passed. Forecast is NORMAL.")
 
     # Write publish_mode + BNN flag back to prediction log
-    if df_log is not None and not df_log.empty:
+    if df_log is not None and not df_log.empty and not forecast_is_published(latest):
         log_path = PART2_DIR / "prediction_log.csv"
         if not log_path.exists():
             log_path = ARTIFACTS_DIR / "prediction_log.csv"
 
         df_log.loc[df_log.index[-1], "publish_mode"] = publish_mode
-        df_log.loc[df_log.index[-1], "governance_run_at"] = pd.Timestamp.now().isoformat()
+        finalized_at = pd.Timestamp.now(tz="UTC").isoformat()
+        df_log.loc[df_log.index[-1], "governance_run_at"] = finalized_at
+        if publish_mode in {"NORMAL", "CAUTION"}:
+            df_log.loc[df_log.index[-1], "forecast_finalized_at"] = finalized_at
         df_log.loc[df_log.index[-1], "bnn_available"] = bool(bnn_available)
         df_log.loc[df_log.index[-1], "bnn_calibrated"] = bool(bnn_calibrated)
         df_log.loc[df_log.index[-1], "bnn_interval_status"] = bnn_interval_status

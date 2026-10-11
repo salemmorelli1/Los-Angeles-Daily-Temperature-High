@@ -2,6 +2,10 @@
 
 A production-grade deep learning pipeline for forecasting the **Los Angeles daily temperature high** at H=1, H=3, and H=5 days ahead.
 
+The [October 11 forecast-provenance audit](docs/FORECAST_PROVENANCE_AUDIT_2026-10-11.md) corrects regime-fit leakage and freezes preprocessing with the neural checkpoint between retrains. The first new-day run after this change automatically refits both stages. Existing forecasts and outcomes are retained; reruns preserve published values and update realized outcomes only. Learned-model approval keeps the existing 30-pair threshold and uses published evidence from the revised method, without retroactively relabeling old forecasts.
+
+For the exact Python 3.12 CPU environment used by Linux/Windows CI, uninstall the legacy `xgboost` distribution from your virtual environment, install `torch==2.14.1` from `https://download.pytorch.org/whl/cpu`, then `requirements-ci-lock.txt` (including `xgboost-cpu==3.4.1`). The retained legacy artifacts produce an explicit retraining warning until the corrected production bundle is fitted; new bundle mismatches fail validation and governance.
+
 Built on the same modular architecture as the PriceCall stack — with trading strategy and execution components replaced by meteorological physics, regime detection, and forecast verification against NWS official forecasts.
 
 

@@ -54,7 +54,10 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 
-from forecast_protocol import pacific_today_timestamp, purged_labeled_splits
+from forecast_protocol import (
+    TRAINING_PROTOCOL_VERSION, file_sha256, forecast_is_published,
+    pacific_today_timestamp, purged_labeled_splits, training_lineage_errors,
+)
 
 warnings.filterwarnings("ignore")
 
@@ -741,6 +744,12 @@ def save_training_artifacts(
     with open(ARTIFACTS_DIR / "training_history.json", "w") as f:
         json.dump(history, f, indent=2)
 
+    meta.update({
+        "checkpoint_sha256": file_sha256(_model_path(model_type)),
+        "feature_scaler_sha256": file_sha256(ARTIFACTS_DIR / "feature_scaler.pkl"),
+        "target_scaler_sha256": file_sha256(ARTIFACTS_DIR / "target_scaler.pkl"),
+        "val_predictions_sha256": file_sha256(ARTIFACTS_DIR / "val_predictions.parquet"),
+    })
     with open(ARTIFACTS_DIR / "part2_meta.json", "w") as f:
         json.dump(meta, f, indent=2)
 
@@ -748,6 +757,9 @@ def save_training_artifacts(
 
 
 def load_training_artifacts(model_type: str, input_size: int):
+    errors = training_lineage_errors(PROJECT_DIR)
+    if errors:
+        raise ValueError(f"Saved model lineage is invalid: {errors}. Retrain the stack.")
     torch, _, _, _ = _try_import_torch()
 
     feat_path = ARTIFACTS_DIR / "feature_scaler.pkl"
@@ -815,6 +827,8 @@ def upsert_log_row(row: Dict) -> None:
 
     if match.any():
         idx = df.index[match][-1]
+        if forecast_is_published(df.loc[idx]):
+            raise ValueError("Published forecast is immutable; Part 2 cannot overwrite it")
         for col, val in row.items():
             df.loc[idx, col] = val
         print(f"[Part 2] Upserted prediction row for {row.get('decision_date')}.")
@@ -831,6 +845,7 @@ def write_prediction_row(
     decision_date: pd.Timestamp,
     feature_date: pd.Timestamp,
     model_type: str,
+    model_meta: Optional[Dict] = None,
 ) -> None:
     row: Dict = {
         "decision_date": decision_date.strftime("%Y-%m-%d"),
@@ -840,15 +855,18 @@ def write_prediction_row(
         "target_date_h5": (feature_date + pd.Timedelta(days=5)).strftime("%Y-%m-%d"),
         "model": model_type.upper(),
         "lstm_output_clipped": bool(was_clipped),
-        "written_at": pd.Timestamp.now().isoformat(),
+        "written_at": pd.Timestamp.now(tz="UTC").isoformat(),
     }
+    for key in ["training_protocol_version", "checkpoint_sha256", "regime_model_sha256"]:
+        row[key] = (model_meta or {}).get(key)
+    row["model_trained_at"] = (model_meta or {}).get("trained_at")
 
     for i, h in enumerate(HORIZONS):
         val = float(preds_f[i])
         row[f"target_h{h}"] = val
         row[f"forecast_h{h}"] = val
 
-    row["forecast_source"] = "lstm_preliminary"
+    row["forecast_source"] = f"{model_type}_preliminary"
     row["forecast_reason"] = "awaiting_Part2B_fallback_chain"
 
     upsert_log_row(row)
@@ -904,6 +922,14 @@ def main(model_type: str = "lstm", mode: str = "train") -> int:
     input_size = len(feature_cols)
 
     if mode == "train":
+        regime_meta_path = PROJECT_DIR / "artifacts_part6/regime_meta.json"
+        regime_meta = json.loads(regime_meta_path.read_text())
+        fit_end = pd.to_datetime(regime_meta.get("fit_end_date"), errors="coerce")
+        cutoff = pd.Timestamp(splits["train_effective_end"])
+        if (pd.isna(fit_end) or fit_end > cutoff
+                or not regime_meta.get("forecast_train_effective_end")
+                or regime_meta.get("regime_model_sha256") != file_sha256(PROJECT_DIR / "artifacts_part6/regime_model.pkl")):
+            raise ValueError("Part 6 must fit a verified, purged regime bundle before Part 2 training")
         from sklearn.preprocessing import MinMaxScaler
 
         feat_scaler = MinMaxScaler()
@@ -1026,8 +1052,11 @@ def main(model_type: str = "lstm", mode: str = "train") -> int:
 
         meta: Dict = {
             "schema_version": SCHEMA_VERSION,
+            "training_protocol_version": TRAINING_PROTOCOL_VERSION,
+            "training_splits": splits,
+            "regime_model_sha256": file_sha256(PROJECT_DIR / "artifacts_part6/regime_model.pkl"),
             "model_type": model_type,
-            "trained_at": pd.Timestamp.now().isoformat(),
+            "trained_at": pd.Timestamp.now(tz="UTC").isoformat(),
             "n_features": int(input_size),
             "feature_cols": feature_cols,
             "target_cols": target_cols,
@@ -1111,6 +1140,7 @@ def main(model_type: str = "lstm", mode: str = "train") -> int:
         decision_date=pacific_today_timestamp(),
         feature_date=feature_date,
         model_type=model_type,
+        model_meta=meta,
     )
 
     print("\n[Part 2] ✅ Complete.")
