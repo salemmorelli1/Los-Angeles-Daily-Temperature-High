@@ -1,14 +1,14 @@
 {
   "schema_version": "1.2.0-fail-closed-hold",
-  "run_at": "2026-10-14T18:10:39.424056",
-  "decision_date": "2026-10-14",
-  "publish_mode": "CAUTION",
+  "run_at": "2026-10-15T17:53:50.702327",
+  "decision_date": "2026-10-15",
+  "publish_mode": "NORMAL",
   "forecast_source": "persistence",
   "bnn_available": true,
   "bnn_calibrated": true,
   "bnn_interval_status": "CONFORMAL_CALIBRATED",
   "bnn_intervals_displayable": true,
-  "checks_passed": 10,
+  "checks_passed": 11,
   "checks_total": 11,
   "checks": [
     {
@@ -17,9 +17,9 @@
       "level": "CRITICAL",
       "message": "OK",
       "details": {
-        "fetched_at": "2026-10-14 18:10:11.745272+00:00",
+        "fetched_at": "2026-10-15 17:53:03.647750+00:00",
         "age_hours": 0.0,
-        "historical_end": "2026-10-13",
+        "historical_end": "2026-10-14",
         "staleness_days": 1
       }
     },
@@ -29,8 +29,8 @@
       "level": "WARN",
       "message": "OK",
       "details": {
-        "trained_at": "2026-10-12 21:52:08.902194+00:00",
-        "age_days": 1
+        "trained_at": "2026-10-15 17:53:37.353747+00:00",
+        "age_days": 0
       }
     },
     {
@@ -60,9 +60,9 @@
       "level": "CRITICAL",
       "message": "OK",
       "details": {
-        "decision_date": "2026-10-14",
-        "feature_date": "2026-10-13",
-        "issued_at": "2026-10-14 18:10:19.009969+00:00"
+        "decision_date": "2026-10-15",
+        "feature_date": "2026-10-14",
+        "issued_at": "2026-10-15 17:53:37.380051+00:00"
       }
     },
     {
@@ -80,9 +80,9 @@
       "details": {
         "forecast_source": "persistence",
         "forecast_values": {
-          "h1": 73.2,
-          "h3": 73.2,
-          "h5": 73.2
+          "h1": 78.9,
+          "h3": 78.9,
+          "h5": 78.9
         }
       }
     },
@@ -93,9 +93,9 @@
       "message": "OK",
       "details": {
         "forecast_values": {
-          "h1": 73.2,
-          "h3": 73.2,
-          "h5": 73.2
+          "h1": 78.9,
+          "h3": 78.9,
+          "h5": 78.9
         },
         "bounds": {
           "min_f": 32.0,
@@ -119,7 +119,7 @@
       "level": "CRITICAL",
       "message": "OK",
       "details": {
-        "last_observed_f": 73.2,
+        "last_observed_f": 78.9,
         "check_deviations_f": {
           "h1": 0.0,
           "h3": 0.0,
@@ -137,61 +137,64 @@
     },
     {
       "name": "NWS_SANITY",
-      "passed": false,
+      "passed": true,
       "level": "WARN",
-      "message": "NWS deviation exceeded strong warning tier: H=3: forecast=73.2\u00b0F NWS=90.0\u00b0F \u0394=16.8\u00b0F; H=5: forecast=73.2\u00b0F NWS=82.0\u00b0F \u0394=8.8\u00b0F",
+      "message": "OK with material NWS notes: H=1: forecast=78.9\u00b0F NWS=83.0\u00b0F \u0394=4.1\u00b0F; H=3: forecast=78.9\u00b0F NWS=85.0\u00b0F \u0394=6.1\u00b0F",
       "details": {
         "comparisons": {
           "h1": {
-            "forecast_f": 73.2,
-            "nws_f": 76.0,
-            "deviation_f": 2.8,
+            "forecast_f": 78.9,
+            "nws_f": 83.0,
+            "deviation_f": 4.1,
             "direction": "cold",
-            "tier": "OK"
+            "tier": "SOFT_NOTE"
           },
           "h3": {
-            "forecast_f": 73.2,
-            "nws_f": 90.0,
-            "deviation_f": 16.8,
+            "forecast_f": 78.9,
+            "nws_f": 85.0,
+            "deviation_f": 6.1,
             "direction": "cold",
-            "tier": "STRONG_WARN"
+            "tier": "SOFT_NOTE"
           },
           "h5": {
-            "forecast_f": 73.2,
-            "nws_f": 82.0,
-            "deviation_f": 8.8,
-            "direction": "cold",
-            "tier": "STRONG_WARN"
+            "forecast_f": 78.9,
+            "nws_f": 78.0,
+            "deviation_f": 0.9,
+            "direction": "warm",
+            "tier": "OK"
           }
         },
         "soft_warn_deviation_f": 3.0,
         "strong_warn_deviation_f": 8.0,
         "max_deviation_f": 18.0,
-        "soft_notes": []
+        "soft_notes": [
+          "H=1: forecast=78.9\u00b0F NWS=83.0\u00b0F \u0394=4.1\u00b0F",
+          "H=3: forecast=78.9\u00b0F NWS=85.0\u00b0F \u0394=6.1\u00b0F"
+        ]
       }
     },
     {
       "name": "BNN_CALIBRATION_GATE",
       "passed": true,
       "level": "WARN",
-      "message": "OK (test gate passed) \u2014 half-split diagnostic warning: H=1: half-split=80.5% < 85%; H=3: half-split=78.8% < 85%; H=5: half-split=80.1% < 85%. Monitor; consider BNN retrain if this persists.",
+      "message": "OK (test gate passed) \u2014 half-split diagnostic warning: H=1: half-split=80.6% < 85%; H=3: half-split=76.7% < 85%; H=5: half-split=76.2% < 85%. Monitor; consider BNN retrain if this persists.",
       "details": {
         "calibration_pass": true,
-        "validation_calibration_pass": true,
+        "validation_calibration_pass": false,
         "test_calibration_pass": true,
         "interval_status": "CONFORMAL_CALIBRATED",
         "interval_label": "canonical_display_interval",
         "intervals_publishable": false,
         "intervals_displayable": true,
         "coverage_by_horizon": {
-          "h1": 0.859,
-          "h3": 0.8739,
-          "h5": 0.8718
+          "h1": 0.9145,
+          "h3": 0.8483,
+          "h5": 0.8419
         },
         "val_diagnostic_coverage_by_horizon": {
-          "h1": 0.8673,
-          "h3": 0.8673,
-          "h5": 0.8673
+          "h1": 0.859,
+          "h3": 0.8546,
+          "h5": 0.8414
         },
         "min_coverage_threshold": 0.75,
         "min_validation_coverage": 0.85,
@@ -199,9 +202,9 @@
         "bnn_available": true,
         "half_split_validation_pass": false,
         "half_split_notes": [
-          "H=1: half-split=80.5% < 85%",
-          "H=3: half-split=78.8% < 85%",
-          "H=5: half-split=80.1% < 85%"
+          "H=1: half-split=80.6% < 85%",
+          "H=3: half-split=76.7% < 85%",
+          "H=5: half-split=76.2% < 85%"
         ],
         "half_split_warning": "Half-split diagnostic failed for one or more horizons. The deployed conformal radius uses the full validation set and passes the independent test gate. This is a stability note only. publish_mode is NOT affected."
       }
