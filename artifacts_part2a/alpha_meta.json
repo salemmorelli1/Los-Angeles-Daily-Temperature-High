@@ -1,7 +1,7 @@
 {
   "schema_version": "1.1.0",
-  "built_at": "2026-10-15T17:53:15.117921",
-  "n_alpha_features": 22,
+  "built_at": "2026-10-16T17:41:19.345998",
+  "n_alpha_features": 25,
   "alpha_feature_cols": [
     "alpha_pressure_tend_2d",
     "alpha_pressure_tend_3d",
@@ -24,10 +24,13 @@
     "alpha_temp_zscore_30d",
     "alpha_heat_wave_streak",
     "alpha_days_from_peak",
-    "alpha_enso_proxy"
+    "alpha_enso_proxy",
+    "alpha_nino34_anom",
+    "alpha_el_nino_flag",
+    "alpha_la_nina_flag"
   ],
-  "enso_available": false,
-  "enso_source_url": null,
+  "enso_available": true,
+  "enso_source_url": "https://psl.noaa.gov/data/correlation/nina34.anom.data",
   "enso_note": "alpha_nino34_anom is an anomaly series; absolute SST inputs are converted defensively",
   "feature_descriptions": {
     "alpha_pressure_tend_2d": "Two-day pressure tendency shifted one day; distinct from Part 1 pressure_tendency_2d",
@@ -51,7 +54,10 @@
     "alpha_temp_zscore_30d": "Temperature z-score vs 30-day distribution",
     "alpha_heat_wave_streak": "Consecutive days at or above 95\u00b0F; omitted from metadata when sparse/constant guard drops it",
     "alpha_days_from_peak": "Days from Aug 15 (climatological hottest day)",
-    "alpha_enso_proxy": "Local proxy for ENSO state from P/T anomalies"
+    "alpha_enso_proxy": "Local proxy for ENSO state from P/T anomalies",
+    "alpha_nino34_anom": "NOAA Ni\u00f1o 3.4 monthly anomaly (if available)",
+    "alpha_el_nino_flag": "1 if El Ni\u00f1o conditions (Ni\u00f1o 3.4 > 0.5)",
+    "alpha_la_nina_flag": "1 if La Ni\u00f1a conditions (Ni\u00f1o 3.4 < -0.5)"
   },
   "dropped_feature_description_note": "feature_descriptions is intentionally limited to alpha_feature_cols. Sparse/constant candidates such as alpha_santa_ana_flag or alpha_heat_wave_streak are excluded when guards remove them."
 }
