@@ -1,7 +1,7 @@
 {
   "schema_version": "1.1.0-calendar-targets-purged",
-  "built_at": "2026-10-16T17:41:17.829074",
-  "n_rows": 3210,
+  "built_at": "2026-10-17T16:38:16.261376",
+  "n_rows": 3211,
   "feature_cols": [
     "temp_high_f",
     "temp_low_f",
@@ -147,28 +147,28 @@
   "target_variable": "temp_high_f",
   "date_range": {
     "start": "2018-01-01",
-    "end": "2026-10-15"
+    "end": "2026-10-16"
   },
   "splits": {
     "train_start": "2018-01-01",
-    "train_end": "2024-02-21",
-    "train_effective_end": "2024-02-16",
-    "val_start": "2024-02-22",
-    "val_end": "2025-06-16",
-    "val_effective_end": "2025-06-11",
-    "test_start": "2025-06-17",
-    "test_end": "2026-10-10",
+    "train_end": "2024-02-22",
+    "train_effective_end": "2024-02-17",
+    "val_start": "2024-02-23",
+    "val_end": "2025-06-17",
+    "val_effective_end": "2025-06-12",
+    "test_start": "2025-06-18",
+    "test_end": "2026-10-11",
     "purge_days": 5,
-    "n_train": 2243,
-    "n_train_after_purge": 2238,
+    "n_train": 2244,
+    "n_train_after_purge": 2239,
     "n_val": 481,
     "n_val_after_purge": 476,
     "n_test": 481,
-    "n_labeled": 3205,
-    "n_feature_rows": 3210,
-    "live_feature_end": "2026-10-15"
+    "n_labeled": 3206,
+    "n_feature_rows": 3211,
+    "live_feature_end": "2026-10-16"
   },
   "alpha_features_merged": true,
-  "alpha_merge_date": "2026-10-16T17:41:19.345305",
+  "alpha_merge_date": "2026-10-17T16:38:17.405738",
   "post_alpha_n_features": 130
 }
