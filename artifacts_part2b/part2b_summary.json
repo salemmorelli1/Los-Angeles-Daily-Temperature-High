@@ -1,6 +1,6 @@
 {
   "schema_version": "1.4.0-temporal-purge-live-skill",
-  "built_at": "2026-10-17T16:38:21.140099",
+  "built_at": "2026-10-18T16:50:44.600122",
   "gate_validation_passed": true,
   "gate_validation_diagnostics": {
     "h1": {
@@ -35,12 +35,12 @@
     "h5_rmse_f": 4.801208260223302
   },
   "test_metrics": {
-    "h1_mae_f": 2.3785187973054187,
-    "h1_rmse_f": 3.3106979654393873,
-    "h3_mae_f": 3.7279340383168815,
-    "h3_rmse_f": 5.2260003074442976,
-    "h5_mae_f": 4.292908035246597,
-    "h5_rmse_f": 6.038611333529381
+    "h1_mae_f": 2.381569180943659,
+    "h1_rmse_f": 3.311904874853773,
+    "h3_mae_f": 3.745212616663256,
+    "h3_rmse_f": 5.249378795950972,
+    "h5_mae_f": 4.308543272532863,
+    "h5_rmse_f": 6.056358603586232
   },
   "val_heat_event_diagnostics": {
     "h1": {
@@ -87,21 +87,21 @@
     },
     "h3": {
       "threshold_f": 85.0,
-      "n_true_heat_days": 16,
+      "n_true_heat_days": 17,
       "predicted_heat_hits": 0,
       "hit_rate": 0.0,
-      "heat_mae_f": 13.559596920013426,
-      "heat_bias_f": -13.559596920013426,
+      "heat_mae_f": 13.471162324793196,
+      "heat_bias_f": -13.471162324793196,
       "max_true_f": 99.1,
       "max_pred_f": 81.81613159179688
     },
     "h5": {
       "threshold_f": 85.0,
-      "n_true_heat_days": 18,
+      "n_true_heat_days": 19,
       "predicted_heat_hits": 0,
       "hit_rate": 0.0,
-      "heat_mae_f": 16.15513144599067,
-      "heat_bias_f": -16.15513144599067,
+      "heat_mae_f": 15.927445180792557,
+      "heat_bias_f": -15.927445180792557,
       "max_true_f": 99.1,
       "max_pred_f": 78.49479675292969
     }
@@ -112,14 +112,14 @@
     "h5": 4.583613445378152
   },
   "xgb_live_predictions": {
-    "h1": 82.30007934570312,
-    "h3": 73.87770080566406,
-    "h5": 71.46432495117188
+    "h1": 81.84471893310547,
+    "h3": 71.7177963256836,
+    "h5": 71.79472351074219
   },
   "canonical_forecast": {
-    "h1": 93.9,
-    "h3": 93.9,
-    "h5": 93.9
+    "h1": 89.4,
+    "h3": 89.4,
+    "h5": 89.4
   },
   "forecast_source": "persistence",
   "forecast_reason": "H1:live_skill_gate_persistence | H3:live_skill_gate_persistence | H5:live_skill_gate_persistence",
@@ -178,11 +178,11 @@
     "h1": {
       "pre_anchor_source": "unavailable",
       "candidate_source": "blend",
-      "candidate_f": 82.42955474853515,
+      "candidate_f": 81.77966079711913,
       "blend_weight_xgb": null,
       "pre_anchor_f": null,
-      "nws_f": 90.0,
-      "final_f": 93.9,
+      "nws_f": 79.0,
+      "final_f": 89.4,
       "anchor_applied": false,
       "anchor_delta_f": null,
       "reason": "H1:live_skill_gate_persistence",
@@ -190,12 +190,12 @@
     },
     "h3": {
       "pre_anchor_source": "unavailable",
-      "candidate_source": "nws",
-      "candidate_f": null,
+      "candidate_source": "lstm",
+      "candidate_f": 75.3702621459961,
       "blend_weight_xgb": null,
       "pre_anchor_f": null,
-      "nws_f": 75.0,
-      "final_f": 93.9,
+      "nws_f": 68.0,
+      "final_f": 89.4,
       "anchor_applied": false,
       "anchor_delta_f": null,
       "reason": "H3:live_skill_gate_persistence",
@@ -203,12 +203,12 @@
     },
     "h5": {
       "pre_anchor_source": "unavailable",
-      "candidate_source": "nws",
-      "candidate_f": null,
+      "candidate_source": "lstm",
+      "candidate_f": 75.03838348388672,
       "blend_weight_xgb": null,
       "pre_anchor_f": null,
       "nws_f": 67.0,
-      "final_f": 93.9,
+      "final_f": 89.4,
       "anchor_applied": false,
       "anchor_delta_f": null,
       "reason": "H5:live_skill_gate_persistence",
@@ -239,21 +239,21 @@
     "h1": {
       "enabled": false,
       "reason": "insufficient_paired_history",
-      "n_paired": 4,
+      "n_paired": 5,
       "min_samples": 30,
       "lookback_rows": 90
     },
     "h3": {
       "enabled": false,
       "reason": "insufficient_paired_history",
-      "n_paired": 2,
+      "n_paired": 3,
       "min_samples": 30,
       "lookback_rows": 90
     },
     "h5": {
       "enabled": false,
       "reason": "insufficient_paired_history",
-      "n_paired": 0,
+      "n_paired": 1,
       "min_samples": 30,
       "lookback_rows": 90
     }
