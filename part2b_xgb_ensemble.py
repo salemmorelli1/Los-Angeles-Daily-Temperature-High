@@ -48,6 +48,7 @@ import numpy as np
 import pandas as pd
 
 from forecast_protocol import (
+    MIN_PAIRED_SKILL_SAMPLES,
     moving_block_bootstrap_mean_ci,
     pacific_today_timestamp,
     purged_labeled_splits,
@@ -98,7 +99,7 @@ NWS_ANCHOR_MIN_REALIZED_SAMPLES = 30
 NWS_ANCHOR_LOOKBACK_ROWS = 90
 NWS_ANCHOR_MIN_MAE_IMPROVEMENT_F = 0.25
 
-LIVE_SKILL_MIN_REALIZED_SAMPLES = 30
+LIVE_SKILL_MIN_REALIZED_SAMPLES = MIN_PAIRED_SKILL_SAMPLES
 LIVE_SKILL_LOOKBACK_ROWS = 90
 
 # A forecast is "plausible" if it deviates by less than this from last observed

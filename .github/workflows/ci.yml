@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: ["main"]
+    branches: ["main", "codex/**"]
     paths-ignore:
       - "artifacts_part*/**"
       - "*.md"
@@ -48,6 +48,21 @@ jobs:
           cache: pip
           cache-dependency-path: requirements-ci-lock.txt
 
+      - name: Create isolated Python environment
+        shell: bash
+        run: |
+          python - <<'PYENV'
+          import os
+          import subprocess
+          import sys
+          from pathlib import Path
+          directory = Path(os.environ["GITHUB_WORKSPACE"]) / ".venv"
+          subprocess.run([sys.executable, "-m", "venv", str(directory)], check=True)
+          binaries = directory / ("Scripts" if os.name == "nt" else "bin")
+          with open(os.environ["GITHUB_PATH"], "a", encoding="utf-8") as stream:
+              stream.write(str(binaries) + "\n")
+          PYENV
+
       - name: Install the tested CPU stack
         run: |
           python -m pip install --disable-pip-version-check torch==2.14.1 --index-url https://download.pytorch.org/whl/cpu
@@ -72,6 +87,24 @@ jobs:
 
       - name: Validate retained artifact contracts
         run: python validate_artifacts.py
+
+      - name: Verify Pages in an isolated publication environment
+        run: |
+          python - <<'PY'
+          import os
+          import subprocess
+          import sys
+          from pathlib import Path
+          directory = Path(os.environ["RUNNER_TEMP"]) / "la-publication-runtime"
+          subprocess.run([sys.executable, "-m", "venv", str(directory)], check=True)
+          interpreter = directory / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+          subprocess.run([str(interpreter), "-m", "pip", "install", "--disable-pip-version-check", "-r", "requirements-publication-lock.txt"], check=True)
+          subprocess.run([str(interpreter), "-m", "pip", "check"], check=True)
+          subprocess.run([str(interpreter), "-c", "import importlib.util; assert all(importlib.util.find_spec(m) is None for m in ['torch','sklearn','hmmlearn','xgboost'])"], check=True)
+          output = Path(os.environ["RUNNER_TEMP"]) / "la-publication-site"
+          subprocess.run([str(interpreter), "build_dashboard.py", "--output", str(output)], check=True)
+          subprocess.run([str(interpreter), "build_dashboard.py", "--output", str(output), "--verify"], check=True)
+          PY
 
       - name: Verify checks did not rewrite committed forecasts
         run: |

@@ -19,7 +19,7 @@ Minimum-sample guards
 Skill scores and comparative metrics are only displayed and reported once
 enough unique realized samples exist:
   SKILL_MIN_SAMPLES   = 30  — minimum for displaying skill / hit-rate
-  PROMOTE_MIN_SAMPLES = 60  — minimum for model promotion decisions
+  PROMOTE_MIN_SAMPLES = 30  — sample floor shared with the actual promotion gate
 
 Idempotency
 -----------
@@ -48,7 +48,10 @@ import numpy as np
 import pandas as pd
 import requests
 
-from forecast_protocol import moving_block_bootstrap_mean_ci, pacific_today_timestamp
+from forecast_protocol import (
+    MIN_PAIRED_SKILL_SAMPLES, TRAINING_PROTOCOL_VERSION,
+    moving_block_bootstrap_mean_ci, pacific_today_timestamp, protocol_published_history,
+)
 
 warnings.filterwarnings("ignore")
 
@@ -73,14 +76,14 @@ PART3_DIR = PROJECT_DIR / "artifacts_part3"
 ARTIFACTS_DIR = PROJECT_DIR / "artifacts_part9"
 ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
 
-SCHEMA_VERSION = "1.3.0-paired-block-bootstrap"
+SCHEMA_VERSION = "1.4.0-method-cohort"
 HORIZONS = [1, 3, 5]
 OM_ARCHIVE_URL = "https://archive-api.open-meteo.com/v1/archive"
 LAT = 33.9425
 LON = -118.4081
 
-SKILL_MIN_SAMPLES = 30    # report skill only above this
-PROMOTE_MIN_SAMPLES = 60  # model promotion threshold
+SKILL_MIN_SAMPLES = MIN_PAIRED_SKILL_SAMPLES
+PROMOTE_MIN_SAMPLES = MIN_PAIRED_SKILL_SAMPLES  # sample floor, not automatic approval
 
 
 # ---------------------------------------------------------------------------
@@ -419,15 +422,15 @@ def compute_nws_accuracy(df_log: pd.DataFrame, nws_forecast: Dict) -> Dict[str, 
 
 
 def compute_model_only_metrics(df_log: pd.DataFrame) -> Dict[str, Any]:
-    """Compute accuracy for the pre-anchor model forecast (blend or LSTM).
+    """Score the frozen paper model candidate separately from governed output.
 
-    Uses forecast_pre_anchor_h* if present (written by Part 2B), then
-    blend_h*, then target_h*.  This track is fully independent of NWS and
-    provides a valid model-vs-NWS skill comparison.
+    Prefer forecast_candidate_h* before the live-skill fallback is applied.
+    Older rows may use pre-anchor, blend, or raw LSTM fields. This reports
+    accuracy; it does not establish superiority or bypass the promotion gate.
     """
     metrics: Dict[str, Any] = {}
     for h in HORIZONS:
-        for candidate in [f"forecast_pre_anchor_h{h}", f"blend_h{h}", f"target_h{h}"]:
+        for candidate in [f"forecast_candidate_h{h}", f"forecast_pre_anchor_h{h}", f"blend_h{h}", f"target_h{h}"]:
             if candidate in df_log.columns and df_log[candidate].notna().any():
                 pred_col = candidate
                 break
@@ -442,7 +445,7 @@ def compute_model_only_metrics(df_log: pd.DataFrame) -> Dict[str, Any]:
 
         pred = pd.to_numeric(df_log[pred_col], errors="coerce")
         real = pd.to_numeric(df_log[real_col], errors="coerce")
-        mask = pred.notna() & real.notna()
+        mask = np.isfinite(pred) & np.isfinite(real)
         n = int(mask.sum())
         if n == 0:
             metrics[f"h{h}"] = {"n_samples": 0, "pred_col_used": pred_col}
@@ -484,7 +487,7 @@ def compute_metrics(df_log: pd.DataFrame, clim_df: pd.DataFrame) -> Dict[str, An
             df_log.get(pers_col, pd.Series(np.nan, index=df_log.index)), errors="coerce"
         )
 
-        mask = pred.notna() & real.notna()
+        mask = np.isfinite(pred) & np.isfinite(real)
         n = int(mask.sum())
 
         if n == 0:
@@ -507,7 +510,7 @@ def compute_metrics(df_log: pd.DataFrame, clim_df: pd.DataFrame) -> Dict[str, An
 
         # Comparative metrics use identical paired rows for model and baseline.
         if n >= SKILL_MIN_SAMPLES:
-            pers_mask = mask & pers.notna()
+            pers_mask = mask & np.isfinite(pers)
             n_paired = int(pers_mask.sum())
             row["n_paired_persistence"] = n_paired
             if n_paired >= SKILL_MIN_SAMPLES:
@@ -581,7 +584,7 @@ def compute_metrics(df_log: pd.DataFrame, clim_df: pd.DataFrame) -> Dict[str, An
         if lo_col in df_log.columns and hi_col in df_log.columns:
             lo = pd.to_numeric(df_log[lo_col], errors="coerce")
             hi = pd.to_numeric(df_log[hi_col], errors="coerce")
-            cov_mask = mask & lo.notna() & hi.notna()
+            cov_mask = mask & np.isfinite(lo) & np.isfinite(hi) & lo.le(hi)
             if int(cov_mask.sum()) > 0:
                 in_ci = (real[cov_mask] >= lo[cov_mask]) & (real[cov_mask] <= hi[cov_mask])
                 row["bnn_coverage_90pct"] = round(float(in_ci.mean()), 4)
@@ -632,7 +635,7 @@ def _report_with_stable_generated_at(
     there were no new forecasts or realizations. Stable output restores the
     idempotency promised by this module's production contract.
     """
-    generated_at = pd.Timestamp.now().isoformat()
+    generated_at = pd.Timestamp.now(tz="UTC").isoformat()
     if existing_path.exists():
         try:
             with open(existing_path) as f:
@@ -650,6 +653,59 @@ def _report_with_stable_generated_at(
         {key: value for key, value in report_core.items() if key != "schema_version"}
     )
     return report
+
+
+def build_report_core(df_log: pd.DataFrame, df_hist: pd.DataFrame, nws_forecast: Dict) -> Dict[str, Any]:
+    """Report the current published method; retain mixed history as diagnostics.
+
+    This function performs no network requests or writes. Pages uses exactly
+    the same calculation on its immutable checkout as the daily backfill.
+    """
+    current = protocol_published_history(df_log, TRAINING_PROTOCOL_VERSION)
+    clim_df = compute_climatological_normal(df_hist)
+    metrics = compute_metrics(current, clim_df)
+    sources = forecast_source_summary(current)
+    counts = {f"h{h}": int(metrics.get(f"h{h}", {}).get("n_samples", 0)) for h in HORIZONS}
+    enough_pairs = all(
+        metrics.get(f"h{h}", {}).get("n_paired_persistence", 0) >= SKILL_MIN_SAMPLES
+        for h in HORIZONS
+    )
+    skills = [metrics[f"h{h}"]["skill_vs_persistence"] for h in HORIZONS
+              if metrics.get(f"h{h}", {}).get("skill_vs_persistence") is not None]
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "target_clock": "target_date_h = feature_date + h calendar days",
+        "cohort": {
+            "training_protocol_version": TRAINING_PROTOCOL_VERSION,
+            "selection": "published_current_method_only",
+            "n_rows": len(current), "excluded_rows": len(df_log) - len(current),
+        },
+        "n_prediction_rows": len(current), "ledger_n_prediction_rows": len(df_log),
+        "skill_min_samples": SKILL_MIN_SAMPLES, "promote_min_samples": PROMOTE_MIN_SAMPLES,
+        "promotion_rule": "30 finite paired forecasts plus the existing validation and paired-loss CI gates; sample size alone is not approval",
+        "realized_samples_by_horizon": counts,
+        "metrics_by_horizon": metrics,
+        "model_only_metrics": compute_model_only_metrics(current),
+        "nws_baseline_metrics": compute_nws_accuracy(current, nws_forecast),
+        "forecast_source_summary": sources,
+        "summary": {
+            "best_horizon": min(
+                [h for h in HORIZONS if counts[f"h{h}"] > 0],
+                key=lambda h: metrics[f"h{h}"].get("mae_f", float("inf")), default=None,
+            ),
+            "overall_skill": float(np.mean(skills)) if enough_pairs and skills else None,
+            "skill_trustworthy": enough_pairs,
+            "skill_status": "EVALUATED" if enough_pairs else "INSUFFICIENT_DATA",
+            "nws_independence_warning": sources.get("nws_independence_warning"),
+        },
+        "historical_diagnostics": {
+            "selection": "all_retained_rows_mixed_methods_not_promotion_evidence",
+            "n_prediction_rows": len(df_log),
+            "metrics_by_horizon": compute_metrics(df_log, clim_df),
+            "forecast_source_summary": forecast_source_summary(df_log),
+        },
+        "climatology_note": "All-history climatology is retrospective diagnostic evidence, not a frozen point-in-time baseline or a promotion gate.",
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -675,7 +731,6 @@ def main() -> int:
 
     df_hist = load_historical()
     nws_forecast = load_nws_forecast()
-    clim_df = compute_climatological_normal(df_hist)
 
     # Fetch realized temps — cap end date at yesterday
     target_date_cols = [f"target_date_h{h}" for h in HORIZONS]
@@ -698,10 +753,9 @@ def main() -> int:
 
     # Metrics
     print("[Part 9] Computing attribution metrics...")
-    metrics = compute_metrics(df_log, clim_df)
-    nws_metrics = compute_nws_accuracy(df_log, nws_forecast)
-    model_only = compute_model_only_metrics(df_log)
-    source_summary = forecast_source_summary(df_log)
+    report_core = build_report_core(df_log, df_hist, nws_forecast)
+    metrics = report_core["metrics_by_horizon"]
+    nws_metrics = report_core["nws_baseline_metrics"]
 
     # Print summary
     print("\n=== ATTRIBUTION SUMMARY ===")
@@ -733,52 +787,16 @@ def main() -> int:
     print(f"\n[Part 9] Saved attribution_tape.parquet ({len(df_log)} rows)")
 
     # Skill history
-    skill_df = compute_rolling_skill(df_log)
+    current = protocol_published_history(df_log, TRAINING_PROTOCOL_VERSION)
+    skill_df = compute_rolling_skill(current)
     skill_df.to_parquet(ARTIFACTS_DIR / "skill_history.parquet", index=False)
     print(f"[Part 9] Saved skill_history.parquet ({len(skill_df)} rows)")
 
-    # Report
-    skill_values = [
-        metrics[f"h{h}"]["skill_vs_persistence"]
-        for h in HORIZONS
-        if metrics.get(f"h{h}", {}).get("skill_vs_persistence") is not None
-    ]
-    report_core = {
-        "schema_version": SCHEMA_VERSION,
-        "target_clock": "target_date_h = feature_date + h calendar days",
-        "n_prediction_rows": len(df_log),
-        "skill_min_samples": SKILL_MIN_SAMPLES,
-        "promote_min_samples": PROMOTE_MIN_SAMPLES,
-        "realized_samples_by_horizon": {
-            f"h{h}": int(
-                pd.to_numeric(
-                    df_log.get(f"realized_h{h}", pd.Series(dtype=float)), errors="coerce"
-                ).notna().sum()
-            )
-            for h in HORIZONS
-        },
-        "metrics_by_horizon": metrics,
-        "model_only_metrics": model_only,
-        "nws_baseline_metrics": nws_metrics,
-        "forecast_source_summary": source_summary,
-        "summary": {
-            "best_horizon": min(
-                [h for h in HORIZONS if metrics.get(f"h{h}", {}).get("n_samples", 0) > 0],
-                key=lambda h: metrics.get(f"h{h}", {}).get("mae_f", 999),
-                default=None,
-            ),
-            "overall_skill": float(np.mean(skill_values)) if skill_values else None,
-            "skill_trustworthy": all(
-                metrics.get(f"h{h}", {}).get("n_samples", 0) >= SKILL_MIN_SAMPLES
-                for h in HORIZONS
-            ),
-            "nws_independence_warning": source_summary.get("nws_independence_warning"),
-        },
-    }
+    # Report calculated above from the current published method.
     report_path = ARTIFACTS_DIR / "live_attribution_report.json"
     report = _report_with_stable_generated_at(report_core, report_path)
     with open(report_path, "w") as f:
-        json.dump(report, f, indent=2, default=str)
+        json.dump(report, f, indent=2, default=str, allow_nan=False)
     print("[Part 9] Saved live_attribution_report.json")
 
     # Update prediction-log copies with realized values.

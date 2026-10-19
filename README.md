@@ -6,6 +6,33 @@ The [October 11 forecast-provenance audit](docs/FORECAST_PROVENANCE_AUDIT_2026-1
 
 For the exact Python 3.12 CPU environment used by Linux/Windows CI, uninstall the legacy `xgboost` distribution from your virtual environment, install `torch==2.14.1` from `https://download.pytorch.org/whl/cpu`, then `requirements-ci-lock.txt` (including `xgboost-cpu==3.4.1`). The retained legacy artifacts produce an explicit retraining warning until the corrected production bundle is fitted; new bundle mismatches fail validation and governance.
 
+The [October 18 production-publication audit](docs/PRODUCTION_PUBLICATION_AUDIT_2026-10-18.md)
+corrects the Pages handoff and current-method attribution. Successful main-branch
+forecast/backfill completion now triggers Pages even when a bot pushed the data.
+The deployed page reads one verified local snapshot, rather than independently
+fetching files from moving `main`. Writers synchronize the full checkout and
+reject concurrent changes instead of choosing one side of an artifact conflict.
+
+Attribution displays published `purged-frozen-regime-v3` forecasts separately
+from retained mixed-method historical diagnostics. The paper model candidate
+and governed persistence forecast remain separate tracks. The unchanged
+promotion gate needs **30 finite pairs plus its validation and confidence-interval
+requirements**; the old report's unused 60-sample label was incorrect telemetry.
+
+Build and verify the dashboard offline from the committed ledger, without
+fetching new outcomes, retraining, or changing source artifacts:
+
+```bash
+python build_dashboard.py --output _site
+python build_dashboard.py --output _site --verify
+```
+
+Use a fresh output directory for each build. `publication.json` records the
+source commit, local modification status, builder fingerprints, decision date,
+cohort, and hashes of every deployed file. Pages and backfill use the smaller
+`requirements-publication-lock.txt` environment, which CI tests independently
+of the model stack on Linux and Windows.
+
 Built on the same modular architecture as the PriceCall stack — with trading strategy and execution components replaced by meteorological physics, regime detection, and forecast verification against NWS official forecasts.
 
 

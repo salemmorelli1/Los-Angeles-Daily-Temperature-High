@@ -590,6 +590,25 @@ def check_attribution_report() -> Tuple[str, str, str]:
         if "model_only_metrics" not in rpt:
             issues.append("model_only_metrics missing from report")
 
+        # Retained reports are historical evidence until backfill/Pages rebuilds
+        # current-method attribution; do not certify their mixed sample counts.
+        if rpt.get("schema_version") != "1.4.0-method-cohort":
+            return _warn("attribution_report", "Legacy mixed-method report retained; refresh current-method attribution with Part 9 or build_dashboard.py")
+        from forecast_protocol import MIN_PAIRED_SKILL_SAMPLES, TRAINING_PROTOCOL_VERSION
+        if rpt.get("cohort", {}).get("training_protocol_version") != TRAINING_PROTOCOL_VERSION:
+            return _fail("attribution_report", "Attribution method does not match the active training protocol")
+        if rpt.get("promote_min_samples") != MIN_PAIRED_SKILL_SAMPLES:
+            return _fail("attribution_report", "Attribution sample floor disagrees with the live gate")
+        for h in HORIZONS:
+            count = rpt.get("metrics_by_horizon", {}).get(f"h{h}", {}).get("n_samples", 0)
+            if count != rpt.get("realized_samples_by_horizon", {}).get(f"h{h}"):
+                return _fail("attribution_report", "Attribution counts do not match the scored cohort")
+        if rpt.get("summary", {}).get("skill_trustworthy") and any(
+            rpt.get("metrics_by_horizon", {}).get(f"h{h}", {}).get("n_paired_persistence", 0) < MIN_PAIRED_SKILL_SAMPLES
+            for h in HORIZONS
+        ):
+            return _fail("attribution_report", "Insufficient finite paired evidence for the reported skill status")
+
         if issues:
             return _warn("attribution_report", "; ".join(issues))
 

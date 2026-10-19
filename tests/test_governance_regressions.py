@@ -109,6 +109,8 @@ class GovernanceExitTests(unittest.TestCase):
             for name in [
                 "check_model_freshness",
                 "check_schema_integrity",
+                "check_forecast_dates",
+                "check_training_lineage",
                 "check_forecast_source",
                 "check_forecast_bounds",
                 "check_forecast_spread",

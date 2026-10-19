@@ -14,6 +14,7 @@ import pandas as pd
 PACIFIC_TZ = ZoneInfo("America/Los_Angeles")
 PURGE_DAYS = 5
 TRAINING_PROTOCOL_VERSION = "purged-frozen-regime-v3"
+MIN_PAIRED_SKILL_SAMPLES = 30
 
 
 def file_sha256(path: Path) -> str:
