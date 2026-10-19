@@ -20,6 +20,7 @@ env:
 jobs:
   backfill:
     name: Run Part 9 attribution backfill
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 45
 
@@ -28,6 +29,12 @@ jobs:
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
+
+      - name: Synchronize the complete checkout before using cached artifacts
+        run: |
+          set -euo pipefail
+          git fetch origin "${GITHUB_REF_NAME}"
+          git merge --ff-only "origin/${GITHUB_REF_NAME}"
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -38,23 +45,8 @@ jobs:
       - name: Install lightweight attribution dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install numpy pandas requests pyarrow fastparquet
-
-      - name: Restore accumulating artifacts from remote
-        run: |
-          git fetch origin "${GITHUB_REF_NAME}" --quiet || true
-
-          for path in \
-            artifacts_part0/historical_daily.parquet \
-            artifacts_part0/nws_official_forecast.json \
-            artifacts_part2/prediction_log.csv \
-            artifacts_part3/prediction_log.csv \
-            artifacts_part9/live_attribution_report.json \
-            artifacts_part9/attribution_tape.parquet \
-            artifacts_part9/skill_history.parquet
-          do
-            git checkout "origin/${GITHUB_REF_NAME}" -- "$path" 2>/dev/null || true
-          done
+          python -m pip install -r requirements-publication-lock.txt
+          python -m pip check
 
       - name: Skip if prediction log does not exist yet
         id: precheck
@@ -74,6 +66,10 @@ jobs:
       - name: Commit and push attribution artifacts
         if: steps.precheck.outputs.run_backfill == 'true'
         run: |
+          set -euo pipefail
+          # Never merge a stale model/ledger bundle over a concurrent update.
+          git fetch origin "${GITHUB_REF_NAME}"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse "origin/${GITHUB_REF_NAME}")"
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
@@ -84,7 +80,7 @@ jobs:
             artifacts_part3/prediction_log.csv \
             artifacts_part9/live_attribution_report.json \
             artifacts_part9/attribution_tape.parquet \
-            artifacts_part9/skill_history.parquet || true
+            artifacts_part9/skill_history.parquet
 
           if git diff --cached --quiet; then
             echo "No attribution changes to commit."
@@ -92,11 +88,6 @@ jobs:
           fi
 
           git commit -m "Backfill realized temperature attribution [skip ci]"
-
-          git pull origin "${GITHUB_REF_NAME}" \
-            --no-rebase \
-            --strategy-option=ours \
-            --no-edit || true
 
           git push origin HEAD:"${GITHUB_REF_NAME}"
 

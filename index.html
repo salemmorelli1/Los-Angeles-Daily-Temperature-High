@@ -651,7 +651,11 @@
         attributionReport: "artifacts_part9/live_attribution_report.json"
       }};
       const repoBase = `https://github.com/${CFG.owner}/${CFG.repo}`;
-      const rawBase = `https://raw.githubusercontent.com/${CFG.owner}/${CFG.repo}/${CFG.branch}`;
+      function artifactBase() {
+        if (location.hostname.endsWith("github.io")) return new URL(".", location.href).href.replace(/\/$/, "");
+        return `https://raw.githubusercontent.com/${CFG.owner}/${CFG.repo}/${CFG.branch}`;
+      }
+      const rawBase = artifactBase();
       document.getElementById("repoLink").href = repoBase;
 
       const DEMO_ROWS = [
@@ -834,13 +838,13 @@
         renderKv("snapshotKv",[["Feature date",date(row?.feature_date)],["Written at",datetime(row?.written_at)],["H=1 realized",temp(realized(row,1))],["BNN status",row?.bnn_interval_status||state.artifacts.part2c?.interval_status||"Optional"],["NWS anchor",String(row?.forecast_source||"").includes("nws_anchor")?"Disclosed":"Not active"],["Repository rows",state.predLog.length]]);
         const checks=gov.checks_total?gov.checks_passed===gov.checks_total:"UNKNOWN";
         $("heroStatus").innerHTML=[pill("Publish",mode),pill("Governance",checks),pill("Rows",state.predLog.length,"info"),pill("Target clock","feature_date + H","info")].join("");
-        setText("connectionLabel",state.demo?"Artifact fallback active":"Repository artifacts live");
+        setText("connectionLabel",state.demo?"Artifact fallback active":location.hostname.endsWith("github.io")?"Published artifact snapshot":"Repository artifact preview");
       }
 
       function renderVerification() {
         const attr=state.artifacts.attribution || {}, m=attr.metrics_by_horizon || {}, h1=m.h1 || {};
         setText("verifyBest",attr.summary?.best_horizon?`H=${attr.summary.best_horizon}`:"—"); setText("verifySkill",pct(attr.summary?.overall_skill)); setText("verifyMae",temp(h1.mae_f)); setText("verifyBias",signedTemp(h1.bias_f)); setText("verifyCoverage",pct(h1.bnn_coverage_90pct));
-        renderKv("verificationKv",[["Generated at",datetime(attr.generated_at)],["Target clock",attr.target_clock||"feature_date + H calendar days"],["Skill minimum",attr.skill_min_samples??"—"],["Promotion minimum",attr.promote_min_samples??"—"],["NWS independence",attr.summary?.nws_independence_warning?"Caveated":"No current warning"],["Forecast rows",attr.n_prediction_rows??state.predLog.length]]);
+        renderKv("verificationKv",[["Generated at",datetime(attr.generated_at)],["Method",attr.cohort?.training_protocol_version||"Historical report"],["Skill status",attr.summary?.skill_status||"Historical diagnostic"],["Target clock",attr.target_clock||"feature_date + H calendar days"],["Paired sample floor",attr.skill_min_samples??"—"],["Current method rows",attr.cohort?.n_rows??"—"],["Retained ledger rows",attr.ledger_n_prediction_rows??state.predLog.length],["NWS independence",attr.summary?.nws_independence_warning?"Caveated":"No current warning"]]);
       }
 
       function renderRegimes() {

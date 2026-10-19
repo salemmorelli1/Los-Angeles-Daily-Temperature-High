@@ -30,6 +30,7 @@ pyarrow==26.0.0
 pyparsing==3.3.3
 python-dateutil==2.9.0.post0
 requests==2.34.2
+PyYAML==6.0.3
 ruff==0.17.0
 scikit-learn==1.9.1
 scipy==1.18.1
