@@ -137,6 +137,22 @@ jobs:
           python-version: "3.12"
           cache: "pip"
 
+      - name: Create isolated Python environment
+        if: steps.gate.outputs.run == 'true' || github.event_name == 'workflow_dispatch'
+        shell: bash
+        run: |
+          python - <<'PYENV'
+          import os
+          import subprocess
+          import sys
+          from pathlib import Path
+          directory = Path(os.environ["GITHUB_WORKSPACE"]) / ".venv"
+          subprocess.run([sys.executable, "-m", "venv", str(directory)], check=True)
+          binaries = directory / ("Scripts" if os.name == "nt" else "bin")
+          with open(os.environ["GITHUB_PATH"], "a", encoding="utf-8") as stream:
+              stream.write(str(binaries) + "\n")
+          PYENV
+
       - name: Install dependencies
         if: steps.gate.outputs.run == 'true' || github.event_name == 'workflow_dispatch'
         run: |

@@ -64,6 +64,12 @@ learned forecasts, NWS anchoring, or uncertainty bands to pass.
    production bundle. The test then attempted to load missing temporary model
    metadata. The fixture now explicitly isolates calendar and lineage checks;
    the separate real model/lineage integration tests remain active.
+6. **GitHub's Windows runner had a global dependency conflict.** The first PR
+   checks passed Linux and Pages, but Windows failed `pip check`: preinstalled
+   `pipx 1.17.12` requires `filelock>=4.0.9`, conflicting with the project's
+   tested `filelock==3.32.3`. Every workflow now creates an isolated virtual
+   environment before installing its locked stack. A regression executes the
+   actual bootstrap and confirms runner/model packages are not inherited.
 
 Six new regressions failed before correction: mixed-cohort reporting, finite
 counts, promotion telemetry, paper candidate selection, missing Pages handoff,
@@ -100,7 +106,7 @@ and unsafe writer conflict handling.
   CI verifies it without torch, sklearn, hmmlearn or XGBoost installed, separately
   from the full CPU model environment.
 
-Local verification: **55 tests passed**. Coverage includes actual production
+Local verification: **56 tests passed**. Coverage includes actual production
 shell scripts against temporary bare Git remotes, concurrent-update rejection,
 full-checkout synchronization, finite counts, method isolation, HOLD exclusion,
 unpaired outcomes, idempotent reporting, source-data preservation, snapshot

@@ -8,6 +8,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -185,6 +186,26 @@ class DashboardSnapshotTests(unittest.TestCase):
 
 
 class WorkflowPublicationTests(unittest.TestCase):
+    def test_runtime_bootstrap_is_isolated_from_runner_packages(self):
+        bootstrap = None
+        for name in ("ci.yml", "daily-production.yml", "daily-backfill.yml", "pages.yml"):
+            workflow = yaml.load((ROOT / ".github/workflows" / name).read_text(), Loader=yaml.BaseLoader)
+            job = next(iter(workflow["jobs"].values()))
+            steps = job["steps"]
+            position = next(i for i, step in enumerate(steps) if step["name"] == "Create isolated Python environment")
+            install = next(i for i, step in enumerate(steps) if step["name"].startswith("Install"))
+            self.assertLess(position, install)
+            bootstrap = steps[position]["run"]
+        program = bootstrap.split("python - <<'PYENV'\n", 1)[1].rsplit("PYENV", 1)[0]
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path_output = root / "github-path.txt"
+            env = {**os.environ, "GITHUB_WORKSPACE": str(root), "GITHUB_PATH": str(path_output)}
+            subprocess.run([sys.executable, "-c", program], env=env, check=True, capture_output=True, text=True)
+            binaries = Path(path_output.read_text(encoding="utf-8").strip())
+            interpreter = binaries / ("python.exe" if os.name == "nt" else "python")
+            subprocess.run([str(interpreter), "-c", "import sys,site,importlib.util; assert sys.prefix != sys.base_prefix; assert not site.ENABLE_USER_SITE; assert importlib.util.find_spec('torch') is None"], check=True, capture_output=True, text=True)
+
     def test_pages_follows_successful_main_production_and_backfill(self):
         text = (ROOT / ".github/workflows/pages.yml").read_text()
         self.assertIn("workflow_run:", text)

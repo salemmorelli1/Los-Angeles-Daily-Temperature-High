@@ -85,6 +85,21 @@ jobs:
           cache: pip
           cache-dependency-path: requirements-publication-lock.txt
 
+      - name: Create isolated Python environment
+        shell: bash
+        run: |
+          python - <<'PYENV'
+          import os
+          import subprocess
+          import sys
+          from pathlib import Path
+          directory = Path(os.environ["GITHUB_WORKSPACE"]) / ".venv"
+          subprocess.run([sys.executable, "-m", "venv", str(directory)], check=True)
+          binaries = directory / ("Scripts" if os.name == "nt" else "bin")
+          with open(os.environ["GITHUB_PATH"], "a", encoding="utf-8") as stream:
+              stream.write(str(binaries) + "\n")
+          PYENV
+
       - name: Install locked publication dependencies
         run: |
           python -m pip install --disable-pip-version-check -r requirements-publication-lock.txt
