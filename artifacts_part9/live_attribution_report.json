@@ -1,6 +1,6 @@
 {
   "schema_version": "1.4.0-method-cohort",
-  "generated_at": "2026-10-26T19:32:23.306832+00:00",
+  "generated_at": "2026-10-26T20:04:11.180911+00:00",
   "target_clock": "target_date_h = feature_date + h calendar days",
   "cohort": {
     "training_protocol_version": "purged-frozen-regime-v3",
@@ -14,78 +14,78 @@
   "promote_min_samples": 30,
   "promotion_rule": "30 finite paired forecasts plus the existing validation and paired-loss CI gates; sample size alone is not approval",
   "realized_samples_by_horizon": {
-    "h1": 13,
-    "h3": 11,
-    "h5": 9
+    "h1": 14,
+    "h3": 12,
+    "h5": 10
   },
   "metrics_by_horizon": {
     "h1": {
-      "n_samples": 13,
+      "n_samples": 14,
       "pred_col_used": "forecast_h1",
-      "mae_f": 5.731,
-      "rmse_f": 5.977,
-      "bias_f": 0.346,
-      "note": "Skill scores withheld: n=13 < SKILL_MIN_SAMPLES=30. Need 17 more realized samples.",
-      "bnn_coverage_90pct": 0.6154,
-      "bnn_n_samples": 13
+      "mae_f": 5.386,
+      "rmse_f": 5.765,
+      "bias_f": 0.386,
+      "note": "Skill scores withheld: n=14 < SKILL_MIN_SAMPLES=30. Need 16 more realized samples.",
+      "bnn_coverage_90pct": 0.6429,
+      "bnn_n_samples": 14
     },
     "h3": {
-      "n_samples": 11,
+      "n_samples": 12,
       "pred_col_used": "forecast_h3",
-      "mae_f": 11.591,
-      "rmse_f": 12.889,
-      "bias_f": -0.045,
-      "note": "Skill scores withheld: n=11 < SKILL_MIN_SAMPLES=30. Need 19 more realized samples.",
-      "bnn_coverage_90pct": 0.2727,
-      "bnn_n_samples": 11
+      "mae_f": 11.533,
+      "rmse_f": 12.736,
+      "bias_f": 0.867,
+      "note": "Skill scores withheld: n=12 < SKILL_MIN_SAMPLES=30. Need 18 more realized samples.",
+      "bnn_coverage_90pct": 0.25,
+      "bnn_n_samples": 12
     },
     "h5": {
-      "n_samples": 9,
+      "n_samples": 10,
       "pred_col_used": "forecast_h5",
-      "mae_f": 14.422,
-      "rmse_f": 16.842,
-      "bias_f": -1.756,
-      "note": "Skill scores withheld: n=9 < SKILL_MIN_SAMPLES=30. Need 21 more realized samples.",
-      "bnn_coverage_90pct": 0.3333,
-      "bnn_n_samples": 9
+      "mae_f": 13.25,
+      "rmse_f": 16.0,
+      "bias_f": -1.85,
+      "note": "Skill scores withheld: n=10 < SKILL_MIN_SAMPLES=30. Need 20 more realized samples.",
+      "bnn_coverage_90pct": 0.4,
+      "bnn_n_samples": 10
     }
   },
   "model_only_metrics": {
     "h1": {
-      "n_samples": 13,
+      "n_samples": 14,
       "pred_col_used": "forecast_candidate_h1",
-      "mae_f": 4.887,
-      "rmse_f": 5.49,
-      "bias_f": 2.11
+      "mae_f": 4.557,
+      "rmse_f": 5.291,
+      "bias_f": 1.941
     },
     "h3": {
-      "n_samples": 10,
+      "n_samples": 11,
       "pred_col_used": "forecast_candidate_h3",
-      "mae_f": 8.005,
-      "rmse_f": 9.323,
-      "bias_f": 4.846
+      "mae_f": 7.644,
+      "rmse_f": 8.972,
+      "bias_f": 4.773
     },
     "h5": {
-      "n_samples": 8,
+      "n_samples": 9,
       "pred_col_used": "forecast_candidate_h5",
-      "mae_f": 7.707,
-      "rmse_f": 9.183,
-      "bias_f": 4.45
+      "mae_f": 7.254,
+      "rmse_f": 8.741,
+      "bias_f": 4.359
     }
   },
   "nws_baseline_metrics": {
-    "nws_h1_mae_f": 2.292307692307693,
-    "nws_h1_rmse_f": 2.8576483069394416,
-    "nws_h1_bias_f": 2.0153846153846167,
-    "nws_h1_n_days": 13,
-    "nws_h3_mae_f": 3.91818181818182,
-    "nws_h3_rmse_f": 4.735072237137371,
-    "nws_h3_bias_f": 3.6636363636363645,
-    "nws_h3_n_days": 11,
-    "nws_h5_mae_f": 3.855555555555556,
-    "nws_h5_rmse_f": 5.072036627978506,
-    "nws_h5_bias_f": 3.3000000000000003,
-    "nws_h5_n_days": 9
+    "nws_h1_mae_f": 2.307142857142858,
+    "nws_h1_rmse_f": 2.8335994272807374,
+    "nws_h1_bias_f": 2.050000000000001,
+    "nws_h1_n_days": 14,
+    "nws_h3_mae_f": 3.7166666666666686,
+    "nws_h3_rmse_f": 4.554119014694282,
+    "nws_h3_bias_f": 3.4833333333333343,
+    "nws_h3_n_days": 12,
+    "nws_h5_mae_f": 3.5200000000000005,
+    "nws_h5_rmse_f": 4.814353539157674,
+    "nws_h5_bias_f": 3.0200000000000005,
+    "nws_h5_n_days": 10
   },
   "forecast_source_summary": {
     "forecast_source_counts": {
@@ -112,76 +112,76 @@
     "n_prediction_rows": 110,
     "metrics_by_horizon": {
       "h1": {
-        "n_samples": 108,
+        "n_samples": 109,
         "pred_col_used": "forecast_h1",
-        "mae_f": 5.98,
-        "rmse_f": 7.63,
-        "bias_f": -3.621,
-        "n_paired_persistence": 108,
-        "persistence_mae_f": 2.695,
-        "paired_model_mae_f": 5.98,
-        "skill_vs_persistence": -1.2186,
-        "hit_rate": 0.2222,
-        "paired_loss_delta_mean_f": 3.284,
+        "mae_f": 5.933,
+        "rmse_f": 7.596,
+        "bias_f": -3.579,
+        "n_paired_persistence": 109,
+        "persistence_mae_f": 2.679,
+        "paired_model_mae_f": 5.933,
+        "skill_vs_persistence": -1.2148,
+        "hit_rate": 0.2202,
+        "paired_loss_delta_mean_f": 3.254,
         "paired_loss_delta_ci95_f": [
-          1.819,
-          4.923
+          1.743,
+          4.913
         ],
         "paired_loss_delta_ci_method": "moving_block_bootstrap",
         "paired_loss_delta_block_length_rows": 5,
-        "clim_mae_f": 3.842,
-        "skill_vs_climatology": -0.5563,
-        "n_paired_climatology": 108,
-        "bnn_coverage_90pct": 0.6019,
-        "bnn_n_samples": 108
+        "clim_mae_f": 3.841,
+        "skill_vs_climatology": -0.5448,
+        "n_paired_climatology": 109,
+        "bnn_coverage_90pct": 0.6055,
+        "bnn_n_samples": 109
       },
       "h3": {
-        "n_samples": 106,
+        "n_samples": 107,
         "pred_col_used": "forecast_h3",
-        "mae_f": 7.407,
-        "rmse_f": 9.29,
-        "bias_f": -3.881,
-        "n_paired_persistence": 106,
-        "persistence_mae_f": 4.866,
-        "paired_model_mae_f": 7.407,
-        "skill_vs_persistence": -0.5222,
-        "hit_rate": 0.1792,
-        "paired_loss_delta_mean_f": 2.541,
+        "mae_f": 7.44,
+        "rmse_f": 9.306,
+        "bias_f": -3.743,
+        "n_paired_persistence": 107,
+        "persistence_mae_f": 4.922,
+        "paired_model_mae_f": 7.44,
+        "skill_vs_persistence": -0.5114,
+        "hit_rate": 0.1776,
+        "paired_loss_delta_mean_f": 2.517,
         "paired_loss_delta_ci95_f": [
-          0.929,
-          4.286
+          0.954,
+          4.226
         ],
         "paired_loss_delta_ci_method": "moving_block_bootstrap",
         "paired_loss_delta_block_length_rows": 5,
-        "clim_mae_f": 4.095,
-        "skill_vs_climatology": -0.8089,
-        "n_paired_climatology": 106,
-        "bnn_coverage_90pct": 0.5849,
-        "bnn_n_samples": 106
+        "clim_mae_f": 4.091,
+        "skill_vs_climatology": -0.8186,
+        "n_paired_climatology": 107,
+        "bnn_coverage_90pct": 0.5794,
+        "bnn_n_samples": 107
       },
       "h5": {
-        "n_samples": 104,
+        "n_samples": 105,
         "pred_col_used": "forecast_h5",
-        "mae_f": 8.014,
-        "rmse_f": 10.058,
-        "bias_f": -3.113,
-        "n_paired_persistence": 104,
-        "persistence_mae_f": 5.831,
-        "paired_model_mae_f": 8.014,
-        "skill_vs_persistence": -0.3744,
-        "hit_rate": 0.1827,
-        "paired_loss_delta_mean_f": 2.183,
+        "mae_f": 7.963,
+        "rmse_f": 10.013,
+        "bias_f": -3.109,
+        "n_paired_persistence": 105,
+        "persistence_mae_f": 5.801,
+        "paired_model_mae_f": 7.963,
+        "skill_vs_persistence": -0.3727,
+        "hit_rate": 0.181,
+        "paired_loss_delta_mean_f": 2.162,
         "paired_loss_delta_ci95_f": [
-          0.934,
-          3.342
+          0.893,
+          3.309
         ],
         "paired_loss_delta_ci_method": "moving_block_bootstrap",
         "paired_loss_delta_block_length_rows": 5,
-        "clim_mae_f": 4.122,
-        "skill_vs_climatology": -0.9441,
-        "n_paired_climatology": 104,
-        "bnn_coverage_90pct": 0.625,
-        "bnn_n_samples": 104
+        "clim_mae_f": 4.118,
+        "skill_vs_climatology": -0.9338,
+        "n_paired_climatology": 105,
+        "bnn_coverage_90pct": 0.6286,
+        "bnn_n_samples": 105
       }
     },
     "forecast_source_summary": {
