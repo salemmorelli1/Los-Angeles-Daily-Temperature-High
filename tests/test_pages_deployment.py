@@ -107,6 +107,20 @@ class DeploymentTests(unittest.TestCase):
             run(api)
         self.assertEqual(len(api.created), 1)
 
+    def test_empty_create_acknowledgement_cannot_borrow_a_previous_success(self):
+        api = FakeAPI(creates=[{}])
+        with self.assertRaisesRegex(RuntimeError, "invalid deployment ID"):
+            run(api)
+        self.assertEqual(api.polled, [])
+
+    def test_invalid_create_id_is_not_polled_or_used_as_a_cancellation_target(self):
+        for value in (True, "../other", None):
+            api = FakeAPI(creates=[{"id": value}])
+            with self.assertRaisesRegex(RuntimeError, "invalid deployment ID"):
+                run(api)
+            self.assertEqual(api.polled, [])
+            self.assertEqual(api.cancelled, [])
+
     def test_success_requires_backend_succeed_after_pending_statuses(self):
         clock = Clock()
         api = FakeAPI(statuses=[{"status": "queued"}, {"status": "deployment_attempt_error"},

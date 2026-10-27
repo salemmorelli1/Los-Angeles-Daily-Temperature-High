@@ -127,7 +127,8 @@ def deploy(api, artifact_id: int, version: str, *, busy_timeout=180, poll_timeou
             emit("Pages is busy; waiting before retrying the same uploaded artifact.")
             sleep(min(interval, remaining))
 
-    deployment_id = str(created.get("id") or version)
+    value = created.get("id")
+    deployment_id = str(value) if type(value) in (int, str) else ""
     if not re.fullmatch(r"[A-Za-z0-9_-]+", deployment_id):
         raise RuntimeError("GitHub returned an invalid deployment ID")
     terminal = False
