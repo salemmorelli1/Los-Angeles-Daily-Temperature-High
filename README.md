@@ -262,6 +262,20 @@ export LATEMP_ROOT=/path/to/your/project
 python run_daily_forecast.py
 ```
 
+## Reproduce the October 27 Actions audit
+
+With Python 3.12 activated and a clean checkout, run `bash verify_audit.sh`.
+Windows Git Bash and Ubuntu CI run this same script in fresh isolated model
+and publication environments. It tests Pages conflict recovery against fixtures,
+runs the model regressions and artifact contracts, and builds/verifies an offline
+site. It does not fetch new weather, issue forecasts, retrain retained models,
+or deploy a site. Each invocation creates a new preview below `.venv/`.
+
+The [deployment audit](docs/PAGES_DEPLOYMENT_AUDIT_2026-10-27.md) documents the
+observed HTTP 400 Pages conflict and the bounded recovery. Deployments retain
+the existing main-only, fail-closed publication rules; PRs validate without
+deploying. Run Pages on main after the reviewed correction is merged.
+
 ---
 
 ## License
