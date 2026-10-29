@@ -1,15 +1,15 @@
 {
   "schema_version": "1.3.0-purged-frozen-regime",
   "fit_date": "2026-10-25T17:13:20.002936+00:00",
-  "decoded_at": "2026-10-28T19:04:32.090293+00:00",
+  "decoded_at": "2026-10-29T19:11:22.244773+00:00",
   "backend": "hmm",
   "hmm_error": null,
   "n_regimes": 3,
   "n_rows_fit": 2244,
-  "n_rows_decoded": 3222,
-  "fit_fraction": 0.6964618249534451,
+  "n_rows_decoded": 3223,
+  "fit_fraction": 0.6962457337883959,
   "fit_end_date": "2024-02-22",
-  "forecast_train_effective_end": "2024-02-24",
+  "forecast_train_effective_end": "2024-02-25",
   "imputation_values": {
     "temp_high_f": 68.9,
     "temp_low_f": 55.349999999999994,
@@ -67,7 +67,7 @@
     "REGIME_0": {
       "state_index": 0,
       "count": 627,
-      "pct": 0.1945996275605214,
+      "pct": 0.1945392491467577,
       "means": {
         "temp_high_f": 63.05137909530171,
         "temp_low_f": 53.80558351680698,
@@ -86,8 +86,8 @@
     },
     "REGIME_1": {
       "state_index": 1,
-      "count": 1147,
-      "pct": 0.35599006828057106,
+      "count": 1148,
+      "pct": 0.3561898852001241,
       "means": {
         "temp_high_f": 67.99229879108341,
         "temp_low_f": 49.340838481327026,
@@ -107,7 +107,7 @@
     "REGIME_2": {
       "state_index": 2,
       "count": 1448,
-      "pct": 0.44941030415890754,
+      "pct": 0.4492708656531182,
       "means": {
         "temp_high_f": 72.85084319943282,
         "temp_low_f": 61.56769412080654,
