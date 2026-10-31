@@ -1,7 +1,7 @@
 {
   "schema_version": "1.2.0-fail-closed-hold",
-  "run_at": "2026-10-30T18:50:25.054243",
-  "decision_date": "2026-10-30",
+  "run_at": "2026-10-31T17:54:46.319267",
+  "decision_date": "2026-10-31",
   "publish_mode": "CAUTION",
   "forecast_source": "persistence",
   "bnn_available": true,
@@ -17,9 +17,9 @@
       "level": "CRITICAL",
       "message": "OK",
       "details": {
-        "fetched_at": "2026-10-30 18:50:10.438875+00:00",
+        "fetched_at": "2026-10-31 17:54:32.897584+00:00",
         "age_hours": 0.0,
-        "historical_end": "2026-10-29",
+        "historical_end": "2026-10-30",
         "staleness_days": 1
       }
     },
@@ -30,7 +30,7 @@
       "message": "OK",
       "details": {
         "trained_at": "2026-10-25 17:13:51.672136+00:00",
-        "age_days": 5
+        "age_days": 6
       }
     },
     {
@@ -60,9 +60,9 @@
       "level": "CRITICAL",
       "message": "OK",
       "details": {
-        "decision_date": "2026-10-30",
-        "feature_date": "2026-10-29",
-        "issued_at": "2026-10-30 18:50:15.604798+00:00"
+        "decision_date": "2026-10-31",
+        "feature_date": "2026-10-30",
+        "issued_at": "2026-10-31 17:54:38.472098+00:00"
       }
     },
     {
@@ -139,21 +139,21 @@
       "name": "NWS_SANITY",
       "passed": true,
       "level": "WARN",
-      "message": "OK with material NWS notes: H=3: forecast=69.4\u00b0F NWS=65.0\u00b0F \u0394=4.4\u00b0F",
+      "message": "OK with material NWS notes: H=1: forecast=69.4\u00b0F NWS=65.0\u00b0F \u0394=4.4\u00b0F; H=3: forecast=69.4\u00b0F NWS=73.0\u00b0F \u0394=3.6\u00b0F",
       "details": {
         "comparisons": {
           "h1": {
             "forecast_f": 69.4,
-            "nws_f": 67.0,
-            "deviation_f": 2.4,
-            "direction": "warm",
-            "tier": "OK"
-          },
-          "h3": {
-            "forecast_f": 69.4,
             "nws_f": 65.0,
             "deviation_f": 4.4,
             "direction": "warm",
+            "tier": "SOFT_NOTE"
+          },
+          "h3": {
+            "forecast_f": 69.4,
+            "nws_f": 73.0,
+            "deviation_f": 3.6,
+            "direction": "cold",
             "tier": "SOFT_NOTE"
           },
           "h5": {
@@ -168,7 +168,8 @@
         "strong_warn_deviation_f": 8.0,
         "max_deviation_f": 18.0,
         "soft_notes": [
-          "H=3: forecast=69.4\u00b0F NWS=65.0\u00b0F \u0394=4.4\u00b0F"
+          "H=1: forecast=69.4\u00b0F NWS=65.0\u00b0F \u0394=4.4\u00b0F",
+          "H=3: forecast=69.4\u00b0F NWS=73.0\u00b0F \u0394=3.6\u00b0F"
         ]
       }
     },
@@ -186,14 +187,14 @@
         "intervals_publishable": false,
         "intervals_displayable": false,
         "coverage_by_horizon": {
-          "h1": 0.8957,
+          "h1": 0.8936,
           "h3": 0.866,
           "h5": 0.8362
         },
         "val_diagnostic_coverage_by_horizon": {
-          "h1": 0.859,
+          "h1": 0.8634,
           "h3": 0.8546,
-          "h5": 0.8722
+          "h5": 0.8678
         },
         "min_coverage_threshold": 0.75,
         "min_validation_coverage": 0.85,
@@ -203,7 +204,7 @@
         "half_split_notes": [
           "H=1: half-split=75.3% < 85%",
           "H=3: half-split=79.3% < 85%",
-          "H=5: half-split=78.9% < 85%"
+          "H=5: half-split=79.7% < 85%"
         ]
       }
     }
