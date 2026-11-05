@@ -29,6 +29,7 @@ fi
 "$verification_python" deploy_pages.py --help
 "$verification_python" -m unittest discover -s tests -v
 "$verification_python" validate_artifacts.py
+"$verification_python" audit_forecast.py
 
 python -m venv "$verification_dir/publication"
 if [[ -f "$verification_dir/publication/Scripts/python.exe" ]]; then

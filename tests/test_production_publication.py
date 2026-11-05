@@ -150,6 +150,7 @@ class DashboardSnapshotTests(unittest.TestCase):
             source = Path(directory) / "source"
             source.mkdir()
             shutil.copyfile(ROOT / "index.html", source / "index.html")
+            shutil.copytree(ROOT / "assets", source / "assets")
             for folder in ROOT.glob("artifacts_part*"):
                 if folder.is_dir():
                     shutil.copytree(folder, source / folder.name)
@@ -166,7 +167,7 @@ class DashboardSnapshotTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "overlaps source"):
             dashboard.build_dashboard(ROOT, ROOT / "artifacts_part2/new-output")
 
-    def test_browser_loader_uses_deployed_snapshot_and_preview_uses_repository(self):
+    def test_browser_loader_uses_the_local_publication_for_deployment_and_preview(self):
         node = shutil.which("node")
         if node is None:
             self.skipTest("Node is required to execute the browser loader contract")
@@ -174,7 +175,7 @@ class DashboardSnapshotTests(unittest.TestCase):
         function = text[text.index("function artifactBase()") : text.index("const rawBase =")]
         for host, href, expected in [
             ("salemmorelli1.github.io", "https://salemmorelli1.github.io/Los-Angeles-Daily-Temperature-High/index.html", "https://salemmorelli1.github.io/Los-Angeles-Daily-Temperature-High"),
-            ("localhost", "http://localhost:8000/", "https://raw.githubusercontent.com/salemmorelli1/Los-Angeles-Daily-Temperature-High/main"),
+            ("localhost", "http://localhost:8000/", "http://localhost:8000"),
         ]:
             program = "const CFG={owner:'salemmorelli1',repo:'Los-Angeles-Daily-Temperature-High',branch:'main'};"
             program += f"const location={json.dumps({'hostname':host,'href':href})};" + function

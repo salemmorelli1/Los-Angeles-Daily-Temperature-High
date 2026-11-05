@@ -2,6 +2,21 @@
 
 A production-grade deep learning pipeline for forecasting the **Los Angeles daily temperature high** at H=1, H=3, and H=5 days ahead.
 
+The [November 4 dashboard audit](docs/FORECAST_DASHBOARD_AUDIT_2026-11-04.md)
+corrects the target-day labels and chart calendar, breaks lines across missing
+forecasts, and explains the recorded persistence fallback beside the forecast.
+The browser verifies each loaded artifact against `publication.json` and shows
+an unavailable state if the snapshot cannot be verified. The default chart uses
+the current published method; retained mixed-method history is selectable.
+
+Run `python audit_forecast.py` for a read-only explanation of the latest frozen
+forecast, decision-time approval counts, later realized counts, uncertainty
+display flags, and history gaps. `integrity_status: PASS` can coexist with
+`publish_mode: CAUTION`: integrity does not grant model or interval approval.
+The audit never fetches outcomes, retrains, changes thresholds, or rewrites a
+published forecast. H=1 targets `feature_date + 1`, often the decision day;
+the dashboard labels the target relative to the Los Angeles calendar.
+
 The [October 11 forecast-provenance audit](docs/FORECAST_PROVENANCE_AUDIT_2026-10-11.md) corrects regime-fit leakage and freezes preprocessing with the neural checkpoint between retrains. The first new-day run after this change automatically refits both stages. Existing forecasts and outcomes are retained; reruns preserve published values and update realized outcomes only. Learned-model approval keeps the existing 30-pair threshold and uses published evidence from the revised method, without retroactively relabeling old forecasts.
 
 For the exact Python 3.12 CPU environment used by Linux/Windows CI, uninstall the legacy `xgboost` distribution from your virtual environment, install `torch==2.14.1` from `https://download.pytorch.org/whl/cpu`, then `requirements-ci-lock.txt` (including `xgboost-cpu==3.4.1`). The retained legacy artifacts produce an explicit retraining warning until the corrected production bundle is fitted; new bundle mismatches fail validation and governance.
@@ -25,7 +40,14 @@ fetching new outcomes, retraining, or changing source artifacts:
 ```bash
 python build_dashboard.py --output _site
 python build_dashboard.py --output _site --verify
+python -m http.server 8000 --directory _site
 ```
+
+Open `http://localhost:8000/` to preview that exact built publication. A preview
+loads its local bundle and never borrows newer files from the repository.
+Node.js enables the executable JavaScript/DOM contract tests in the Python
+suite; both GitHub runner operating systems execute them. Local runs without
+Node explicitly mark these tests as skipped.
 
 Use a fresh output directory for each build. `publication.json` records the
 source commit, local modification status, builder fingerprints, decision date,
