@@ -74,7 +74,6 @@ PART0_DIR = PROJECT_DIR / "artifacts_part0"
 PART2_DIR = PROJECT_DIR / "artifacts_part2"
 PART3_DIR = PROJECT_DIR / "artifacts_part3"
 ARTIFACTS_DIR = PROJECT_DIR / "artifacts_part9"
-ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
 
 SCHEMA_VERSION = "1.4.0-method-cohort"
 HORIZONS = [1, 3, 5]
@@ -783,6 +782,9 @@ def main() -> int:
                 print(f"  NWS H={h}: MAE={mae:.2f}°F (n={n_nws}){nws_note}")
 
     # Save attribution tape
+    # Importing report calculations for a read-only audit must not create
+    # output directories. Only the explicit writer entry point owns them.
+    ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
     df_log.to_parquet(ARTIFACTS_DIR / "attribution_tape.parquet", index=False)
     print(f"\n[Part 9] Saved attribution_tape.parquet ({len(df_log)} rows)")
 

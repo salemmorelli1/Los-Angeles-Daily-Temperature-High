@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from audit_forecast import build_diagnostics
 from forecast_protocol import file_sha256, forecast_is_published, training_lineage_errors
 from part9_live_attribution import build_report_core, _report_with_stable_generated_at
 
@@ -51,7 +52,8 @@ def build_dashboard(root: Path, output: Path) -> dict:
         raise ValueError("Dashboard output already exists; choose a new output directory")
     paths = [root / name for name in ARTIFACTS]
     paths += [root / "index.html", root / "artifacts_part3/prediction_log.csv",
-              root / "artifacts_part0/historical_daily.parquet"]
+              root / "artifacts_part0/historical_daily.parquet",
+              root / "assets/dashboard_contract.js"]
     hashes = {p: file_sha256(p) for p in paths}
     if hashes[root / "artifacts_part2/prediction_log.csv"] != hashes[root / "artifacts_part3/prediction_log.csv"]:
         raise ValueError("Canonical and governed prediction logs disagree")
@@ -74,6 +76,13 @@ def build_dashboard(root: Path, output: Path) -> dict:
     # newly fetched forecast as a historical benchmark in the Pages builder.
     core = build_report_core(frame, history, {})
     report = _report_with_stable_generated_at(core, root / "artifacts_part9/live_attribution_report.json")
+    diagnostics = build_diagnostics(
+        frame, governance,
+        json.loads((root / "artifacts_part2b/part2b_summary.json").read_text(encoding="utf-8")),
+        json.loads((root / "artifacts_part2c/part2c_meta.json").read_text(encoding="utf-8")),
+        json.loads((root / "artifacts_part2c/calibration_report.json").read_text(encoding="utf-8")),
+        core,
+    )
     commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=root, check=False,
                             capture_output=True, text=True)
     source_commit = commit.stdout.strip() if commit.returncode == 0 else "UNVERSIONED"
@@ -96,12 +105,15 @@ def build_dashboard(root: Path, output: Path) -> dict:
         target = stage / "artifacts_part9/live_attribution_report.json"
         target.parent.mkdir(parents=True)
         target.write_bytes((json.dumps(report, indent=2, allow_nan=False) + "\n").encode("utf-8"))
+        (stage / "forecast_diagnostics.json").write_bytes(
+            (json.dumps(diagnostics, indent=2, allow_nan=False) + "\n").encode("utf-8")
+        )
         (stage / ".nojekyll").touch()
         manifest = {
             "schema_version": SCHEMA, "source_commit": source_commit,
             "source_modified": bool(status.stdout.strip()) if status.returncode == 0 else None,
             "builder_code_sha256": {name: file_sha256(ROOT / name) for name in (
-                "build_dashboard.py", "part9_live_attribution.py", "forecast_protocol.py",
+                "build_dashboard.py", "audit_forecast.py", "part9_live_attribution.py", "forecast_protocol.py",
             )},
             "decision_date": str(latest["decision_date"]),
             "attribution_cohort": core["cohort"],

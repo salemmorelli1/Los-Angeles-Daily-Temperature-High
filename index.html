@@ -400,13 +400,14 @@
       <div class="hero-copy">
         <span class="eyebrow">Production meteorological intelligence</span>
         <h1 id="page-title">Forecast the <em>edge</em> of the Pacific.</h1>
-        <p>A live, governed forecasting surface for Los Angeles daily high temperature. Explore three forecast horizons, inspect uncertainty, test explanatory weather scenarios, and verify the model against realized observations.</p>
+        <p>A governed forecasting surface for Los Angeles daily high temperature. Explore three forecast horizons, inspect uncertainty, test explanatory weather scenarios, and verify the model against realized observations.</p>
         <div class="hero-meta" id="heroStatus" aria-live="polite">
           <span class="chip">LSTM / Transformer</span>
           <span class="chip">XGBoost ensemble</span>
           <span class="chip">BNN intervals</span>
           <span class="chip">NWS benchmark</span>
         </div>
+        <p id="forecastNotice" aria-live="polite">Loading verified publication diagnostics.</p>
         <div class="hero-actions">
           <button class="button sun" type="button" data-open-tab="labTab">Open scenario lab</button>
           <button class="button" type="button" data-open-tab="verifyTab">Inspect verification</button>
@@ -417,7 +418,7 @@
       <section class="forecast-stage" aria-labelledby="stage-title">
         <div class="stage-top">
           <div><div class="stage-kicker">Canonical forecast · Los Angeles / LAX</div><strong id="stageTarget">Target date —</strong></div>
-          <span class="status-pill mode-badge good" id="stageMode">NORMAL</span>
+          <span class="status-pill mode-badge warn" id="stageMode">UNKNOWN</span>
         </div>
         <div class="stage-main">
           <div>
@@ -427,9 +428,9 @@
           <div class="thermo" aria-hidden="true"><div class="thermo-fill" id="thermoFill"></div></div>
         </div>
         <div class="horizon-switch" role="group" aria-label="Forecast horizon">
-          <button class="horizon-button active" type="button" data-horizon="1"><span>Tomorrow</span><strong id="switchH1">—</strong></button>
-          <button class="horizon-button" type="button" data-horizon="3"><span>Three days</span><strong id="switchH3">—</strong></button>
-          <button class="horizon-button" type="button" data-horizon="5"><span>Five days</span><strong id="switchH5">—</strong></button>
+          <button class="horizon-button active" type="button" data-horizon="1"><span>H=1</span><strong id="switchH1">—</strong></button>
+          <button class="horizon-button" type="button" data-horizon="3"><span>H=3</span><strong id="switchH3">—</strong></button>
+          <button class="horizon-button" type="button" data-horizon="5"><span>H=5</span><strong id="switchH5">—</strong></button>
         </div>
         <div class="stage-footer">
           <div class="stage-stat"><span>90% display interval</span><strong id="stageInterval">Not available</strong></div>
@@ -488,7 +489,7 @@
     <section class="tab-panel active" id="overviewTab">
       <div class="section-head">
         <div><span class="eyebrow">Forecast desk</span><h2>Three horizons. One governed signal.</h2></div>
-        <p>The canonical forecast prefers the governed forecast field, then falls back through blend, XGBoost, and raw neural outputs. This keeps the page aligned with the production contract.</p>
+        <p>These are the frozen, governed forecasts. Persistence repeats the last observed high when the learned model has not passed its evidence gates. H is measured from the feature date; the exact target dates appear below.</p>
       </div>
       <div class="metric-strip">
         <div class="metric"><span>H=1 forecast</span><strong id="metricH1">—</strong><small id="metricH1Date">Target —</small></div>
@@ -498,7 +499,12 @@
         <div class="metric"><span>Live skill</span><strong id="metricSkill">—</strong><small id="metricSamples">Samples —</small></div>
       </div>
       <div class="grid two">
-        <article class="card"><span class="card-label">Interactive history</span><h3>Forecasts and realized highs</h3><div id="forecastHistoryChart" class="chart"></div></article>
+        <article class="card"><span class="card-label">Interactive history</span><h3>Forecasts and realized highs</h3>
+          <label for="historyScope">History scope</label>
+          <select id="historyScope" class="button"><option value="current">Current published method</option><option value="retained">Retained history · mixed methods</option></select>
+          <p id="historyNote">Each horizon is aligned to its target date. Blank dates have no recorded forecast.</p>
+          <div id="forecastHistoryChart" class="chart"></div>
+        </article>
         <aside class="card dark"><span class="card-label">Latest snapshot</span><h3 id="snapshotDate">Decision date —</h3><p id="snapshotNarrative">Loading the latest production row.</p><div class="status-grid" id="snapshotBadges"></div><div class="kv-grid" id="snapshotKv"></div></aside>
       </div>
     </section>
@@ -611,6 +617,7 @@
   </footer>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
+  <script src="assets/dashboard_contract.js"></script>
   <script>
     (() => {
       "use strict";
@@ -632,7 +639,7 @@
         plot: "rgba(5,12,20,.34)"
       };
       const PLOT_CONFIG = { responsive: true, displayModeBar: false, scrollZoom: false };
-      const state = { horizon: 1, predLog: [], artifacts: {}, loadLog: [], scenario: { marine: 50, offshore: 50, cloud: 50, anomaly: 0 } };
+      const state = { horizon: 1, historyScope: "current", predLog: [], artifacts: {}, loadLog: [], loadError: "", scenario: { marine: 50, offshore: 50, cloud: 50, anomaly: 0 } };
 
       function detectGitHubConfig() {
         const host = location.hostname || "";
@@ -648,23 +655,15 @@
         calibrationReport: "artifacts_part2c/calibration_report.json",
         governanceReport: "artifacts_part3/governance_report.json",
         regimeMeta: "artifacts_part6/regime_meta.json",
-        attributionReport: "artifacts_part9/live_attribution_report.json"
+        attributionReport: "artifacts_part9/live_attribution_report.json",
+        diagnostics: "forecast_diagnostics.json"
       }};
       const repoBase = `https://github.com/${CFG.owner}/${CFG.repo}`;
       function artifactBase() {
-        if (location.hostname.endsWith("github.io")) return new URL(".", location.href).href.replace(/\/$/, "");
-        return `https://raw.githubusercontent.com/${CFG.owner}/${CFG.repo}/${CFG.branch}`;
+        return new URL(".", location.href).href.replace(/\/$/, "");
       }
       const rawBase = artifactBase();
       document.getElementById("repoLink").href = repoBase;
-
-      const DEMO_ROWS = [
-        { decision_date:"2026-08-18", feature_date:"2026-08-18", target_date_h1:"2026-08-19", target_date_h3:"2026-08-21", target_date_h5:"2026-08-23", forecast_h1:"79.2", forecast_h3:"81.1", forecast_h5:"83.0", realized_h1:"80.0", realized_h3:"82.3", realized_h5:"82.5", forecast_source:"demo_contract", publish_mode:"NORMAL", model:"lstm" },
-        { decision_date:"2026-08-19", feature_date:"2026-08-19", target_date_h1:"2026-08-20", target_date_h3:"2026-08-22", target_date_h5:"2026-08-24", forecast_h1:"80.5", forecast_h3:"82.7", forecast_h5:"84.2", realized_h1:"81.2", realized_h3:"83.1", realized_h5:"", forecast_source:"demo_contract", publish_mode:"NORMAL", model:"lstm" },
-        { decision_date:"2026-08-20", feature_date:"2026-08-20", target_date_h1:"2026-08-21", target_date_h3:"2026-08-23", target_date_h5:"2026-08-25", forecast_h1:"82.1", forecast_h3:"83.8", forecast_h5:"85.0", realized_h1:"82.3", realized_h3:"82.5", realized_h5:"", forecast_source:"demo_contract", publish_mode:"NORMAL", model:"lstm" },
-        { decision_date:"2026-08-21", feature_date:"2026-08-21", target_date_h1:"2026-08-22", target_date_h3:"2026-08-24", target_date_h5:"2026-08-26", forecast_h1:"82.9", forecast_h3:"84.4", forecast_h5:"83.6", realized_h1:"83.1", realized_h3:"", realized_h5:"", forecast_source:"demo_contract", publish_mode:"NORMAL", model:"lstm" },
-        { decision_date:"2026-08-22", feature_date:"2026-08-22", target_date_h1:"2026-08-23", target_date_h3:"2026-08-25", target_date_h5:"2026-08-27", forecast_h1:"82.5", forecast_h3:"84.8", forecast_h5:"82.7", realized_h1:"82.5", realized_h3:"", realized_h5:"", forecast_source:"demo_contract", publish_mode:"NORMAL", model:"lstm" }
-      ];
 
       const PIPELINE = [
         { part:"00", name:"Data", short:"Open-Meteo + NWS", detail:"Fetches and caches historical daily observations, recent KLAX observations, Open-Meteo forecasts, and the official NWS benchmark. No API key is required." },
@@ -689,7 +688,7 @@
       const datetime = value => { if (missing(value)) return "—"; const d = new Date(value); return Number.isNaN(d.getTime()) ? String(value) : d.toLocaleString(); };
       const setText = (id, value) => { if ($(id)) $(id).textContent = value; };
       const latest = rows => rows?.length ? [...rows].sort((a,b) => new Date(a.decision_date || a.feature_date) - new Date(b.decision_date || b.feature_date)).at(-1) : null;
-      const forecast = (row,h) => [row?.[`forecast_h${h}`],row?.[`blend_h${h}`],row?.[`xgb_h${h}`],row?.[`target_h${h}`]].map(number).find(Number.isFinite) ?? NaN;
+      const forecast = (row,h) => LAContract.forecast(row,h) ?? NaN;
       const realized = (row,h) => number(row?.[`realized_h${h}`]);
       const isTrue = value => [true,"true","True","TRUE","1",1,"yes","YES"].includes(value);
       const statusClass = value => { const s=String(value ?? "").toUpperCase(); if (["NORMAL","PASS","PASSED","TRUE","LIVE","OK"].includes(s)) return "good"; if (["CAUTION","WARN","WARNING","DELAYED","UNKNOWN"].includes(s)) return "warn"; if (["HOLD","FAIL","FAILED","FALSE","STALE","ERROR"].includes(s)) return "bad"; return "info"; };
@@ -726,13 +725,6 @@
         }
         return output;
       }
-      async function fetchFile(path,type) {
-        const response=await fetch(`${rawBase}/${path}?v=${Date.now()}`,{cache:"no-store"});
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const text=await response.text();
-        return type==="csv" ? parseCsv(text) : JSON.parse(sanitizeJson(text));
-      }
-
       function toast(message) { const el=$("toast"); el.textContent=message; el.classList.add("show"); clearTimeout(toast.timer); toast.timer=setTimeout(()=>el.classList.remove("show"),2200); }
       function openTab(id) {
         document.querySelectorAll(".tab-button").forEach(b=>b.classList.toggle("active",b.dataset.tab===id));
@@ -743,18 +735,24 @@
 
       function updateStage() {
         const row=latest(state.predLog); const h=state.horizon; const value=forecast(row,h); const base=forecast(row,1);
-        const lo=number(row?.[`bnn_lo90_h${h}`]), hi=number(row?.[`bnn_hi90_h${h}`]);
-        const displayFlag=row?.[`bnn_displayable_h${h}`];
-        const displayable=displayFlag===undefined || displayFlag==="" ? isTrue(row?.bnn_calibrated) : isTrue(displayFlag);
+        const interval=state.artifacts.diagnostics?.horizons?.[`h${h}`]?.interval || {};
+        const lo=number(interval.lo_f), hi=number(interval.hi_f), displayable=interval.displayable===true;
         setText("stageTemp",Number.isFinite(value)?value.toFixed(1):"—");
         setText("stageTarget",`Target ${date(row?.[`target_date_h${h}`])}`);
-        setText("stageSummary",h===1?"Tomorrow's daily high":`${h}-day daily-high outlook`);
+        setText("stageSummary",LAContract.targetStatus(row,h));
         setText("stageSource",`Source ${row?.forecast_source || row?.model || "canonical model"}`);
         setText("stageInterval",displayable && Number.isFinite(lo) && Number.isFinite(hi)?`${lo.toFixed(1)}–${hi.toFixed(1)}°F`:"Not displayable");
         setText("stageDelta",Number.isFinite(value)&&Number.isFinite(base)?signedTemp(value-base):"—");
         setText("stageFeatureDate",date(row?.feature_date));
         const mode=state.artifacts.governance?.publish_mode || row?.publish_mode || "UNKNOWN";
         setText("stageMode",mode); $("stageMode").className=`status-pill mode-badge ${statusClass(mode)}`;
+        const diagnostic=state.artifacts.diagnostics;
+        if (diagnostic) {
+          const progress=HORIZONS.map(x=>`H${x} ${diagnostic.horizons[`h${x}`].decision_time_model_gate.n_paired}/${diagnostic.skill_min_samples}`).join(" · ");
+          const reason=diagnostic.forecast_source==="persistence" ? `Persistence fallback: learned forecasts remain in paper evaluation. Decision-time paired outcomes: ${progress}. ${diagnostic.sample_size_note}` : diagnostic.forecast_reason;
+          const warnings=diagnostic.warnings.map(check=>check.display_message||check.message).join(" ");
+          setText("forecastNotice",`${reason} ${warnings}`);
+        } else setText("forecastNotice",state.loadError || "Loading verified publication diagnostics.");
         document.querySelectorAll(".horizon-button").forEach(b=>b.classList.toggle("active",Number(b.dataset.horizon)===h));
         HORIZONS.forEach(x=>setText(`switchH${x}`,temp(forecast(row,x))));
         const bounded=Number.isFinite(value)?Math.max(0,Math.min(100,(value-45)/60*100)):50;
@@ -800,13 +798,19 @@
       function emptyChart(id,message) { if ($(id)) $(id).innerHTML=`<div style="min-height:280px;display:grid;place-items:center;color:${COLORS.muted};text-align:center;padding:30px">${safe(message)}</div>`; }
       function renderCharts() {
         if (!plotReady()) { ["forecastHistoryChart","metricsChart","skillChart","errorChart","regimeChart"].forEach(id=>emptyChart(id,"Chart library unavailable. Data summaries remain available.")); return; }
-        const rows=state.predLog.slice(-70), x=rows.map(r=>r.decision_date || r.feature_date);
+        const protocol=state.artifacts.diagnostics?.training_protocol_version;
+        const rows=state.predLog.filter(LAContract.published).filter(r=>state.historyScope==="retained" || r.training_protocol_version===protocol).slice(-70);
+        setText("historyNote",`${state.historyScope==="current"?"Current published method":"Retained history with mixed methods"}: ${rows.length} recorded forecasts. Each horizon uses its target dates. Lines break across missing dates and method changes; no forecasts are backfilled.`);
         const history=[];
         HORIZONS.forEach((h,i)=>{
-          history.push({x,y:rows.map(r=>forecast(r,h)),name:`Forecast H=${h}`,mode:"lines+markers",line:{width:2,color:[COLORS.coral,COLORS.sun,COLORS.violet][i]},marker:{size:5}});
-          history.push({x,y:rows.map(r=>realized(r,h)),name:`Realized H=${h}`,mode:"markers",marker:{size:7,symbol:"circle-open",color:[COLORS.coral,COLORS.sun,COLORS.violet][i]}});
+          const series=LAContract.historySeries(rows,h);
+          const hover="Target %{x}<br>%{y:.1f}°F<br>Decision %{customdata[0]}<br>Feature %{customdata[1]}<br>Method %{customdata[2]}<extra>%{fullData.name}</extra>";
+          history.push({x:series.x,y:series.forecast,customdata:series.customdata,hovertemplate:hover,name:`Forecast H=${h}`,mode:"lines+markers",connectgaps:false,line:{width:2,color:[COLORS.coral,COLORS.sun,COLORS.violet][i]},marker:{size:5}});
+          history.push({x:series.x,y:series.realized,customdata:series.customdata,hovertemplate:hover,name:`Realized H=${h}`,mode:"markers",marker:{size:7,symbol:"circle-open",color:[COLORS.coral,COLORS.sun,COLORS.violet][i]}});
         });
-        Plotly.react("forecastHistoryChart",history,chartLayout("Forecast tape","Temperature (°F)"),PLOT_CONFIG);
+        const historyLayout=chartLayout("Forecast tape · target dates","Temperature (°F)"); historyLayout.xaxis.title="Target date (Los Angeles calendar)";
+        if (rows.length) Plotly.react("forecastHistoryChart",history,historyLayout,PLOT_CONFIG);
+        else emptyChart("forecastHistoryChart","No verified published forecasts loaded.");
 
         const attr=state.artifacts.attribution || {}, metrics=attr.metrics_by_horizon || {}, labels=HORIZONS.map(h=>`H=${h}`);
         Plotly.react("metricsChart",[
@@ -819,7 +823,7 @@
           {x:labels,y:HORIZONS.map(h=>metrics[`h${h}`]?.skill_vs_climatology??null),name:"Vs climatology",type:"bar",marker:{color:COLORS.sun}},
           {x:labels,y:HORIZONS.map(h=>metrics[`h${h}`]?.hit_rate??null),name:"Hit rate",type:"bar",marker:{color:COLORS.cyan}}
         ],chartLayout("Skill and hit rate","Score"),PLOT_CONFIG);
-        const errTraces=HORIZONS.map((h,i)=>({x,y:rows.map(r=>{const f=forecast(r,h),a=realized(r,h);return Number.isFinite(f)&&Number.isFinite(a)?a-f:null}),name:`H=${h}`,mode:"lines+markers",line:{color:[COLORS.coral,COLORS.sun,COLORS.violet][i]}}));
+        const errTraces=HORIZONS.map((h,i)=>{const series=LAContract.historySeries(rows,h);return {x:series.x,y:series.residual,name:`H=${h}`,mode:"lines+markers",connectgaps:false,line:{color:[COLORS.coral,COLORS.sun,COLORS.violet][i]}};});
         const errLayout=chartLayout("Residual timeline","Realized − forecast (°F)"); errLayout.shapes=[{type:"line",xref:"paper",x0:0,x1:1,y0:0,y1:0,line:{color:COLORS.axis,dash:"dot"}}];
         Plotly.react("errorChart",errTraces,errLayout,PLOT_CONFIG);
         const stats=state.artifacts.regime?.state_stats || {}, names=Object.keys(stats);
@@ -831,14 +835,13 @@
         const row=latest(state.predLog), gov=state.artifacts.governance || {}, attr=state.artifacts.attribution || {};
         HORIZONS.forEach(h=>{ setText(`metricH${h}`,temp(forecast(row,h))); setText(`metricH${h}Date`,date(row?.[`target_date_h${h}`])); });
         const mode=gov.publish_mode || row?.publish_mode || "UNKNOWN"; setText("metricMode",mode); setText("metricChecks",`${gov.checks_passed??"—"}/${gov.checks_total??"—"} checks`);
-        setText("metricSkill",pct(attr.summary?.overall_skill)); const samples=attr.realized_samples_by_horizon || {}; setText("metricSamples",`H1 ${samples.h1??0} · H3 ${samples.h3??0} · H5 ${samples.h5??0}`);
+        setText("metricSkill",attr.summary?.skill_status==="INSUFFICIENT_DATA"?"Pending":pct(attr.summary?.overall_skill)); const samples=attr.realized_samples_by_horizon || {}; setText("metricSamples",`Realized: H1 ${samples.h1??0} · H3 ${samples.h3??0} · H5 ${samples.h5??0}; floor ${attr.skill_min_samples??"—"}`);
         setText("snapshotDate",`Decision ${date(row?.decision_date)}`);
         setText("snapshotNarrative",`The latest row uses ${row?.forecast_source || row?.model || "the canonical model"}. Target dates follow feature_date + H calendar days.`);
         $("snapshotBadges").innerHTML=[pill("Publish",mode),pill("Model",row?.model||state.artifacts.part2?.model_type||"—","info"),pill("Forecast source",row?.forecast_source||"—","info")].join("");
         renderKv("snapshotKv",[["Feature date",date(row?.feature_date)],["Written at",datetime(row?.written_at)],["H=1 realized",temp(realized(row,1))],["BNN status",row?.bnn_interval_status||state.artifacts.part2c?.interval_status||"Optional"],["NWS anchor",String(row?.forecast_source||"").includes("nws_anchor")?"Disclosed":"Not active"],["Repository rows",state.predLog.length]]);
-        const checks=gov.checks_total?gov.checks_passed===gov.checks_total:"UNKNOWN";
-        $("heroStatus").innerHTML=[pill("Publish",mode),pill("Governance",checks),pill("Rows",state.predLog.length,"info"),pill("Target clock","feature_date + H","info")].join("");
-        setText("connectionLabel",state.demo?"Artifact fallback active":location.hostname.endsWith("github.io")?"Published artifact snapshot":"Repository artifact preview");
+        $("heroStatus").innerHTML=[pill("Publish",mode),pill("Checks",`${gov.checks_passed??"—"}/${gov.checks_total??"—"}`,statusClass(mode)),pill("Rows",state.predLog.length,"info"),pill("Target clock","feature_date + H","info")].join("");
+        setText("connectionLabel",state.loadError?"Publication unavailable":state.manifest?"Verified artifact snapshot":"Loading artifact snapshot");
       }
 
       function renderVerification() {
@@ -875,7 +878,7 @@
 
       function renderData() {
         $("artifactList").innerHTML=state.loadLog.map(item=>`<div class="artifact-item ${item.ok?"ok":"miss"}"><span class="artifact-state"></span><code>${safe(item.path)}</code><strong>${item.ok?"Loaded":"Optional / missing"}</strong></div>`).join("");
-        setText("debugBox",state.loadLog.map(x=>`${x.ok?"OK  ":"MISS"} ${x.path}${x.error?`: ${x.error}`:""}`).join("\n")+`\n\nRepository: ${repoBase}\nBranch: ${CFG.branch}\nMode: ${state.demo?"demonstration fallback":"live repository artifacts"}`);
+        setText("debugBox",state.loadLog.map(x=>`${x.ok?"OK  ":"MISS"} ${x.path}${x.error?`: ${x.error}`:""}`).join("\n")+`\n\nRepository: ${repoBase}\nPublication source: ${state.manifest?.source_commit||"Unavailable"}`);
         const rows=state.predLog.slice(-15).reverse(), cols=["decision_date","feature_date","forecast_source","target_date_h1","forecast_h1","realized_h1","target_date_h3","forecast_h3","realized_h3","target_date_h5","forecast_h5","realized_h5","publish_mode"];
         const table=$("predictionTable"), head=table.querySelector("thead"), body=table.querySelector("tbody"); head.innerHTML=`<tr>${cols.map(c=>`<th>${safe(c)}</th>`).join("")}</tr>`; body.innerHTML=rows.map(r=>`<tr>${cols.map(c=>`<td>${safe(c.includes("forecast_h")||c.includes("realized_h")?temp(r[c]):c.includes("date")?date(r[c]):r[c]||"—")}</td>`).join("")}</tr>`).join("");
       }
@@ -883,13 +886,22 @@
       function renderAll() { updateStage(); renderOverview(); renderVerification(); renderRegimes(); renderPipeline(); renderGovernance(); renderData(); renderCharts(); setText("lastUpdated",`Last refreshed ${new Date().toLocaleString()}`); }
 
       async function loadAll() {
-        setText("connectionLabel","Loading repository artifacts"); state.loadLog=[]; state.demo=false;
+        const generation=(state.loadGeneration||0)+1; state.loadGeneration=generation;
+        setText("connectionLabel","Loading verified artifacts"); state.loadLog=[]; state.loadError=""; state.manifest=null; state.artifacts={}; state.predLog=[];
         const specs=[
-          ["predictionLog",CFG.files.predictionLog,"csv",false],["part2",CFG.files.part2Meta,"json",true],["part2b",CFG.files.part2bSummary,"json",true],["part2c",CFG.files.part2cMeta,"json",true],["calibration",CFG.files.calibrationReport,"json",true],["governance",CFG.files.governanceReport,"json",true],["regime",CFG.files.regimeMeta,"json",true],["attribution",CFG.files.attributionReport,"json",true]
+          ["predictionLog",CFG.files.predictionLog,"csv"],["part2",CFG.files.part2Meta,"json"],["part2b",CFG.files.part2bSummary,"json"],["part2c",CFG.files.part2cMeta,"json"],["calibration",CFG.files.calibrationReport,"json"],["governance",CFG.files.governanceReport,"json"],["regime",CFG.files.regimeMeta,"json"],["attribution",CFG.files.attributionReport,"json"],["diagnostics",CFG.files.diagnostics,"json"]
         ];
-        await Promise.all(specs.map(async([key,path,type])=>{try{state.artifacts[key]=await fetchFile(path,type);state.loadLog.push({path,ok:true});}catch(error){state.artifacts[key]=type==="csv"?[]:null;state.loadLog.push({path,ok:false,error:error.message});}}));
-        state.predLog=state.artifacts.predictionLog||[];
-        if (!state.predLog.length) { state.predLog=DEMO_ROWS; state.demo=true; toast("Forecast log unavailable — explanatory fallback loaded"); }
+        try {
+          const snapshot=await LAContract.loadSnapshot(rawBase,specs,(text,type)=>type==="csv"?parseCsv(text):JSON.parse(sanitizeJson(text)));
+          if (state.loadGeneration!==generation) return;
+          state.artifacts=snapshot.artifacts; state.manifest=snapshot.manifest;
+          state.predLog=state.artifacts.predictionLog;
+          state.loadLog=specs.map(([,path])=>({path,ok:true}));
+        } catch (error) {
+          if (state.loadGeneration!==generation) return;
+          state.loadError=`Publication unavailable: ${error.message}`;
+          state.loadLog=[{path:"publication.json / verified snapshot",ok:false,error:error.message}];
+        }
         renderAll();
       }
 
@@ -902,6 +914,8 @@
         Object.entries({marine:"marineControl",offshore:"offshoreControl",cloud:"cloudControl",anomaly:"anomalyControl"}).forEach(([k,id])=>$(id).value=state.scenario[k]); updateScenario();
       }));
       $("refreshBtn").addEventListener("click",()=>loadAll().then(()=>toast("Forecast artifacts refreshed")));
+      $("historyScope").addEventListener("change",event=>{state.historyScope=event.target.value;renderCharts();});
+      setInterval(()=>updateStage(),60000);
       addEventListener("error",event=>{setText("connectionLabel","Page error detected");console.error(event.error||event.message);});
       loadAll();
     })();
