@@ -1,7 +1,7 @@
 {
   "schema_version": "1.2.0-fail-closed-hold",
-  "run_at": "2026-11-09T23:31:25.139715",
-  "decision_date": "2026-11-09",
+  "run_at": "2026-11-10T20:57:57.720917",
+  "decision_date": "2026-11-10",
   "publish_mode": "CAUTION",
   "forecast_source": "persistence",
   "bnn_available": true,
@@ -17,9 +17,9 @@
       "level": "CRITICAL",
       "message": "OK",
       "details": {
-        "fetched_at": "2026-11-09 23:30:56.738560+00:00",
+        "fetched_at": "2026-11-10 20:57:42.013062+00:00",
         "age_hours": 0.0,
-        "historical_end": "2026-11-08",
+        "historical_end": "2026-11-09",
         "staleness_days": 1
       }
     },
@@ -60,9 +60,9 @@
       "level": "CRITICAL",
       "message": "OK",
       "details": {
-        "decision_date": "2026-11-09",
-        "feature_date": "2026-11-08",
-        "issued_at": "2026-11-09 23:31:04.522441+00:00"
+        "decision_date": "2026-11-10",
+        "feature_date": "2026-11-09",
+        "issued_at": "2026-11-10 20:57:47.712168+00:00"
       }
     },
     {
@@ -80,9 +80,9 @@
       "details": {
         "forecast_source": "persistence",
         "forecast_values": {
-          "h1": 85.3,
-          "h3": 85.3,
-          "h5": 85.3
+          "h1": 85.8,
+          "h3": 85.8,
+          "h5": 85.8
         }
       }
     },
@@ -93,9 +93,9 @@
       "message": "OK",
       "details": {
         "forecast_values": {
-          "h1": 85.3,
-          "h3": 85.3,
-          "h5": 85.3
+          "h1": 85.8,
+          "h3": 85.8,
+          "h5": 85.8
         },
         "bounds": {
           "min_f": 32.0,
@@ -119,7 +119,7 @@
       "level": "CRITICAL",
       "message": "OK",
       "details": {
-        "last_observed_f": 85.3,
+        "last_observed_f": 85.8,
         "check_deviations_f": {
           "h1": 0.0,
           "h3": 0.0,
@@ -139,27 +139,27 @@
       "name": "NWS_SANITY",
       "passed": false,
       "level": "WARN",
-      "message": "NWS deviation exceeded strong warning tier: H=5: forecast=85.3\u00b0F NWS=74.0\u00b0F \u0394=11.3\u00b0F",
+      "message": "NWS deviation exceeded strong warning tier: H=5: forecast=85.8\u00b0F NWS=71.0\u00b0F \u0394=14.8\u00b0F",
       "details": {
         "comparisons": {
           "h1": {
-            "forecast_f": 85.3,
+            "forecast_f": 85.8,
             "nws_f": 85.0,
-            "deviation_f": 0.3,
+            "deviation_f": 0.8,
             "direction": "warm",
             "tier": "OK"
           },
           "h3": {
-            "forecast_f": 85.3,
-            "nws_f": 87.0,
-            "deviation_f": 1.7,
-            "direction": "cold",
-            "tier": "OK"
+            "forecast_f": 85.8,
+            "nws_f": 82.0,
+            "deviation_f": 3.8,
+            "direction": "warm",
+            "tier": "SOFT_NOTE"
           },
           "h5": {
-            "forecast_f": 85.3,
-            "nws_f": 74.0,
-            "deviation_f": 11.3,
+            "forecast_f": 85.8,
+            "nws_f": 71.0,
+            "deviation_f": 14.8,
             "direction": "warm",
             "tier": "STRONG_WARN"
           }
@@ -167,7 +167,9 @@
         "soft_warn_deviation_f": 3.0,
         "strong_warn_deviation_f": 8.0,
         "max_deviation_f": 18.0,
-        "soft_notes": []
+        "soft_notes": [
+          "H=3: forecast=85.8\u00b0F NWS=82.0\u00b0F \u0394=3.8\u00b0F"
+        ]
       }
     },
     {
@@ -184,14 +186,14 @@
         "intervals_publishable": false,
         "intervals_displayable": false,
         "coverage_by_horizon": {
-          "h1": 0.8662,
-          "h3": 0.8811,
+          "h1": 0.8726,
+          "h3": 0.8832,
           "h5": 0.8556
         },
         "val_diagnostic_coverage_by_horizon": {
           "h1": 0.8684,
-          "h3": 0.8596,
-          "h5": 0.8596
+          "h3": 0.864,
+          "h5": 0.8509
         },
         "min_coverage_threshold": 0.75,
         "min_validation_coverage": 0.85,
@@ -199,8 +201,8 @@
         "bnn_available": true,
         "half_split_validation_pass": false,
         "half_split_notes": [
-          "H=1: half-split=82.0% < 85%",
-          "H=3: half-split=78.1% < 85%",
+          "H=1: half-split=82.5% < 85%",
+          "H=3: half-split=80.3% < 85%",
           "H=5: half-split=75.9% < 85%"
         ]
       }
