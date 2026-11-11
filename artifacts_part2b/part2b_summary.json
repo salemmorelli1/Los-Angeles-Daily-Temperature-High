@@ -1,46 +1,46 @@
 {
   "schema_version": "1.4.0-temporal-purge-live-skill",
-  "built_at": "2026-11-10T20:57:50.429264",
+  "built_at": "2026-11-11T21:31:12.189837",
   "gate_validation_passed": true,
   "gate_validation_diagnostics": {
     "h1": {
       "passed": true,
       "evidence_available": true,
-      "xgb_val_mae_f": 2.381700766609208,
-      "persistence_val_mae_f": 2.6405010438413363,
+      "xgb_val_mae_f": 2.3722426954905194,
+      "persistence_val_mae_f": 2.6366666666666663,
       "required_improvement_f": 0.2
     },
     "h3": {
       "passed": true,
       "evidence_available": true,
-      "xgb_val_mae_f": 3.4121168467097593,
-      "persistence_val_mae_f": 4.165344467640919,
+      "xgb_val_mae_f": 3.4403554630279545,
+      "persistence_val_mae_f": 4.1570833333333335,
       "required_improvement_f": 0.2
     },
     "h5": {
       "passed": true,
       "evidence_available": true,
-      "xgb_val_mae_f": 3.537219657181201,
-      "persistence_val_mae_f": 4.55741127348643,
+      "xgb_val_mae_f": 3.5660649712880454,
+      "persistence_val_mae_f": 4.552708333333333,
       "required_improvement_f": 0.2
     }
   },
-  "bnn_sleeve_recommended": false,
+  "bnn_sleeve_recommended": true,
   "val_metrics": {
-    "h1_mae_f": 2.381700766609208,
-    "h1_rmse_f": 3.1669352022673465,
-    "h3_mae_f": 3.4121168467097593,
-    "h3_rmse_f": 4.544704362951387,
-    "h5_mae_f": 3.537219657181201,
-    "h5_rmse_f": 4.696611256891728
+    "h1_mae_f": 2.3722426954905194,
+    "h1_rmse_f": 3.156647291987559,
+    "h3_mae_f": 3.4403554630279545,
+    "h3_rmse_f": 4.573669599147509,
+    "h5_mae_f": 3.5660649712880454,
+    "h5_rmse_f": 4.708792867420146
   },
   "test_metrics": {
-    "h1_mae_f": 2.4371913949238886,
-    "h1_rmse_f": 3.402981142628605,
-    "h3_mae_f": 3.9462766478233733,
-    "h3_rmse_f": 5.524635078491013,
-    "h5_mae_f": 4.53099603240023,
-    "h5_rmse_f": 6.279011351508528
+    "h1_mae_f": 2.4483459519848383,
+    "h1_rmse_f": 3.4014918788090913,
+    "h3_mae_f": 3.9764374078180373,
+    "h3_rmse_f": 5.572901114434097,
+    "h5_mae_f": 4.455342655771786,
+    "h5_rmse_f": 6.181451720650736
   },
   "val_heat_event_diagnostics": {
     "h1": {
@@ -48,121 +48,121 @@
       "n_true_heat_days": 6,
       "predicted_heat_hits": 4,
       "hit_rate": 0.6666666666666666,
-      "heat_mae_f": 3.0968002319335923,
-      "heat_bias_f": -3.0968002319335923,
+      "heat_mae_f": 3.127021535237629,
+      "heat_bias_f": -3.127021535237629,
       "max_true_f": 93.8,
-      "max_pred_f": 88.95834350585938
+      "max_pred_f": 89.69432830810547
     },
     "h3": {
       "threshold_f": 85.0,
       "n_true_heat_days": 6,
       "predicted_heat_hits": 0,
       "hit_rate": 0.0,
-      "heat_mae_f": 10.219259643554686,
-      "heat_bias_f": -10.219259643554686,
+      "heat_mae_f": 10.00748799641927,
+      "heat_bias_f": -10.00748799641927,
       "max_true_f": 93.8,
-      "max_pred_f": 83.13676452636719
+      "max_pred_f": 83.95028686523438
     },
     "h5": {
       "threshold_f": 85.0,
       "n_true_heat_days": 6,
       "predicted_heat_hits": 0,
       "hit_rate": 0.0,
-      "heat_mae_f": 13.208886210123696,
-      "heat_bias_f": -13.208886210123696,
+      "heat_mae_f": 13.909855906168618,
+      "heat_bias_f": -13.909855906168618,
       "max_true_f": 93.8,
-      "max_pred_f": 78.39491271972656
+      "max_pred_f": 77.17182159423828
     }
   },
   "test_heat_event_diagnostics": {
     "h1": {
       "threshold_f": 85.0,
       "n_true_heat_days": 19,
-      "predicted_heat_hits": 6,
-      "hit_rate": 0.3157894736842105,
-      "heat_mae_f": 7.781036296643708,
-      "heat_bias_f": -7.781036296643708,
+      "predicted_heat_hits": 5,
+      "hit_rate": 0.2631578947368421,
+      "heat_mae_f": 7.708764246890418,
+      "heat_bias_f": -7.708764246890418,
       "max_true_f": 99.1,
-      "max_pred_f": 88.27259063720703
+      "max_pred_f": 87.59418487548828
     },
     "h3": {
       "threshold_f": 85.0,
-      "n_true_heat_days": 19,
+      "n_true_heat_days": 20,
       "predicted_heat_hits": 0,
       "hit_rate": 0.0,
-      "heat_mae_f": 14.292262749922902,
-      "heat_bias_f": -14.292262749922902,
+      "heat_mae_f": 14.218828735351561,
+      "heat_bias_f": -14.218828735351561,
       "max_true_f": 99.1,
-      "max_pred_f": 82.16852569580078
+      "max_pred_f": 81.4468994140625
     },
     "h5": {
       "threshold_f": 85.0,
       "n_true_heat_days": 21,
       "predicted_heat_hits": 0,
       "hit_rate": 0.0,
-      "heat_mae_f": 16.028179350353422,
-      "heat_bias_f": -16.028179350353422,
+      "heat_mae_f": 15.98001461937314,
+      "heat_bias_f": -15.98001461937314,
       "max_true_f": 99.1,
-      "max_pred_f": 78.8943099975586
+      "max_pred_f": 78.11962890625
     }
   },
   "persistence_baseline_mae": {
-    "h1": 2.6405010438413363,
-    "h3": 4.165344467640919,
-    "h5": 4.55741127348643
+    "h1": 2.6366666666666663,
+    "h3": 4.1570833333333335,
+    "h5": 4.552708333333333
   },
   "xgb_live_predictions": {
-    "h1": 79.66301727294922,
-    "h3": 73.0644302368164,
-    "h5": 68.3477554321289
+    "h1": 80.50752258300781,
+    "h3": 72.91197967529297,
+    "h5": 70.70014953613281
   },
   "canonical_forecast": {
-    "h1": 85.8,
-    "h3": 85.8,
-    "h5": 85.8
+    "h1": 84.0,
+    "h3": 84.0,
+    "h5": 84.0
   },
   "forecast_source": "persistence",
   "forecast_reason": "H1:live_skill_gate_persistence | H3:live_skill_gate_persistence | H5:live_skill_gate_persistence",
   "blend_weights_xgb": {
-    "h1": 0.85,
+    "h1": 1.0,
     "h3": 0.9,
     "h5": 0.4
   },
   "blend_weight_diagnostics": {
     "h1": {
-      "chosen_weight_xgb": 0.85,
-      "best_weight_xgb": 0.85,
+      "chosen_weight_xgb": 1.0,
+      "best_weight_xgb": 1.0,
       "default_weight_xgb": 0.4,
-      "best_mae_f": 2.378956831245012,
-      "default_mae_f": 2.465247069328062,
-      "improvement_vs_default_f": 0.08629023808305014,
-      "xgb_only_mae_f": 2.389683147143292,
-      "lstm_only_mae_f": 2.6673492021458123,
-      "n_common_rows": 465,
+      "best_mae_f": 2.3879051633258963,
+      "default_mae_f": 2.6769609193985673,
+      "improvement_vs_default_f": 0.289055756072671,
+      "xgb_only_mae_f": 2.3879051633258963,
+      "lstm_only_mae_f": 3.077191944653268,
+      "n_common_rows": 467,
       "reason": "validation_mae_tuned"
     },
     "h3": {
       "chosen_weight_xgb": 0.9,
       "best_weight_xgb": 0.9,
       "default_weight_xgb": 0.4,
-      "best_mae_f": 3.4326146878478347,
-      "default_mae_f": 3.5402800873787177,
-      "improvement_vs_default_f": 0.10766539953088294,
-      "xgb_only_mae_f": 3.4365424010574177,
-      "lstm_only_mae_f": 3.7533047534573467,
-      "n_common_rows": 465,
+      "best_mae_f": 3.4577082362368996,
+      "default_mae_f": 3.535547874826436,
+      "improvement_vs_default_f": 0.07783963858953635,
+      "xgb_only_mae_f": 3.4605343297921625,
+      "lstm_only_mae_f": 3.7197901168267786,
+      "n_common_rows": 467,
       "reason": "validation_mae_tuned"
     },
     "h5": {
       "chosen_weight_xgb": 0.4,
       "best_weight_xgb": 0.7,
       "default_weight_xgb": 0.4,
-      "best_mae_f": 3.574365898870653,
-      "default_mae_f": 3.6216922653362316,
-      "improvement_vs_default_f": 0.04732636646557875,
-      "xgb_only_mae_f": 3.5933915169008324,
-      "lstm_only_mae_f": 3.790352661789105,
-      "n_common_rows": 465,
+      "best_mae_f": 3.5990153302472465,
+      "default_mae_f": 3.626350497586824,
+      "improvement_vs_default_f": 0.027335167339577637,
+      "xgb_only_mae_f": 3.618454209844357,
+      "lstm_only_mae_f": 3.7579451599774574,
+      "n_common_rows": 467,
       "reason": "default_retained_small_improvement"
     }
   },
@@ -178,11 +178,11 @@
     "h1": {
       "pre_anchor_source": "unavailable",
       "candidate_source": "blend",
-      "candidate_f": 79.53345756530761,
+      "candidate_f": 80.50752258300781,
       "blend_weight_xgb": null,
       "pre_anchor_f": null,
-      "nws_f": 85.0,
-      "final_f": 85.8,
+      "nws_f": 84.0,
+      "final_f": 84.0,
       "anchor_applied": false,
       "anchor_delta_f": null,
       "reason": "H1:live_skill_gate_persistence",
@@ -191,11 +191,11 @@
     "h3": {
       "pre_anchor_source": "unavailable",
       "candidate_source": "blend",
-      "candidate_f": 73.0726104736328,
+      "candidate_f": 72.67496871948242,
       "blend_weight_xgb": null,
       "pre_anchor_f": null,
-      "nws_f": 82.0,
-      "final_f": 85.8,
+      "nws_f": 70.0,
+      "final_f": 84.0,
       "anchor_applied": false,
       "anchor_delta_f": null,
       "reason": "H3:live_skill_gate_persistence",
@@ -203,12 +203,12 @@
     },
     "h5": {
       "pre_anchor_source": "unavailable",
-      "candidate_source": "lstm",
-      "candidate_f": 72.14038848876953,
+      "candidate_source": "blend",
+      "candidate_f": 69.74967193603516,
       "blend_weight_xgb": null,
       "pre_anchor_f": null,
-      "nws_f": 71.0,
-      "final_f": 85.8,
+      "nws_f": 69.0,
+      "final_f": 84.0,
       "anchor_applied": false,
       "anchor_delta_f": null,
       "reason": "H5:live_skill_gate_persistence",
@@ -239,21 +239,21 @@
     "h1": {
       "enabled": false,
       "reason": "insufficient_paired_history",
-      "n_paired": 28,
+      "n_paired": 29,
       "min_samples": 30,
       "lookback_rows": 90
     },
     "h3": {
       "enabled": false,
       "reason": "insufficient_paired_history",
-      "n_paired": 25,
+      "n_paired": 26,
       "min_samples": 30,
       "lookback_rows": 90
     },
     "h5": {
       "enabled": false,
       "reason": "insufficient_paired_history",
-      "n_paired": 23,
+      "n_paired": 24,
       "min_samples": 30,
       "lookback_rows": 90
     }
@@ -264,247 +264,247 @@
     "h1": [
       {
         "feature": "temp_high_f",
-        "importance": 0.22929416596889496
+        "importance": 0.22867782413959503
       },
       {
         "feature": "feels_like_max_f",
-        "importance": 0.08022766560316086
+        "importance": 0.07408905774354935
       },
       {
         "feature": "temp_mean_f",
-        "importance": 0.07485227286815643
+        "importance": 0.06895323097705841
       },
       {
         "feature": "season",
-        "importance": 0.03368346393108368
-      },
-      {
-        "feature": "diurnal_range_f",
-        "importance": 0.012700054794549942
-      },
-      {
-        "feature": "dew_depression_f",
-        "importance": 0.012159726582467556
+        "importance": 0.03222170099616051
       },
       {
         "feature": "month_cos",
-        "importance": 0.01104333158582449
+        "importance": 0.021036213263869286
       },
       {
-        "feature": "temp_anomaly_vs_30d",
-        "importance": 0.009700527414679527
-      },
-      {
-        "feature": "temp_high_f_roll30_min",
-        "importance": 0.00923523772507906
-      },
-      {
-        "feature": "alpha_days_from_peak",
-        "importance": 0.009115679189562798
-      },
-      {
-        "feature": "cloud_cover_mean_pct",
-        "importance": 0.009009824134409428
+        "feature": "diurnal_range_f",
+        "importance": 0.012399428524076939
       },
       {
         "feature": "humidity_min_pct",
-        "importance": 0.009005066938698292
-      },
-      {
-        "feature": "alpha_temp_mom_3d",
-        "importance": 0.008734671398997307
-      },
-      {
-        "feature": "temp_high_f_roll7_min",
-        "importance": 0.00847524031996727
-      },
-      {
-        "feature": "temp_high_f_roll3_mean",
-        "importance": 0.008467931300401688
-      },
-      {
-        "feature": "alpha_temp_mom_7d",
-        "importance": 0.007780759129673243
+        "importance": 0.011818202212452888
       },
       {
         "feature": "month_sin",
-        "importance": 0.007680186536163092
+        "importance": 0.011648120358586311
+      },
+      {
+        "feature": "temp_anomaly_vs_30d",
+        "importance": 0.011606888845562935
+      },
+      {
+        "feature": "dew_depression_f",
+        "importance": 0.01138453371822834
+      },
+      {
+        "feature": "temp_high_f_roll7_min",
+        "importance": 0.009295218624174595
+      },
+      {
+        "feature": "temp_high_f_roll30_min",
+        "importance": 0.00908584799617529
       },
       {
         "feature": "temp_low_f_lag2",
-        "importance": 0.0073475525714457035
+        "importance": 0.008311398327350616
       },
       {
-        "feature": "feels_like_max_f_lag3",
-        "importance": 0.007263875566422939
+        "feature": "cloud_cover_mean_pct",
+        "importance": 0.008115786127746105
+      },
+      {
+        "feature": "alpha_days_from_peak",
+        "importance": 0.007987583987414837
+      },
+      {
+        "feature": "alpha_temp_mom_7d",
+        "importance": 0.007797056343406439
+      },
+      {
+        "feature": "temp_high_f_roll3_mean",
+        "importance": 0.007705331780016422
       },
       {
         "feature": "temp_high_f_roll3_max",
-        "importance": 0.007143349386751652
+        "importance": 0.007650989573448896
+      },
+      {
+        "feature": "precip_in_lag1",
+        "importance": 0.006980749778449535
+      },
+      {
+        "feature": "pressure_tendency_2d",
+        "importance": 0.006969354581087828
       }
     ],
     "h3": [
       {
         "feature": "temp_high_f_roll30_min",
-        "importance": 0.16262690722942352
+        "importance": 0.185575470328331
       },
       {
         "feature": "season",
-        "importance": 0.12035705149173737
+        "importance": 0.11972977221012115
       },
       {
         "feature": "temp_high_f_roll14_min",
-        "importance": 0.07290372997522354
+        "importance": 0.0706658810377121
       },
       {
         "feature": "alpha_days_from_peak",
-        "importance": 0.05392021685838699
+        "importance": 0.053143370896577835
       },
       {
         "feature": "temp_high_f",
-        "importance": 0.021685613319277763
+        "importance": 0.023271091282367706
       },
       {
         "feature": "temp_mean_f",
-        "importance": 0.021416205912828445
+        "importance": 0.021349888294935226
       },
       {
-        "feature": "regime_REGIME_2_lag1",
-        "importance": 0.02069862000644207
+        "feature": "regime_REGIME_1_lag1",
+        "importance": 0.02079721726477146
       },
       {
         "feature": "temp_high_f_roll7_min",
-        "importance": 0.01852157711982727
+        "importance": 0.017998605966567993
       },
       {
         "feature": "alpha_high_pressure_days",
-        "importance": 0.01597357727587223
+        "importance": 0.012026806361973286
       },
       {
-        "feature": "temp_low_f_lag3",
-        "importance": 0.012448407709598541
+        "feature": "month_sin",
+        "importance": 0.011249943636357784
       },
       {
         "feature": "temp_high_f_roll3_mean",
-        "importance": 0.011741489171981812
-      },
-      {
-        "feature": "dew_point_mean_f_lag3",
-        "importance": 0.010518505237996578
-      },
-      {
-        "feature": "et0_in",
-        "importance": 0.009959175251424313
-      },
-      {
-        "feature": "doy_cos",
-        "importance": 0.009210151620209217
-      },
-      {
-        "feature": "temp_high_f_roll3_min",
-        "importance": 0.009112855419516563
+        "importance": 0.01114495750516653
       },
       {
         "feature": "solar_radiation_mj",
-        "importance": 0.00870176125317812
+        "importance": 0.010300187394022942
       },
       {
-        "feature": "dew_depression_f",
-        "importance": 0.008236804977059364
+        "feature": "doy_cos",
+        "importance": 0.010098984465003014
+      },
+      {
+        "feature": "et0_in",
+        "importance": 0.008961823768913746
+      },
+      {
+        "feature": "dew_point_mean_f_lag3",
+        "importance": 0.008537360467016697
+      },
+      {
+        "feature": "temp_high_f_roll3_min",
+        "importance": 0.007805794011801481
+      },
+      {
+        "feature": "temp_low_f_lag3",
+        "importance": 0.007771618198603392
       },
       {
         "feature": "wind_sin_lag1",
-        "importance": 0.00801844522356987
+        "importance": 0.007051114924252033
       },
       {
-        "feature": "prob_regime_2_lag1",
-        "importance": 0.0074294377118349075
+        "feature": "heat_index_proxy_lag1",
+        "importance": 0.006590661127120256
       },
       {
-        "feature": "pressure_mean_hpa_lag2",
-        "importance": 0.006640040781348944
+        "feature": "doy_sin",
+        "importance": 0.0064703370444476604
       }
     ],
     "h5": [
       {
         "feature": "alpha_days_from_peak",
-        "importance": 0.1423732340335846
+        "importance": 0.15440474450588226
       },
       {
         "feature": "temp_high_f_roll30_min",
-        "importance": 0.09517326205968857
+        "importance": 0.08507764339447021
       },
       {
         "feature": "temp_high_f_roll14_min",
-        "importance": 0.0910157784819603
+        "importance": 0.08366101235151291
       },
       {
         "feature": "temp_mean_f",
-        "importance": 0.03445695713162422
+        "importance": 0.03620767593383789
       },
       {
         "feature": "temp_high_f_roll3_min",
-        "importance": 0.03179079666733742
-      },
-      {
-        "feature": "month_cos",
-        "importance": 0.02097897231578827
+        "importance": 0.03351876884698868
       },
       {
         "feature": "temp_high_f",
-        "importance": 0.014102463610470295
-      },
-      {
-        "feature": "month_sin",
-        "importance": 0.01144785899668932
-      },
-      {
-        "feature": "solar_radiation_mj",
-        "importance": 0.011002624407410622
-      },
-      {
-        "feature": "temp_high_f_roll7_min",
-        "importance": 0.010222507640719414
-      },
-      {
-        "feature": "doy_cos",
-        "importance": 0.010063235647976398
-      },
-      {
-        "feature": "alpha_nino34_anom",
-        "importance": 0.00995460245758295
-      },
-      {
-        "feature": "prob_regime_2_lag1",
-        "importance": 0.009945961646735668
-      },
-      {
-        "feature": "temp_high_f_roll30_max",
-        "importance": 0.008505916222929955
+        "importance": 0.01137657929211855
       },
       {
         "feature": "dew_point_mean_f_lag2",
-        "importance": 0.008453700691461563
+        "importance": 0.010289638303220272
+      },
+      {
+        "feature": "prob_regime_1_lag1",
+        "importance": 0.010171356610953808
+      },
+      {
+        "feature": "doy_cos",
+        "importance": 0.009717961773276329
+      },
+      {
+        "feature": "dew_point_mean_f_lag3",
+        "importance": 0.009410570375621319
+      },
+      {
+        "feature": "solar_radiation_mj",
+        "importance": 0.009172848425805569
+      },
+      {
+        "feature": "temp_high_f_roll30_max",
+        "importance": 0.00863376259803772
+      },
+      {
+        "feature": "temp_high_f_roll7_min",
+        "importance": 0.00849489588290453
       },
       {
         "feature": "temp_high_f_roll14_mean",
-        "importance": 0.00841358583420515
+        "importance": 0.00847091618925333
       },
       {
-        "feature": "year",
-        "importance": 0.008411138318479061
+        "feature": "temp_high_f_roll7_max",
+        "importance": 0.008446590974926949
       },
       {
-        "feature": "temp_high_f_roll14_max",
-        "importance": 0.008372191339731216
+        "feature": "month_sin",
+        "importance": 0.008364571258425713
+      },
+      {
+        "feature": "alpha_nino34_anom",
+        "importance": 0.008341760374605656
+      },
+      {
+        "feature": "temp_high_f_lag1",
+        "importance": 0.008153915405273438
       },
       {
         "feature": "temp_low_f_lag3",
-        "importance": 0.008340252563357353
+        "importance": 0.008143583312630653
       },
       {
-        "feature": "temp_high_f_roll3_max",
-        "importance": 0.008026262745261192
+        "feature": "temp_high_f_roll14_max",
+        "importance": 0.008085527457296848
       }
     ]
   },
