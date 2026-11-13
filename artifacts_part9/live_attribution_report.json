@@ -1,15 +1,15 @@
 {
   "schema_version": "1.4.0-method-cohort",
-  "generated_at": "2026-11-12T21:33:44.099272+00:00",
+  "generated_at": "2026-11-13T20:58:25.921434+00:00",
   "target_clock": "target_date_h = feature_date + h calendar days",
   "cohort": {
     "training_protocol_version": "purged-frozen-regime-v3",
     "selection": "published_current_method_only",
-    "n_rows": 32,
+    "n_rows": 33,
     "excluded_rows": 95
   },
-  "n_prediction_rows": 32,
-  "ledger_n_prediction_rows": 127,
+  "n_prediction_rows": 33,
+  "ledger_n_prediction_rows": 128,
   "skill_min_samples": 30,
   "promote_min_samples": 30,
   "promotion_rule": "30 finite paired forecasts plus the existing validation and paired-loss CI gates; sample size alone is not approval",
@@ -103,7 +103,7 @@
   },
   "forecast_source_summary": {
     "forecast_source_counts": {
-      "persistence": 32
+      "persistence": 33
     },
     "nws_anchor_rows": 0,
     "nws_anchor_rows_by_horizon": {
@@ -111,7 +111,7 @@
       "h3": 0,
       "h5": 0
     },
-    "n_prediction_rows": 32,
+    "n_prediction_rows": 33,
     "nws_independence_warning": null
   },
   "summary": {
@@ -123,7 +123,7 @@
   },
   "historical_diagnostics": {
     "selection": "all_retained_rows_mixed_methods_not_promotion_evidence",
-    "n_prediction_rows": 127,
+    "n_prediction_rows": 128,
     "metrics_by_horizon": {
       "h1": {
         "n_samples": 126,
@@ -201,7 +201,7 @@
     "forecast_source_summary": {
       "forecast_source_counts": {
         "blend+nws_anchor": 62,
-        "persistence": 39,
+        "persistence": 40,
         "blend": 14,
         "blend+persistence": 12
       },
@@ -211,7 +211,7 @@
         "h3": 55,
         "h5": 52
       },
-      "n_prediction_rows": 127,
+      "n_prediction_rows": 128,
       "nws_independence_warning": "NWS anchoring active on ['H=1', 'H=3', 'H=5']. Realized-error metrics are valid but skill comparisons against NWS are not independent for anchored rows. Use model_only_metrics for unbiased model-vs-NWS comparisons."
     }
   },
