@@ -1,6 +1,6 @@
 {
   "schema_version": "1.4.0-temporal-purge-live-skill",
-  "built_at": "2026-11-13T20:57:53.495467",
+  "built_at": "2026-11-14T19:24:09.444999",
   "gate_validation_passed": true,
   "gate_validation_diagnostics": {
     "h1": {
@@ -35,12 +35,12 @@
     "h5_rmse_f": 4.686771043004704
   },
   "test_metrics": {
-    "h1_mae_f": 2.4708193592189516,
-    "h1_rmse_f": 3.435482381866653,
-    "h3_mae_f": 3.9830962772959286,
-    "h3_rmse_f": 5.593716819221234,
-    "h5_mae_f": 4.572997666191808,
-    "h5_rmse_f": 6.324620271943216
+    "h1_mae_f": 2.4773850397808563,
+    "h1_rmse_f": 3.441542030211335,
+    "h3_mae_f": 3.996913949157966,
+    "h3_rmse_f": 5.6089923550353324,
+    "h5_mae_f": 4.567884365128882,
+    "h5_rmse_f": 6.318819942125241
   },
   "val_heat_event_diagnostics": {
     "h1": {
@@ -77,11 +77,11 @@
   "test_heat_event_diagnostics": {
     "h1": {
       "threshold_f": 85.0,
-      "n_true_heat_days": 20,
+      "n_true_heat_days": 21,
       "predicted_heat_hits": 3,
-      "hit_rate": 0.15,
-      "heat_mae_f": 8.089200744628906,
-      "heat_bias_f": -8.089200744628906,
+      "hit_rate": 0.14285714285714285,
+      "heat_mae_f": 7.9736073811848955,
+      "heat_bias_f": -7.9736073811848955,
       "max_true_f": 99.1,
       "max_pred_f": 86.18203735351562
     },
@@ -112,14 +112,14 @@
     "h5": 4.557083333333334
   },
   "xgb_live_predictions": {
-    "h1": 73.21198272705078,
-    "h3": 71.16415405273438,
-    "h5": 70.39578247070312
+    "h1": 67.72350311279297,
+    "h3": 69.72442626953125,
+    "h5": 69.73578643798828
   },
   "canonical_forecast": {
-    "h1": 75.4,
-    "h3": 75.4,
-    "h5": 75.4
+    "h1": 66.7,
+    "h3": 66.7,
+    "h5": 66.7
   },
   "forecast_source": "persistence",
   "forecast_reason": "H1:live_skill_gate_persistence | H3:live_skill_gate_persistence | H5:live_skill_gate_persistence",
@@ -178,11 +178,11 @@
     "h1": {
       "pre_anchor_source": "unavailable",
       "candidate_source": "blend",
-      "candidate_f": 73.21198272705078,
+      "candidate_f": 67.72350311279297,
       "blend_weight_xgb": null,
       "pre_anchor_f": null,
-      "nws_f": 69.0,
-      "final_f": 75.4,
+      "nws_f": 70.0,
+      "final_f": 66.7,
       "anchor_applied": false,
       "anchor_delta_f": null,
       "reason": "H1:live_skill_gate_persistence",
@@ -191,11 +191,11 @@
     "h3": {
       "pre_anchor_source": "unavailable",
       "candidate_source": "blend",
-      "candidate_f": 70.97042388916016,
+      "candidate_f": 69.52653198242187,
       "blend_weight_xgb": null,
       "pre_anchor_f": null,
       "nws_f": 71.0,
-      "final_f": 75.4,
+      "final_f": 66.7,
       "anchor_applied": false,
       "anchor_delta_f": null,
       "reason": "H3:live_skill_gate_persistence",
@@ -204,11 +204,11 @@
     "h5": {
       "pre_anchor_source": "unavailable",
       "candidate_source": "blend",
-      "candidate_f": 69.27851867675781,
+      "candidate_f": 68.46939239501953,
       "blend_weight_xgb": null,
       "pre_anchor_f": null,
       "nws_f": 66.0,
-      "final_f": 75.4,
+      "final_f": 66.7,
       "anchor_applied": false,
       "anchor_delta_f": null,
       "reason": "H5:live_skill_gate_persistence",
@@ -239,14 +239,14 @@
     "h1": {
       "enabled": false,
       "reason": "skill_not_established",
-      "n_paired": 31,
+      "n_paired": 32,
       "lookback_rows": 90,
-      "candidate_mae_f": 3.6035103090347804,
-      "persistence_mae_f": 3.49032258064516,
-      "mean_paired_loss_delta_f": 0.1131877283896206,
+      "candidate_mae_f": 3.618988788127901,
+      "persistence_mae_f": 3.6156249999999988,
+      "mean_paired_loss_delta_f": 0.0033637881279022785,
       "loss_delta_ci95_f": [
-        -0.8252503690411943,
-        0.9606905940271243
+        -0.7626920181512784,
+        0.9845971351861983
       ],
       "bootstrap_block_length_rows": 5,
       "bootstrap_replicates": 2000
@@ -254,14 +254,14 @@
     "h3": {
       "enabled": false,
       "reason": "insufficient_paired_history",
-      "n_paired": 28,
+      "n_paired": 29,
       "min_samples": 30,
       "lookback_rows": 90
     },
     "h5": {
       "enabled": false,
       "reason": "insufficient_paired_history",
-      "n_paired": 26,
+      "n_paired": 27,
       "min_samples": 30,
       "lookback_rows": 90
     }
