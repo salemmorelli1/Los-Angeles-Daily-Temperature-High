@@ -1,7 +1,7 @@
 {
   "schema_version": "1.2.0-fail-closed-hold",
-  "run_at": "2026-11-15T19:55:00.642029",
-  "decision_date": "2026-11-15",
+  "run_at": "2026-11-16T23:28:45.554961",
+  "decision_date": "2026-11-16",
   "publish_mode": "CAUTION",
   "forecast_source": "persistence",
   "bnn_available": true,
@@ -17,9 +17,9 @@
       "level": "CRITICAL",
       "message": "OK",
       "details": {
-        "fetched_at": "2026-11-15 19:54:41.448681+00:00",
+        "fetched_at": "2026-11-16 23:28:30.106870+00:00",
         "age_hours": 0.0,
-        "historical_end": "2026-11-14",
+        "historical_end": "2026-11-15",
         "staleness_days": 1
       }
     },
@@ -30,7 +30,7 @@
       "message": "OK",
       "details": {
         "trained_at": "2026-11-11 21:31:08.479152+00:00",
-        "age_days": 3
+        "age_days": 5
       }
     },
     {
@@ -60,9 +60,9 @@
       "level": "CRITICAL",
       "message": "OK",
       "details": {
-        "decision_date": "2026-11-15",
-        "feature_date": "2026-11-14",
-        "issued_at": "2026-11-15 19:54:47.046690+00:00"
+        "decision_date": "2026-11-16",
+        "feature_date": "2026-11-15",
+        "issued_at": "2026-11-16 23:28:36.080824+00:00"
       }
     },
     {
@@ -80,9 +80,9 @@
       "details": {
         "forecast_source": "persistence",
         "forecast_values": {
-          "h1": 69.3,
-          "h3": 69.3,
-          "h5": 69.3
+          "h1": 70.0,
+          "h3": 70.0,
+          "h5": 70.0
         }
       }
     },
@@ -93,9 +93,9 @@
       "message": "OK",
       "details": {
         "forecast_values": {
-          "h1": 69.3,
-          "h3": 69.3,
-          "h5": 69.3
+          "h1": 70.0,
+          "h3": 70.0,
+          "h5": 70.0
         },
         "bounds": {
           "min_f": 32.0,
@@ -119,7 +119,7 @@
       "level": "CRITICAL",
       "message": "OK",
       "details": {
-        "last_observed_f": 69.3,
+        "last_observed_f": 70.0,
         "check_deviations_f": {
           "h1": 0.0,
           "h3": 0.0,
@@ -139,27 +139,27 @@
       "name": "NWS_SANITY",
       "passed": true,
       "level": "WARN",
-      "message": "OK with material NWS notes: H=5: forecast=69.3\u00b0F NWS=63.0\u00b0F \u0394=6.3\u00b0F",
+      "message": "OK with material NWS notes: H=3: forecast=70.0\u00b0F NWS=65.0\u00b0F \u0394=5.0\u00b0F; H=5: forecast=70.0\u00b0F NWS=62.0\u00b0F \u0394=8.0\u00b0F",
       "details": {
         "comparisons": {
           "h1": {
-            "forecast_f": 69.3,
-            "nws_f": 71.0,
-            "deviation_f": 1.7,
-            "direction": "cold",
-            "tier": "OK"
-          },
-          "h3": {
-            "forecast_f": 69.3,
-            "nws_f": 67.0,
-            "deviation_f": 2.3,
+            "forecast_f": 70.0,
+            "nws_f": 68.0,
+            "deviation_f": 2.0,
             "direction": "warm",
             "tier": "OK"
           },
+          "h3": {
+            "forecast_f": 70.0,
+            "nws_f": 65.0,
+            "deviation_f": 5.0,
+            "direction": "warm",
+            "tier": "SOFT_NOTE"
+          },
           "h5": {
-            "forecast_f": 69.3,
-            "nws_f": 63.0,
-            "deviation_f": 6.3,
+            "forecast_f": 70.0,
+            "nws_f": 62.0,
+            "deviation_f": 8.0,
             "direction": "warm",
             "tier": "SOFT_NOTE"
           }
@@ -168,7 +168,8 @@
         "strong_warn_deviation_f": 8.0,
         "max_deviation_f": 18.0,
         "soft_notes": [
-          "H=5: forecast=69.3\u00b0F NWS=63.0\u00b0F \u0394=6.3\u00b0F"
+          "H=3: forecast=70.0\u00b0F NWS=65.0\u00b0F \u0394=5.0\u00b0F",
+          "H=5: forecast=70.0\u00b0F NWS=62.0\u00b0F \u0394=8.0\u00b0F"
         ]
       }
     },
@@ -179,21 +180,21 @@
       "message": "BNN calibration FAILED \u2014 intervals are not displayable. Failures: calibration_pass=false or intervals_displayable=false",
       "details": {
         "calibration_pass": true,
-        "validation_calibration_pass": false,
+        "validation_calibration_pass": true,
         "test_calibration_pass": true,
         "interval_status": "CONFORMAL_CALIBRATED",
         "interval_label": "canonical_display_interval",
         "intervals_publishable": false,
         "intervals_displayable": false,
         "coverage_by_horizon": {
-          "h1": 0.9004,
+          "h1": 0.9047,
           "h3": 0.8623,
-          "h5": 0.822
+          "h5": 0.8199
         },
         "val_diagnostic_coverage_by_horizon": {
-          "h1": 0.8777,
-          "h3": 0.8559,
-          "h5": 0.8472
+          "h1": 0.8821,
+          "h3": 0.8603,
+          "h5": 0.8515
         },
         "min_coverage_threshold": 0.75,
         "min_validation_coverage": 0.85,
@@ -201,9 +202,9 @@
         "bnn_available": true,
         "half_split_validation_pass": false,
         "half_split_notes": [
-          "H=1: half-split=84.3% < 85%",
-          "H=3: half-split=81.2% < 85%",
-          "H=5: half-split=81.2% < 85%"
+          "H=1: half-split=84.7% < 85%",
+          "H=3: half-split=82.1% < 85%",
+          "H=5: half-split=79.9% < 85%"
         ]
       }
     }
