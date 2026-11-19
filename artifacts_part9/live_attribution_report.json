@@ -1,15 +1,15 @@
 {
   "schema_version": "1.4.0-method-cohort",
-  "generated_at": "2026-11-18T22:14:13.456592+00:00",
+  "generated_at": "2026-11-19T22:23:14.661532+00:00",
   "target_clock": "target_date_h = feature_date + h calendar days",
   "cohort": {
     "training_protocol_version": "purged-frozen-regime-v3",
     "selection": "published_current_method_only",
-    "n_rows": 38,
+    "n_rows": 39,
     "excluded_rows": 95
   },
-  "n_prediction_rows": 38,
-  "ledger_n_prediction_rows": 133,
+  "n_prediction_rows": 39,
+  "ledger_n_prediction_rows": 134,
   "skill_min_samples": 30,
   "promote_min_samples": 30,
   "promotion_rule": "30 finite paired forecasts plus the existing validation and paired-loss CI gates; sample size alone is not approval",
@@ -132,7 +132,7 @@
   "forecast_source_summary": {
     "forecast_source_counts": {
       "persistence": 37,
-      "persistence+blend": 1
+      "persistence+blend": 2
     },
     "nws_anchor_rows": 0,
     "nws_anchor_rows_by_horizon": {
@@ -140,7 +140,7 @@
       "h3": 0,
       "h5": 0
     },
-    "n_prediction_rows": 38,
+    "n_prediction_rows": 39,
     "nws_independence_warning": null
   },
   "summary": {
@@ -152,7 +152,7 @@
   },
   "historical_diagnostics": {
     "selection": "all_retained_rows_mixed_methods_not_promotion_evidence",
-    "n_prediction_rows": 133,
+    "n_prediction_rows": 134,
     "metrics_by_horizon": {
       "h1": {
         "n_samples": 132,
@@ -233,7 +233,7 @@
         "persistence": 44,
         "blend": 14,
         "blend+persistence": 12,
-        "persistence+blend": 1
+        "persistence+blend": 2
       },
       "nws_anchor_rows": 62,
       "nws_anchor_rows_by_horizon": {
@@ -241,7 +241,7 @@
         "h3": 55,
         "h5": 52
       },
-      "n_prediction_rows": 133,
+      "n_prediction_rows": 134,
       "nws_independence_warning": "NWS anchoring active on ['H=1', 'H=3', 'H=5']. Realized-error metrics are valid but skill comparisons against NWS are not independent for anchored rows. Use model_only_metrics for unbiased model-vs-NWS comparisons."
     }
   },
