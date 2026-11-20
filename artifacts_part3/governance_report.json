@@ -1,7 +1,7 @@
 {
   "schema_version": "1.2.0-fail-closed-hold",
-  "run_at": "2026-11-19T22:22:53.851735",
-  "decision_date": "2026-11-19",
+  "run_at": "2026-11-20T21:56:04.578151",
+  "decision_date": "2026-11-20",
   "publish_mode": "CAUTION",
   "forecast_source": "persistence+blend",
   "bnn_available": true,
@@ -17,9 +17,9 @@
       "level": "CRITICAL",
       "message": "OK",
       "details": {
-        "fetched_at": "2026-11-19 22:22:27.061411+00:00",
+        "fetched_at": "2026-11-20 21:55:50.218521+00:00",
         "age_hours": 0.0,
-        "historical_end": "2026-11-18",
+        "historical_end": "2026-11-19",
         "staleness_days": 1
       }
     },
@@ -60,9 +60,9 @@
       "level": "CRITICAL",
       "message": "OK",
       "details": {
-        "decision_date": "2026-11-19",
-        "feature_date": "2026-11-18",
-        "issued_at": "2026-11-19 22:22:43.936743+00:00"
+        "decision_date": "2026-11-20",
+        "feature_date": "2026-11-19",
+        "issued_at": "2026-11-20 21:55:56.366719+00:00"
       }
     },
     {
@@ -80,9 +80,9 @@
       "details": {
         "forecast_source": "persistence+blend",
         "forecast_values": {
-          "h1": 67.3,
-          "h3": 67.3,
-          "h5": 69.44
+          "h1": 64.9,
+          "h3": 64.9,
+          "h5": 70.03
         }
       }
     },
@@ -93,9 +93,9 @@
       "message": "OK",
       "details": {
         "forecast_values": {
-          "h1": 67.3,
-          "h3": 67.3,
-          "h5": 69.44
+          "h1": 64.9,
+          "h3": 64.9,
+          "h5": 70.03
         },
         "bounds": {
           "min_f": 32.0,
@@ -109,7 +109,7 @@
       "level": "WARN",
       "message": "OK",
       "details": {
-        "spread_f": 2.1,
+        "spread_f": 5.1,
         "max_spread_f": 35.0
       }
     },
@@ -119,16 +119,16 @@
       "level": "CRITICAL",
       "message": "OK",
       "details": {
-        "last_observed_f": 67.3,
+        "last_observed_f": 64.9,
         "check_deviations_f": {
           "h1": 0.0,
           "h3": 0.0,
-          "h5": 2.1
+          "h5": 5.1
         },
         "canonical_deviations_f": {
           "h1": 0.0,
           "h3": 0.0,
-          "h5": 2.1
+          "h5": 5.1
         },
         "threshold_f": 15.0,
         "forecast_source": "persistence+blend",
@@ -139,37 +139,35 @@
       "name": "NWS_SANITY",
       "passed": true,
       "level": "WARN",
-      "message": "OK with material NWS notes: H=5: forecast=69.4\u00b0F NWS=66.0\u00b0F \u0394=3.4\u00b0F",
+      "message": "OK",
       "details": {
         "comparisons": {
           "h1": {
-            "forecast_f": 67.3,
-            "nws_f": 66.0,
-            "deviation_f": 1.3,
-            "direction": "warm",
+            "forecast_f": 64.9,
+            "nws_f": 65.0,
+            "deviation_f": 0.1,
+            "direction": "cold",
             "tier": "OK"
           },
           "h3": {
-            "forecast_f": 67.3,
+            "forecast_f": 64.9,
             "nws_f": 65.0,
-            "deviation_f": 2.3,
-            "direction": "warm",
+            "deviation_f": 0.1,
+            "direction": "cold",
             "tier": "OK"
           },
           "h5": {
-            "forecast_f": 69.4,
-            "nws_f": 66.0,
-            "deviation_f": 3.4,
+            "forecast_f": 70.0,
+            "nws_f": 68.0,
+            "deviation_f": 2.0,
             "direction": "warm",
-            "tier": "SOFT_NOTE"
+            "tier": "OK"
           }
         },
         "soft_warn_deviation_f": 3.0,
         "strong_warn_deviation_f": 8.0,
         "max_deviation_f": 18.0,
-        "soft_notes": [
-          "H=5: forecast=69.4\u00b0F NWS=66.0\u00b0F \u0394=3.4\u00b0F"
-        ]
+        "soft_notes": []
       }
     },
     {
@@ -186,14 +184,14 @@
         "intervals_publishable": false,
         "intervals_displayable": false,
         "coverage_by_horizon": {
-          "h1": 0.8541,
-          "h3": 0.8414,
+          "h1": 0.8668,
+          "h3": 0.8372,
           "h5": 0.8224
         },
         "val_diagnostic_coverage_by_horizon": {
           "h1": 0.8952,
-          "h3": 0.8777,
-          "h5": 0.8821
+          "h3": 0.8821,
+          "h5": 0.8734
         },
         "min_coverage_threshold": 0.75,
         "min_validation_coverage": 0.85,
