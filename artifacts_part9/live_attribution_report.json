@@ -1,15 +1,15 @@
 {
   "schema_version": "1.4.0-method-cohort",
-  "generated_at": "2026-11-22T20:47:46.945827+00:00",
+  "generated_at": "2026-11-22T20:49:42.529938+00:00",
   "target_clock": "target_date_h = feature_date + h calendar days",
   "cohort": {
     "training_protocol_version": "purged-frozen-regime-v3",
     "selection": "published_current_method_only",
-    "n_rows": 41,
+    "n_rows": 42,
     "excluded_rows": 95
   },
-  "n_prediction_rows": 41,
-  "ledger_n_prediction_rows": 136,
+  "n_prediction_rows": 42,
+  "ledger_n_prediction_rows": 137,
   "skill_min_samples": 30,
   "promote_min_samples": 30,
   "promotion_rule": "30 finite paired forecasts plus the existing validation and paired-loss CI gates; sample size alone is not approval",
@@ -37,8 +37,8 @@
       ],
       "paired_loss_delta_ci_method": "moving_block_bootstrap",
       "paired_loss_delta_block_length_rows": 5,
-      "clim_mae_f": 5.162,
-      "skill_vs_climatology": 0.3503,
+      "clim_mae_f": 5.15,
+      "skill_vs_climatology": 0.3488,
       "n_paired_climatology": 41,
       "bnn_coverage_90pct": 0.8293,
       "bnn_n_samples": 41
@@ -61,8 +61,8 @@
       ],
       "paired_loss_delta_ci_method": "moving_block_bootstrap",
       "paired_loss_delta_block_length_rows": 5,
-      "clim_mae_f": 5.259,
-      "skill_vs_climatology": -0.3461,
+      "clim_mae_f": 5.246,
+      "skill_vs_climatology": -0.3494,
       "n_paired_climatology": 39,
       "bnn_coverage_90pct": 0.641,
       "bnn_n_samples": 39
@@ -85,8 +85,8 @@
       ],
       "paired_loss_delta_ci_method": "moving_block_bootstrap",
       "paired_loss_delta_block_length_rows": 5,
-      "clim_mae_f": 5.111,
-      "skill_vs_climatology": -0.7954,
+      "clim_mae_f": 5.097,
+      "skill_vs_climatology": -0.8001,
       "n_paired_climatology": 37,
       "bnn_coverage_90pct": 0.5946,
       "bnn_n_samples": 37
@@ -132,7 +132,7 @@
   "forecast_source_summary": {
     "forecast_source_counts": {
       "persistence": 37,
-      "persistence+blend": 4
+      "persistence+blend": 5
     },
     "nws_anchor_rows": 0,
     "nws_anchor_rows_by_horizon": {
@@ -140,7 +140,7 @@
       "h3": 0,
       "h5": 0
     },
-    "n_prediction_rows": 41,
+    "n_prediction_rows": 42,
     "nws_independence_warning": null
   },
   "summary": {
@@ -152,7 +152,7 @@
   },
   "historical_diagnostics": {
     "selection": "all_retained_rows_mixed_methods_not_promotion_evidence",
-    "n_prediction_rows": 136,
+    "n_prediction_rows": 137,
     "metrics_by_horizon": {
       "h1": {
         "n_samples": 136,
@@ -172,8 +172,8 @@
         ],
         "paired_loss_delta_ci_method": "moving_block_bootstrap",
         "paired_loss_delta_block_length_rows": 5,
-        "clim_mae_f": 4.027,
-        "skill_vs_climatology": -0.2942,
+        "clim_mae_f": 4.023,
+        "skill_vs_climatology": -0.2954,
         "n_paired_climatology": 136,
         "bnn_coverage_90pct": 0.6691,
         "bnn_n_samples": 136
@@ -196,8 +196,8 @@
         ],
         "paired_loss_delta_ci_method": "moving_block_bootstrap",
         "paired_loss_delta_block_length_rows": 5,
-        "clim_mae_f": 4.229,
-        "skill_vs_climatology": -0.6476,
+        "clim_mae_f": 4.226,
+        "skill_vs_climatology": -0.649,
         "n_paired_climatology": 134,
         "bnn_coverage_90pct": 0.6269,
         "bnn_n_samples": 134
@@ -220,8 +220,8 @@
         ],
         "paired_loss_delta_ci_method": "moving_block_bootstrap",
         "paired_loss_delta_block_length_rows": 5,
-        "clim_mae_f": 4.253,
-        "skill_vs_climatology": -0.8581,
+        "clim_mae_f": 4.249,
+        "skill_vs_climatology": -0.8597,
         "n_paired_climatology": 132,
         "bnn_coverage_90pct": 0.6364,
         "bnn_n_samples": 132
@@ -233,7 +233,7 @@
         "persistence": 44,
         "blend": 14,
         "blend+persistence": 12,
-        "persistence+blend": 4
+        "persistence+blend": 5
       },
       "nws_anchor_rows": 62,
       "nws_anchor_rows_by_horizon": {
@@ -241,7 +241,7 @@
         "h3": 55,
         "h5": 52
       },
-      "n_prediction_rows": 136,
+      "n_prediction_rows": 137,
       "nws_independence_warning": "NWS anchoring active on ['H=1', 'H=3', 'H=5']. Realized-error metrics are valid but skill comparisons against NWS are not independent for anchored rows. Use model_only_metrics for unbiased model-vs-NWS comparisons."
     }
   },
