@@ -1,15 +1,15 @@
 {
   "schema_version": "1.3.0-purged-frozen-regime",
   "fit_date": "2026-11-19T22:22:28.191296+00:00",
-  "decoded_at": "2026-11-22T20:49:04.043846+00:00",
+  "decoded_at": "2026-11-24T01:48:15.842424+00:00",
   "backend": "hmm",
   "hmm_error": null,
   "n_regimes": 3,
   "n_rows_fit": 2262,
-  "n_rows_decoded": 3247,
-  "fit_fraction": 0.6966430551278103,
+  "n_rows_decoded": 3248,
+  "fit_fraction": 0.6964285714285714,
   "fit_end_date": "2024-03-11",
-  "forecast_train_effective_end": "2024-03-13",
+  "forecast_train_effective_end": "2024-03-14",
   "imputation_values": {
     "temp_high_f": 68.85,
     "temp_low_f": 55.3,
@@ -67,7 +67,7 @@
     "REGIME_0": {
       "state_index": 0,
       "count": 1166,
-      "pct": 0.3591007083461657,
+      "pct": 0.3589901477832512,
       "means": {
         "temp_high_f": 67.93424746140002,
         "temp_low_f": 49.340773759727576,
@@ -87,7 +87,7 @@
     "REGIME_1": {
       "state_index": 1,
       "count": 1447,
-      "pct": 0.4456421311980289,
+      "pct": 0.4455049261083744,
       "means": {
         "temp_high_f": 72.86128701336106,
         "temp_low_f": 61.58207068655167,
@@ -106,8 +106,8 @@
     },
     "REGIME_2": {
       "state_index": 2,
-      "count": 634,
-      "pct": 0.19525716045580535,
+      "count": 635,
+      "pct": 0.1955049261083744,
       "means": {
         "temp_high_f": 62.99100619243037,
         "temp_low_f": 53.76236952249658,
