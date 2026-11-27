@@ -29,13 +29,21 @@
     const explicit = row?.[`target_date_h${horizon}`];
     return missing(explicit) ? expected : isoDay(explicit) === expected ? expected : null;
   }
-  function targetStatus(row, horizon, now = new Date()) {
-    const target = targetDate(row, horizon);
-    if (!target) return "Target unavailable";
+  function pacificDay(now) {
     const parts = Object.fromEntries(new Intl.DateTimeFormat("en-US", {
       timeZone: "America/Los_Angeles", year: "numeric", month: "2-digit", day: "2-digit"
     }).formatToParts(now).map(part => [part.type, part.value]));
-    const today = `${parts.year}-${parts.month}-${parts.day}`;
+    return `${parts.year}-${parts.month}-${parts.day}`;
+  }
+  function snapshotAgeDays(row, now = new Date()) {
+    const decision = isoDay(row?.decision_date);
+    return published(row) && decision
+      ? Math.round((Date.parse(pacificDay(now)) - Date.parse(decision)) / DAY) : null;
+  }
+  function targetStatus(row, horizon, now = new Date()) {
+    const target = targetDate(row, horizon);
+    if (!target) return "Target unavailable";
+    const today = pacificDay(now);
     return target < today ? "Past target · archived forecast"
       : target === today ? "Today's daily high" : "Upcoming daily high";
   }
@@ -110,7 +118,7 @@
     }
     return {artifacts, manifest};
   }
-  const api = Object.freeze({published, forecast, targetDate, targetStatus, historySeries, loadSnapshot});
+  const api = Object.freeze({published, forecast, targetDate, targetStatus, snapshotAgeDays, historySeries, loadSnapshot});
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   root.LAContract = api;
 })(typeof globalThis === "undefined" ? window : globalThis);

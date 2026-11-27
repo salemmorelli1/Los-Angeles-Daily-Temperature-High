@@ -56,6 +56,25 @@ class AuditDiagnosticsTests(unittest.TestCase):
             **copy.deepcopy(self.values if values is None else values),
         )
 
+    def interval_fixture(self):
+        """Explicit display evidence, independent of tomorrow's production gates."""
+        frame, values = self.frame.copy(), copy.deepcopy(self.values)
+        idx = frame.index[-1]
+        value = float(frame.at[idx, "forecast_h1"])
+        frame.loc[idx, ["bnn_available", "bnn_displayable_h1"]] = True
+        frame.loc[idx, ["bnn_lo90_h1", "bnn_hi90_h1"]] = [value - 5, value + 5]
+        frame.loc[idx, "bnn_displayable_h3"] = False
+        values["governance"]["bnn_available"] = True
+        for key in ("uncertainty", "calibration"):
+            values[key]["calibration_pass"] = True
+            values[key]["checkpoint_sha256"] = frame.at[idx, "checkpoint_sha256"]
+        values["uncertainty"]["feature_date"] = str(frame.at[idx, "feature_date"])[:10]
+        values["uncertainty"]["live_predictions"]["h1"] = {"lo90_f": value - 5, "hi90_f": value + 5}
+        values["calibration"]["horizon_display_flags"]["1"] = {"displayable": True}
+        values["calibration"]["horizon_display_flags"]["3"] = {"displayable": False}
+        values["governance"]["checks"] = [{"name": "BNN_CALIBRATION_GATE", "passed": False}]
+        return frame, values
+
     def test_read_only_audit_uses_one_cohort_and_preserves_every_artifact(self):
         paths = [path for path in ROOT.glob("artifacts_part*/*") if path.is_file()]
         before = {path: file_sha256(path) for path in paths}
@@ -107,7 +126,7 @@ class AuditDiagnosticsTests(unittest.TestCase):
             self.diagnostic(values=values)
 
     def test_per_horizon_display_survives_an_aggregate_warning(self):
-        result = self.diagnostic()
+        result = self.diagnostic(*self.interval_fixture())
         h1 = result["horizons"]["h1"]["interval"]
         self.assertTrue(h1["displayable"])
         self.assertFalse(result["horizons"]["h3"]["interval"]["displayable"])
@@ -121,32 +140,35 @@ class AuditDiagnosticsTests(unittest.TestCase):
             ("calibration", "checkpoint_sha256", "other"),
             ("uncertainty", "feature_date", "2000-01-01"),
         ]:
-            values = copy.deepcopy(self.values)
+            frame, values = self.interval_fixture()
             values[key][field] = value
             with self.subTest(key=key, field=field):
-                self.assertFalse(self.diagnostic(values=values)["horizons"]["h1"]["interval"]["displayable"])
+                self.assertFalse(self.diagnostic(frame, values)["horizons"]["h1"]["interval"]["displayable"])
 
     def test_inconsistent_uncertainty_bounds_are_not_shown(self):
-        frame = self.frame.copy()
+        frame, values = self.interval_fixture()
         frame.loc[frame.index[-1], "bnn_lo90_h1"] += 1.0
-        interval = self.diagnostic(frame)["horizons"]["h1"]["interval"]
+        interval = self.diagnostic(frame, values)["horizons"]["h1"]["interval"]
         self.assertFalse(interval["displayable"])
         self.assertIsNone(interval["lo_f"])
 
     def test_stack_without_bnn_cannot_display_leftover_uncertainty(self):
-        values = copy.deepcopy(self.values)
+        frame, values = self.interval_fixture()
         values["governance"]["bnn_available"] = False
-        self.assertFalse(self.diagnostic(values=values)["horizons"]["h1"]["interval"]["displayable"])
+        self.assertFalse(self.diagnostic(frame, values)["horizons"]["h1"]["interval"]["displayable"])
 
     def test_boolean_and_nonfinite_numbers_are_not_forecasts(self):
         for value in (True, np.bool_(True), np.nan, np.inf, "NaN", None):
             self.assertIsNone(audit.finite(value))
 
-    def test_the_observed_nineteen_day_gap_is_reported_without_inventing_rows(self):
-        result = self.diagnostic()
-        gap = next(g for g in result["history_gaps"] if g["previous_feature_date"] == "2026-08-25")
-        self.assertEqual(gap, {"previous_feature_date": "2026-08-25",
-                               "next_feature_date": "2026-09-13", "missing_days": 18})
+    def test_calendar_gap_is_reported_without_inventing_rows(self):
+        last = self.frame.tail(1).copy()
+        first = last.copy()
+        for col in ("feature_date", "decision_date", "target_date_h1", "target_date_h3", "target_date_h5"):
+            first[col] = (pd.to_datetime(first[col]) - pd.Timedelta(days=19)).dt.strftime("%Y-%m-%d")
+        result = self.diagnostic(pd.concat([first, last], ignore_index=True))
+        self.assertEqual(result["history_gaps"], [{"previous_feature_date": first.iloc[0]["feature_date"],
+                                               "next_feature_date": last.iloc[0]["feature_date"], "missing_days": 18}])
 
 
 class BrowserPublicationTests(unittest.TestCase):
@@ -155,12 +177,14 @@ class BrowserPublicationTests(unittest.TestCase):
         cls.directory = tempfile.TemporaryDirectory()
         cls.site = Path(cls.directory.name) / "site"
         dashboard.build_dashboard(ROOT, cls.site)
+        cls.diagnostics = json.loads((cls.site / "forecast_diagnostics.json").read_text())
+        cls.attribution = json.loads((cls.site / "artifacts_part9/live_attribution_report.json").read_text())
 
     @classmethod
     def tearDownClass(cls):
         cls.directory.cleanup()
 
-    def page(self, fault="", retained=False, horizon=1):
+    def page(self, fault="", retained=False, horizon=1, now=None, chart_rows=None):
         # Run the delivered inline page, external contract, loader and Plotly
         # trace construction. A small DOM records outputs; no browser packages
         # or network requests are needed in the publication-only runtime.
@@ -183,7 +207,7 @@ const fetcher=async url=>{
   return {ok:true,text:async()=>bytes.toString(),arrayBuffer:async()=>Uint8Array.from(bytes).buffer};
 };
 const RealDate=Date;
-class FixedDate extends RealDate {constructor(...args){super(...(args.length?args:['2026-11-04T22:00:00Z']));}static now(){return new RealDate('2026-11-04T22:00:00Z').getTime();}}
+class FixedDate extends RealDate {constructor(...args){super(...(args.length?args:[input.now]));}static now(){return new RealDate(input.now).getTime();}}
 const context={document,location:{hostname:'localhost',pathname:'/',href:'http://localhost/'},URL,Intl,Date:FixedDate,
   TextDecoder,Uint8Array,crypto:require('crypto').webcrypto,fetch:fetcher,console,setTimeout(){},clearTimeout(){},setInterval(){},addEventListener(){},
   Plotly:{react(id,series,layout){traces[id]={series,layout};}}};
@@ -195,26 +219,41 @@ script=script.replace('      loadAll();','      globalThis.pageTest={state,updat
 vm.runInContext(script,context);
 (async()=>{await context.pendingLoad;
  context.pageTest.state.historyScope=input.retained?'retained':'current';
- context.pageTest.state.horizon=input.horizon; context.pageTest.updateStage(); context.pageTest.renderCharts();
+ context.pageTest.state.horizon=input.horizon; context.pageTest.updateStage();
+ if(input.chartRows) context.pageTest.state.predLog=input.chartRows;
+ context.pageTest.renderCharts();
  console.log(JSON.stringify({texts:Object.fromEntries([...elements].map(([id,el])=>[id,el.textContent])),
   traces,rows:context.pageTest.state.predLog.length,error:context.pageTest.state.loadError}));
 })().catch(error=>{console.error(error);process.exit(1);});
 """
         return node_json(program, {"site": str(self.site), "fault": fault,
-                                   "retained": retained, "horizon": horizon})
+                                   "retained": retained, "horizon": horizon, "chartRows": chart_rows,
+                                   "now": now or self.diagnostics["horizons"]["h1"]["target_date"] + "T20:00:00Z"})
 
     def test_actual_page_uses_a_verified_current_method_snapshot(self):
         page = self.page()
         self.assertEqual(page["error"], "")
         self.assertEqual(page["texts"]["connectionLabel"], "Verified artifact snapshot")
         self.assertEqual(page["texts"]["stageSummary"], "Today's daily high")
-        self.assertEqual(page["texts"]["metricSkill"], "Pending")
+        if self.attribution["summary"]["skill_status"] == "INSUFFICIENT_DATA":
+            self.assertEqual(page["texts"]["metricSkill"], "Pending")
+        else:
+            self.assertNotEqual(page["texts"]["metricSkill"], "Pending")
         self.assertIn("Decision-time paired outcomes", page["texts"]["forecastNotice"])
         self.assertIn("Current published method", page["texts"]["historyNote"])
-        self.assertNotIn("Not displayable", page["texts"]["stageInterval"])
+        self.assertEqual(page["texts"]["stageInterval"] != "Not displayable", self.diagnostics["horizons"]["h1"]["interval"]["displayable"])
 
-    def test_suppressed_horizon_has_no_display_interval(self):
-        self.assertEqual(self.page(horizon=3)["texts"]["stageInterval"], "Not displayable")
+    def test_each_horizon_uses_its_own_recorded_display_permission(self):
+        for h in (1, 3, 5):
+            self.assertEqual(self.page(horizon=h)["texts"]["stageInterval"] != "Not displayable", self.diagnostics["horizons"][f"h{h}"]["interval"]["displayable"])
+
+    def test_older_publication_is_archived_even_if_h5_target_is_upcoming(self):
+        now = (pd.Timestamp(self.diagnostics["decision_date"]) + pd.Timedelta(days=2)).strftime("%Y-%m-%dT20:00:00Z")
+        page = self.page(horizon=5, now=now)
+        self.assertEqual(page["texts"]["connectionLabel"], "Verified archived snapshot")
+        self.assertIn("Archived forecast issued " + self.diagnostics["decision_date"], page["texts"]["forecastNotice"])
+        self.assertIn("backfill does not create a new forecast", page["texts"]["forecastNotice"])
+        self.assertEqual(page["texts"]["stageMode"], self.diagnostics["publish_mode"])
 
     def test_missing_manifest_shows_no_demo_or_model_substitution(self):
         page = self.page("missing")
@@ -233,17 +272,25 @@ vm.runInContext(script,context);
 
     def test_plotly_receives_distinct_target_dates_for_each_horizon(self):
         series = self.page()["traces"]["forecastHistoryChart"]["series"]
-        self.assertEqual(series[0]["x"][0], "2026-10-12")
-        self.assertEqual(series[2]["x"][0], "2026-10-14")
-        self.assertEqual(series[4]["x"][0], "2026-10-16")
+        first = pd.Timestamp(series[0]["x"][0])
+        self.assertEqual(pd.Timestamp(series[2]["x"][0]), first + pd.Timedelta(days=2))
+        self.assertEqual(pd.Timestamp(series[4]["x"][0]), first + pd.Timedelta(days=4))
         self.assertEqual(series[0]["x"], series[1]["x"])
 
-    def test_retained_history_and_residual_lines_break_at_the_observed_gap(self):
-        page = self.page(retained=True)
+    def test_retained_history_and_residual_lines_break_at_a_calendar_gap(self):
+        rows = []
+        for feature in ("2025-01-01", "2025-01-04"):
+            row = {"feature_date": feature, "decision_date": str(pd.Timestamp(feature).date() + pd.Timedelta(days=1)),
+                   "publish_mode": "CAUTION", "governance_run_at": "2025-01-10T12:00Z", "training_protocol_version": "gap-fixture"}
+            for h in (1, 3, 5):
+                row.update({f"target_date_h{h}": (pd.Timestamp(feature) + pd.Timedelta(days=h)).strftime("%Y-%m-%d"),
+                            f"forecast_h{h}": 70, f"realized_h{h}": 71})
+            rows.append(row)
+        page = self.page(retained=True, chart_rows=rows)
         for name in ("forecastHistoryChart", "errorChart"):
             series = page["traces"][name]["series"][0]
-            start = series["x"].index("2026-08-26")
-            end = series["x"].index("2026-09-14")
+            start = series["x"].index("2025-01-02")
+            end = series["x"].index("2025-01-05")
             self.assertIn(None, series["y"][start + 1:end])
             self.assertFalse(series["connectgaps"])
 

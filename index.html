@@ -735,6 +735,8 @@
 
       function updateStage() {
         const row=latest(state.predLog); const h=state.horizon; const value=forecast(row,h); const base=forecast(row,1);
+        const archived=LAContract.snapshotAgeDays(row)>0;
+        setText("connectionLabel",state.loadError?"Publication unavailable":state.manifest?(archived?"Verified archived snapshot":"Verified artifact snapshot"):"Loading artifact snapshot");
         const interval=state.artifacts.diagnostics?.horizons?.[`h${h}`]?.interval || {};
         const lo=number(interval.lo_f), hi=number(interval.hi_f), displayable=interval.displayable===true;
         setText("stageTemp",Number.isFinite(value)?value.toFixed(1):"—");
@@ -749,9 +751,10 @@
         const diagnostic=state.artifacts.diagnostics;
         if (diagnostic) {
           const progress=HORIZONS.map(x=>`H${x} ${diagnostic.horizons[`h${x}`].decision_time_model_gate.n_paired}/${diagnostic.skill_min_samples}`).join(" · ");
-          const reason=diagnostic.forecast_source==="persistence" ? `Persistence fallback: learned forecasts remain in paper evaluation. Decision-time paired outcomes: ${progress}. ${diagnostic.sample_size_note}` : diagnostic.forecast_reason;
+          const reason=diagnostic.forecast_source==="persistence" ? "Persistence fallback: learned forecasts remain in paper evaluation." : diagnostic.forecast_reason;
           const warnings=diagnostic.warnings.map(check=>check.display_message||check.message).join(" ");
-          setText("forecastNotice",`${reason} ${warnings}`);
+          const freshness=archived?`Archived forecast issued ${diagnostic.decision_date}. No forecast issued for today's Pacific date is present in this snapshot. A successful site deployment or outcome backfill does not create a new forecast. `:"";
+          setText("forecastNotice",`${freshness}${reason} Decision-time paired outcomes: ${progress}. ${diagnostic.sample_size_note} ${warnings}`);
         } else setText("forecastNotice",state.loadError || "Loading verified publication diagnostics.");
         document.querySelectorAll(".horizon-button").forEach(b=>b.classList.toggle("active",Number(b.dataset.horizon)===h));
         HORIZONS.forEach(x=>setText(`switchH${x}`,temp(forecast(row,x))));
@@ -841,7 +844,6 @@
         $("snapshotBadges").innerHTML=[pill("Publish",mode),pill("Model",row?.model||state.artifacts.part2?.model_type||"—","info"),pill("Forecast source",row?.forecast_source||"—","info")].join("");
         renderKv("snapshotKv",[["Feature date",date(row?.feature_date)],["Written at",datetime(row?.written_at)],["H=1 realized",temp(realized(row,1))],["BNN status",row?.bnn_interval_status||state.artifacts.part2c?.interval_status||"Optional"],["NWS anchor",String(row?.forecast_source||"").includes("nws_anchor")?"Disclosed":"Not active"],["Repository rows",state.predLog.length]]);
         $("heroStatus").innerHTML=[pill("Publish",mode),pill("Checks",`${gov.checks_passed??"—"}/${gov.checks_total??"—"}`,statusClass(mode)),pill("Rows",state.predLog.length,"info"),pill("Target clock","feature_date + H","info")].join("");
-        setText("connectionLabel",state.loadError?"Publication unavailable":state.manifest?"Verified artifact snapshot":"Loading artifact snapshot");
       }
 
       function renderVerification() {

@@ -2,6 +2,15 @@
 
 A production-grade deep learning pipeline for forecasting the **Los Angeles daily temperature high** at H=1, H=3, and H=5 days ahead.
 
+The [November 27 acquisition audit](docs/WEATHER_ACQUISITION_AUDIT_2026-11-27.md)
+traces the missed production run to an Open-Meteo HTTP 429 response. Weather
+requests now use bounded transient retries and honor `Retry-After`. Realization
+backfills reuse the matching Part 0 daily-high cache, preserve recorded outcomes,
+and request only missing completed-day targets. An older forecast is explicitly
+marked as archived, even after a successful backfill or Pages deployment.
+Run `bash verify_audit.sh` in a clean Python 3.12 checkout to reproduce the CPU
+tests, artifact checks and offline publication verification used by CI.
+
 The [November 4 dashboard audit](docs/FORECAST_DASHBOARD_AUDIT_2026-11-04.md)
 corrects the target-day labels and chart calendar, breaks lines across missing
 forecasts, and explains the recorded persistence fallback beside the forecast.
