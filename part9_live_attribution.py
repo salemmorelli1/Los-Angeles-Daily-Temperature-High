@@ -46,12 +46,12 @@ from typing import Any, Dict, List, Optional
 
 import numpy as np
 import pandas as pd
-import requests
 
 from forecast_protocol import (
     MIN_PAIRED_SKILL_SAMPLES, TRAINING_PROTOCOL_VERSION,
     moving_block_bootstrap_mean_ci, pacific_today_timestamp, protocol_published_history,
 )
+from weather_http import get_weather
 
 warnings.filterwarnings("ignore")
 
@@ -244,7 +244,7 @@ def fetch_realized_temps(start: pd.Timestamp, end: pd.Timestamp) -> pd.DataFrame
 
     print(f"[Part 9] Fetching realized temps: {start.date()} → {end.date()}")
     try:
-        resp = requests.get(
+        resp = get_weather(
             OM_ARCHIVE_URL,
             params={
                 "latitude": LAT, "longitude": LON,
@@ -256,8 +256,8 @@ def fetch_realized_temps(start: pd.Timestamp, end: pd.Timestamp) -> pd.DataFrame
             },
             timeout=20,
         )
-        resp.raise_for_status()
-        daily = resp.json().get("daily", {})
+        with resp:
+            daily = resp.json().get("daily", {})
         if not daily:
             return pd.DataFrame()
         df = pd.DataFrame(daily)
@@ -267,6 +267,60 @@ def fetch_realized_temps(start: pd.Timestamp, end: pd.Timestamp) -> pd.DataFrame
     except Exception as exc:
         print(f"  [WARN] Realized temp fetch failed: {exc}")
         return pd.DataFrame()
+
+
+def pending_realization_dates(df_log: pd.DataFrame) -> pd.DatetimeIndex:
+    """Only missing finite outcomes for completed Pacific calendar days."""
+    dates = set()
+    today = pacific_today_timestamp()
+    for _, row in df_log.iterrows():
+        for h in HORIZONS:
+            target = target_date_for_row(row, h)
+            value = pd.to_numeric(pd.Series([row.get(f"realized_h{h}")]), errors="coerce").iloc[0]
+            if pd.notna(target) and target < today and not np.isfinite(value):
+                dates.add(target)
+    return pd.DatetimeIndex(sorted(dates))
+
+
+def cached_realized_temps(df_hist: pd.DataFrame) -> pd.DataFrame:
+    """Reuse the same Open-Meteo daily-high series already acquired by Part 0.
+
+    The known Part 0 schema identifies its source/units/calendar. A foreign or
+    unidentifiable cache is ignored, so it cannot silently change the outcome
+    series. Existing finite ledger outcomes are never revised from this cache.
+    """
+    if df_hist.empty or not {"date", "temp_high_f"} <= set(df_hist.columns):
+        return pd.DataFrame()
+    try:
+        meta = json.loads((PART0_DIR / "data_meta.json").read_text(encoding="utf-8"))
+        if (meta.get("schema_version") != "1.1.0-pacific-complete-day"
+                or meta.get("lat") != LAT or meta.get("lon") != LON):
+            raise ValueError("cache source identity differs from the realized series")
+        result = df_hist[["date", "temp_high_f"]].rename(columns={"temp_high_f": "realized_high_f"}).copy()
+        result["date"] = pd.to_datetime(result["date"]).dt.normalize()
+        result["realized_high_f"] = pd.to_numeric(result["realized_high_f"], errors="coerce")
+        result = result.loc[
+            (result["date"] < pacific_today_timestamp())
+            & result["date"].between(pd.Timestamp(meta["historical_start"]), pd.Timestamp(meta["historical_end"]))
+            & np.isfinite(result["realized_high_f"])
+        ].drop_duplicates()
+        if result["date"].duplicated().any():
+            raise ValueError("conflicting cached daily outcomes")
+        return result
+    except (OSError, ValueError, KeyError, TypeError) as error:
+        print(f"[Part 9] Historical outcome cache not usable: {error}")
+        return pd.DataFrame()
+
+
+def refresh_realizations(df_log: pd.DataFrame, df_hist: pd.DataFrame) -> pd.DataFrame:
+    """Fill blanks from the local source first, then request only pending dates."""
+    df_log = backfill_realized(df_log, cached_realized_temps(df_hist))
+    pending = pending_realization_dates(df_log)
+    if pending.empty:
+        print("[Part 9] No missing completed-day outcomes; archive request skipped.")
+        return df_log
+    # One request spanning missing dates, rather than the entire retained ledger.
+    return backfill_realized(df_log, fetch_realized_temps(pending.min(), pending.max()))
 
 
 def backfill_realized(df_log: pd.DataFrame, df_realized: pd.DataFrame) -> pd.DataFrame:
@@ -731,23 +785,7 @@ def main() -> int:
     df_hist = load_historical()
     nws_forecast = load_nws_forecast()
 
-    # Fetch realized temps — cap end date at yesterday
-    target_date_cols = [f"target_date_h{h}" for h in HORIZONS]
-    all_target_dates = pd.to_datetime(
-        df_log[target_date_cols].stack(), errors="coerce"
-    ).dropna()
-    if all_target_dates.empty:
-        print("[Part 9] No target dates found — cannot backfill.")
-        return 1
-
-    min_target = all_target_dates.min()
-    max_target = min(
-        all_target_dates.max(),
-        pacific_today_timestamp() - pd.Timedelta(days=1),
-    )
-    df_realized = fetch_realized_temps(min_target, max_target)
-
-    df_log = backfill_realized(df_log, df_realized)
+    df_log = refresh_realizations(df_log, df_hist)
     df_log = compute_persistence_baseline(df_log, df_hist)
 
     # Metrics

@@ -27,7 +27,6 @@ from __future__ import annotations
 
 import json
 import os
-import time
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -37,6 +36,7 @@ import pandas as pd
 import requests
 
 from forecast_protocol import pacific_today
+from weather_http import get_weather
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -116,10 +116,6 @@ OM_HOURLY_VARS = [
     "wind_direction_10m",
 ]
 
-RETRY_ATTEMPTS = 3
-RETRY_DELAY = 2.0  # seconds
-
-
 # ---------------------------------------------------------------------------
 # Environment helpers
 # ---------------------------------------------------------------------------
@@ -144,18 +140,7 @@ os.environ.setdefault("LATEMP_ROOT", str(PROJECT_DIR))
 # ---------------------------------------------------------------------------
 def _get(url: str, params: Optional[Dict] = None, headers: Optional[Dict] = None,
          timeout: int = 30) -> requests.Response:
-    for attempt in range(RETRY_ATTEMPTS):
-        try:
-            resp = requests.get(url, params=params, headers=headers, timeout=timeout)
-            resp.raise_for_status()
-            return resp
-        except requests.RequestException as exc:
-            if attempt < RETRY_ATTEMPTS - 1:
-                print(f"  [WARN] Request failed (attempt {attempt + 1}): {exc}. Retrying...")
-                time.sleep(RETRY_DELAY * (attempt + 1))
-            else:
-                raise
-    raise RuntimeError("Should not reach here")
+    return get_weather(url, params=params, headers=headers, timeout=timeout)
 
 
 # ---------------------------------------------------------------------------
