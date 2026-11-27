@@ -1,14 +1,14 @@
 {
   "schema_version": "1.2.0-fail-closed-hold",
-  "run_at": "2026-11-25T23:13:00.514186",
-  "decision_date": "2026-11-25",
+  "run_at": "2026-11-27T19:35:11.609659",
+  "decision_date": "2026-11-27",
   "publish_mode": "CAUTION",
   "forecast_source": "persistence+blend",
   "bnn_available": true,
   "bnn_calibrated": false,
   "bnn_interval_status": "CONFORMAL_CALIBRATED",
   "bnn_intervals_displayable": false,
-  "checks_passed": 9,
+  "checks_passed": 10,
   "checks_total": 11,
   "checks": [
     {
@@ -17,9 +17,9 @@
       "level": "CRITICAL",
       "message": "OK",
       "details": {
-        "fetched_at": "2026-11-25 23:12:40.050097+00:00",
+        "fetched_at": "2026-11-27 19:34:43.744234+00:00",
         "age_hours": 0.0,
-        "historical_end": "2026-11-24",
+        "historical_end": "2026-11-26",
         "staleness_days": 1
       }
     },
@@ -30,7 +30,7 @@
       "message": "OK",
       "details": {
         "trained_at": "2026-11-19 22:22:43.897215+00:00",
-        "age_days": 6
+        "age_days": 7
       }
     },
     {
@@ -60,9 +60,9 @@
       "level": "CRITICAL",
       "message": "OK",
       "details": {
-        "decision_date": "2026-11-25",
-        "feature_date": "2026-11-24",
-        "issued_at": "2026-11-25 23:12:46.516954+00:00"
+        "decision_date": "2026-11-27",
+        "feature_date": "2026-11-26",
+        "issued_at": "2026-11-27 19:34:51.104612+00:00"
       }
     },
     {
@@ -80,9 +80,9 @@
       "details": {
         "forecast_source": "persistence+blend",
         "forecast_values": {
-          "h1": 69.7,
-          "h3": 69.7,
-          "h5": 67.71
+          "h1": 75.2,
+          "h3": 75.2,
+          "h5": 66.56
         }
       }
     },
@@ -93,9 +93,9 @@
       "message": "OK",
       "details": {
         "forecast_values": {
-          "h1": 69.7,
-          "h3": 69.7,
-          "h5": 67.71
+          "h1": 75.2,
+          "h3": 75.2,
+          "h5": 66.56
         },
         "bounds": {
           "min_f": 32.0,
@@ -109,7 +109,7 @@
       "level": "WARN",
       "message": "OK",
       "details": {
-        "spread_f": 2.0,
+        "spread_f": 8.6,
         "max_spread_f": 35.0
       }
     },
@@ -119,16 +119,16 @@
       "level": "CRITICAL",
       "message": "OK",
       "details": {
-        "last_observed_f": 69.7,
+        "last_observed_f": 75.2,
         "check_deviations_f": {
           "h1": 0.0,
           "h3": 0.0,
-          "h5": 2.0
+          "h5": 8.6
         },
         "canonical_deviations_f": {
           "h1": 0.0,
           "h3": 0.0,
-          "h5": 2.0
+          "h5": 8.6
         },
         "threshold_f": 15.0,
         "forecast_source": "persistence+blend",
@@ -137,39 +137,39 @@
     },
     {
       "name": "NWS_SANITY",
-      "passed": false,
+      "passed": true,
       "level": "WARN",
-      "message": "NWS deviation exceeded strong warning tier: H=3: forecast=69.7\u00b0F NWS=81.0\u00b0F \u0394=11.3\u00b0F",
+      "message": "OK with material NWS notes: H=1: forecast=75.2\u00b0F NWS=81.0\u00b0F \u0394=5.8\u00b0F; H=3: forecast=75.2\u00b0F NWS=72.0\u00b0F \u0394=3.2\u00b0F",
       "details": {
         "comparisons": {
           "h1": {
-            "forecast_f": 69.7,
-            "nws_f": 76.0,
-            "deviation_f": 6.3,
+            "forecast_f": 75.2,
+            "nws_f": 81.0,
+            "deviation_f": 5.8,
             "direction": "cold",
             "tier": "SOFT_NOTE"
           },
           "h3": {
-            "forecast_f": 69.7,
-            "nws_f": 81.0,
-            "deviation_f": 11.3,
-            "direction": "cold",
-            "tier": "STRONG_WARN"
+            "forecast_f": 75.2,
+            "nws_f": 72.0,
+            "deviation_f": 3.2,
+            "direction": "warm",
+            "tier": "SOFT_NOTE"
           },
           "h5": {
-            "forecast_f": 67.7,
-            "nws_f": 73.0,
-            "deviation_f": 5.3,
-            "direction": "cold",
-            "tier": "SOFT_NOTE"
+            "forecast_f": 66.6,
+            "nws_f": 65.0,
+            "deviation_f": 1.6,
+            "direction": "warm",
+            "tier": "OK"
           }
         },
         "soft_warn_deviation_f": 3.0,
         "strong_warn_deviation_f": 8.0,
         "max_deviation_f": 18.0,
         "soft_notes": [
-          "H=1: forecast=69.7\u00b0F NWS=76.0\u00b0F \u0394=6.3\u00b0F",
-          "H=5: forecast=67.7\u00b0F NWS=73.0\u00b0F \u0394=5.3\u00b0F"
+          "H=1: forecast=75.2\u00b0F NWS=81.0\u00b0F \u0394=5.8\u00b0F",
+          "H=3: forecast=75.2\u00b0F NWS=72.0\u00b0F \u0394=3.2\u00b0F"
         ]
       }
     },
@@ -187,9 +187,9 @@
         "intervals_publishable": false,
         "intervals_displayable": false,
         "coverage_by_horizon": {
-          "h1": 0.8605,
-          "h3": 0.833,
-          "h5": 0.8224
+          "h1": 0.8562,
+          "h3": 0.8351,
+          "h5": 0.8266
         },
         "val_diagnostic_coverage_by_horizon": {
           "h1": 0.8952,
